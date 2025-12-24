@@ -62,13 +62,13 @@ class AirtableClient:
         filter_formula = f"AND(IS_AFTER({{date_og_published}}, DATEADD(TODAY(), -{days}, 'days')), {{ai_headline}}!='', {{newsletter}}='pivot_ai')"
 
         # All fields needed by n8n workflow
+        # Note: 'headline' field does not exist in this table - only 'ai_headline'
         fields = [
             'storyID', 'pivotId', 'ai_headline', 'ai_dek',
             'ai_bullet_1', 'ai_bullet_2', 'ai_bullet_3',  # For summary building
             'date_og_published', 'newsletter', 'topic',
             'core_url', 'image_url',  # Media fields
             'fit_score', 'sentiment', 'tags',  # Filtering fields
-            'headline',  # Fallback if ai_headline is empty
         ]
 
         records = table.all(
