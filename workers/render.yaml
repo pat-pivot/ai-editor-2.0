@@ -65,6 +65,11 @@ services:
       # Node environment
       - key: NODE_ENV
         value: production
+      # Trigger service for job execution
+      - key: TRIGGER_SERVICE_URL
+        sync: false  # Set to https://ai-editor-trigger.onrender.com
+      - key: TRIGGER_SECRET
+        sync: false  # Must match ai-editor-trigger service
     autoDeploy: true
     healthCheckPath: /api/health
 
@@ -164,6 +169,80 @@ services:
       - key: AI_EDITOR_BASE_ID
         value: appglKSJZxmA9iHpl
     autoDeploy: true
+
+  # =============================================================================
+  # PYTHON HTTP TRIGGER SERVICE
+  # Exposes HTTP endpoints to trigger jobs from Next.js dashboard
+  # =============================================================================
+  - type: web
+    name: ai-editor-trigger
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT trigger:app
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: ai-editor-redis
+          type: redis
+          property: connectionString
+      - key: TRIGGER_SECRET
+        generateValue: true
+      # Airtable - Pivot Media Master Base
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: AIRTABLE_BASE_ID
+        value: appwSozYTkrsQWUXB
+      - key: AIRTABLE_ARTICLES_TABLE
+        value: tblGumae8KDpsrWvh
+      - key: AIRTABLE_NEWSLETTER_STORIES_TABLE
+        value: tblY78ziWp5yhiGXp
+      - key: AIRTABLE_NEWSLETTER_ISSUES_TABLE
+        value: tbl7mcCCGbjEfli25
+      - key: AIRTABLE_NEWSLETTER_ISSUES_ARCHIVE_TABLE
+        value: tblHo0xNj8nbzMHNI
+      # Airtable - AI Editor 2.0 Base
+      - key: AI_EDITOR_BASE_ID
+        value: appglKSJZxmA9iHpl
+      - key: AI_EDITOR_PREFILTER_LOG_TABLE
+        value: tbl72YMsm9iRHj3sp
+      - key: AI_EDITOR_SELECTED_SLOTS_TABLE
+        value: tblzt2z7r512Kto3O
+      - key: AI_EDITOR_DECORATION_TABLE
+        value: tbla16LJCf5Z6cRn3
+      - key: AI_EDITOR_SOURCE_SCORES_TABLE
+        value: tbl3Zkdl1No2edDLK
+      # Database for prompts
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-editor-db
+          property: connectionString
+      # AI APIs (needed for job imports)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # Image Storage
+      - key: CLOUDINARY_URL
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_KEY
+        sync: false
+      # Mautic
+      - key: MAUTIC_BASE_URL
+        value: https://app.pivotnews.com
+      - key: MAUTIC_USERNAME
+        sync: false
+      - key: MAUTIC_PASSWORD
+        sync: false
+      - key: MAUTIC_SEGMENT_ID
+        value: "1"
+    autoDeploy: true
+    healthCheckPath: /health
 
 # =============================================================================
 # DATABASES

@@ -60,76 +60,59 @@ class GeminiClient:
             return self._parse_prefilter_response(response.text)
 
     def _build_prefilter_prompt(self, story: dict, yesterday_headlines: list, source_score: int) -> str:
-        """Build the pre-filter prompt from database or fallback"""
+        """
+        Build the pre-filter prompt from database with Python variable substitution.
 
-        # Build story context that will be injected into the prompt
-        story_context = f"""STORY TO EVALUATE:
-- Headline: {story.get('headline', '')}
-- Dek: {story.get('dek', '')}
-- Topic: {story.get('topic', '')}
-- Source: {story.get('source', '')} (credibility: {source_score}/5)
-- Hours since published: {story.get('hoursAgo', 0)}
-- URL: {story.get('originalUrl', '')}
+        Database prompts use {variable} syntax for Python .format() substitution.
+        """
+        # Try to load prompt from database
+        prompt_template = get_prompt('slot_1_prefilter')
+
+        if prompt_template:
+            try:
+                # Substitute variables using Python .format()
+                prompt = prompt_template.format(
+                    headline=story.get('headline', ''),
+                    content=story.get('dek', ''),  # Use dek as content summary
+                    date_published=story.get('date_published', ''),
+                    hours_ago=story.get('hoursAgo', 0),
+                    source=story.get('source', ''),
+                    credibility=source_score,
+                    topic=story.get('topic', ''),
+                    yesterday_headlines='\n'.join(f"- {h}" for h in yesterday_headlines)
+                )
+                return prompt
+            except KeyError as e:
+                logger.warning(f"Missing variable in prefilter prompt: {e}, using fallback")
+
+        # Fallback to hardcoded prompt if database prompt not available
+        logger.warning("Prefilter prompt not found in database, using fallback")
+        return f"""Analyze this news article and determine which newsletter slots it's eligible for.
+
+ARTICLE:
+Headline: {story.get('headline', '')}
+Summary: {story.get('dek', '')}
+Published: {story.get('date_published', '')}
+Hours Old: {story.get('hoursAgo', 0)}
+Source: {story.get('source', '')}
+Source Credibility: {source_score}/5
+
+SLOT CRITERIA:
+1. JOBS/ECONOMY: AI impact on employment, workforce, stock market, broad economic impact. Must be <24 hours old.
+2. TIER 1 AI: OpenAI, Google/DeepMind, Meta AI, NVIDIA, Microsoft, Anthropic, xAI, Amazon AWS AI. Research breakthroughs. Can be 24-48 hours old.
+3. INDUSTRY IMPACT: Healthcare, Government, Education, Legal, Accounting, Retail, Cybersecurity, Transportation, Manufacturing, Real Estate, Agriculture, Energy. Can be up to 7 days old.
+4. EMERGING COMPANIES: Startups, product launches, funding rounds, acquisitions, new AI tools. Must be <48 hours old.
+5. CONSUMER AI: Ethics, entertainment, lifestyle, societal impact, fun/quirky uses. Can be up to 7 days old.
 
 YESTERDAY'S HEADLINES (avoid similar topics):
-{chr(10).join(f"- {h}" for h in yesterday_headlines)}"""
+{chr(10).join(f"- {h}" for h in yesterday_headlines)}
 
-        # Try to load slot-specific prefilter prompts from database
-        # We combine all 5 slot criteria into one prompt for efficiency
-        slot_prompts = []
-        for slot in range(1, 6):
-            slot_prompt = get_prompt(f'slot_{slot}_prefilter')
-            if slot_prompt:
-                slot_prompts.append(f"- Slot {slot}: {slot_prompt}")
-
-        if slot_prompts:
-            # Use database prompts
-            slot_criteria = "\n".join(slot_prompts)
-            return f"""You are a newsletter editor for Pivot 5, a daily AI industry newsletter.
-
-{story_context}
-
-SLOT CRITERIA:
-{slot_criteria}
-
-RULES:
-1. Minimum source credibility score: 2
-2. Story must match at least one slot's topic criteria
-3. Story freshness must fall within slot's time window
-4. Avoid stories covering same topics as yesterday
-
-Return JSON with:
-- eligible_slots: array of slot numbers (1-5) this story qualifies for
-- primary_slot: the single best-fit slot number
-- reasoning: brief explanation (1-2 sentences)
-
-If story doesn't qualify for any slot, return eligible_slots: []"""
-        else:
-            # Fallback to hardcoded prompts
-            logger.warning("Prefilter prompts not found in database, using fallback")
-            return f"""You are a newsletter editor for Pivot 5, a daily AI industry newsletter.
-
-{story_context}
-
-SLOT CRITERIA:
-- Slot 1: AI impact on jobs/economy/stock market/broad societal impact. Freshness: 0-24 hours.
-- Slot 2: Tier 1 AI companies (OpenAI, Google, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon) + economic themes + research. Freshness: 24-48 hours.
-- Slot 3: Industry verticals (Healthcare, Government, Education, Legal, Accounting, Retail, Security, Transportation, Manufacturing, Real Estate, Agriculture, Energy). Freshness: 0-7 days.
-- Slot 4: Emerging companies (product launches, fundraising, acquisitions, new AI tools). Freshness: 0-48 hours.
-- Slot 5: Consumer AI / human interest (ethics, entertainment, societal impact, fun/quirky uses). Freshness: 0-7 days.
-
-RULES:
-1. Minimum source credibility score: 2
-2. Story must match at least one slot's topic criteria
-3. Story freshness must fall within slot's time window
-4. Avoid stories covering same topics as yesterday
-
-Return JSON with:
-- eligible_slots: array of slot numbers (1-5) this story qualifies for
-- primary_slot: the single best-fit slot number
-- reasoning: brief explanation (1-2 sentences)
-
-If story doesn't qualify for any slot, return eligible_slots: []"""
+Return JSON only:
+{{
+  "eligible_slots": [1, 2, ...],
+  "primary_slot": 1,
+  "reasoning": "Brief explanation"
+}}"""
 
     def _parse_prefilter_response(self, text: str) -> dict:
         """Fallback parser for non-JSON responses"""

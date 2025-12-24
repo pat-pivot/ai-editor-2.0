@@ -70,44 +70,66 @@ class ClaudeClient:
             return self._parse_slot_response(response.content[0].text, candidates)
 
     def _build_slot_system_prompt(self, slot: int, yesterday_data: dict, cumulative_state: dict) -> str:
-        """Build slot-specific system prompt from database"""
+        """
+        Build slot-specific system prompt from database with Python variable substitution.
 
+        Database prompts use {variable} syntax for Python .format() substitution.
+        """
         # Load the base prompt from database
         prompt_key = f"slot_{slot}_agent"
-        base_prompt = get_prompt(prompt_key)
+        prompt_template = get_prompt(prompt_key)
 
-        if not base_prompt:
-            logger.warning(f"Prompt {prompt_key} not found in database, using fallback")
-            # Fallback to hardcoded if database unavailable
-            slot_focus = {
-                1: "Jobs, economy, stock market, broad societal impact. Must be FRESH (0-24 hours).",
-                2: "Tier 1 AI companies (OpenAI, Google, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon), economic themes, research breakthroughs.",
-                3: "Industry verticals: Healthcare, Government, Education, Legal, Accounting, Retail, Security, Transportation, Manufacturing, Real Estate, Agriculture, Energy.",
-                4: "Emerging companies: product launches, fundraising, acquisitions, new AI tools. Must be FRESH (0-48 hours).",
-                5: "Consumer AI, human interest, ethics, entertainment, societal impact, fun/quirky uses."
-            }
-            base_prompt = f"You are a senior editor for Pivot 5. SLOT {slot} FOCUS: {slot_focus.get(slot, '')}"
-
-        # Build dynamic context to inject
+        # Build dynamic context values
         yesterday_headlines = yesterday_data.get('headlines', [])
         selected_today = cumulative_state.get('selectedToday', [])
         selected_companies = cumulative_state.get('selectedCompanies', [])
         selected_sources = cumulative_state.get('selectedSources', [])
+        yesterday_slot = yesterday_headlines[slot - 1] if len(yesterday_headlines) >= slot else "(none)"
 
-        context = f"""
+        if prompt_template:
+            try:
+                # Substitute variables using Python .format()
+                # Note: {candidates} will be filled in by _build_slot_user_prompt
+                prompt = prompt_template.format(
+                    candidates="(See candidates below)",
+                    selected_stories=', '.join(selected_today) if selected_today else '(none yet)',
+                    selected_companies=', '.join(selected_companies) if selected_companies else '(none yet)',
+                    selected_sources=', '.join(selected_sources) if selected_sources else '(none yet)',
+                    yesterday_slot=yesterday_slot
+                )
+
+                # Add slot 1 special rule
+                if slot == 1 and yesterday_data.get('slot1Company'):
+                    prompt += f"\n\nTWO-DAY ROTATION (Slot 1): Do NOT feature {yesterday_data['slot1Company']} (yesterday's Slot 1 company)."
+
+                return prompt
+            except KeyError as e:
+                logger.warning(f"Missing variable in {prompt_key} prompt: {e}, using fallback")
+
+        # Fallback to hardcoded if database prompt not available
+        logger.warning(f"Prompt {prompt_key} not found in database, using fallback")
+        slot_focus = {
+            1: "Jobs, economy, stock market, broad societal impact. Must be FRESH (0-24 hours).",
+            2: "Tier 1 AI companies (OpenAI, Google, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon), economic themes, research breakthroughs.",
+            3: "Industry verticals: Healthcare, Government, Education, Legal, Accounting, Retail, Security, Transportation, Manufacturing, Real Estate, Agriculture, Energy.",
+            4: "Emerging companies: product launches, fundraising, acquisitions, new AI tools. Must be FRESH (0-48 hours).",
+            5: "Consumer AI, human interest, ethics, entertainment, societal impact, fun/quirky uses."
+        }
+
+        context = f"""You are a senior editor for Pivot 5. SLOT {slot} FOCUS: {slot_focus.get(slot, '')}
 
 CURRENT CONTEXT:
 1. YESTERDAY'S HEADLINES - Do NOT select stories covering same topics:
 {chr(10).join(f"   - {h}" for h in yesterday_headlines) if yesterday_headlines else '   (none)'}
 
 2. ALREADY SELECTED TODAY - Do NOT select these storyIDs:
-   {selected_today if selected_today else '(none yet)'}
+   {', '.join(selected_today) if selected_today else '(none yet)'}
 
 3. COMPANY DIVERSITY - Each company appears at most ONCE across all 5 slots:
-   Already featured today: {selected_companies if selected_companies else '(none yet)'}
+   Already featured today: {', '.join(selected_companies) if selected_companies else '(none yet)'}
 
 4. SOURCE DIVERSITY - Max 2 stories per source per day:
-   Already used today: {selected_sources if selected_sources else '(none yet)'}
+   Already used today: {', '.join(selected_sources) if selected_sources else '(none yet)'}
 """
 
         # Slot 1 has special two-day rotation rule
@@ -127,7 +149,7 @@ Return JSON with:
 - source_id: the story's source
 - reasoning: 1-2 sentence explanation"""
 
-        return base_prompt + context
+        return context
 
     def _build_slot_user_prompt(self, candidates: List[dict]) -> str:
         """Build user prompt with candidate stories"""
@@ -175,15 +197,28 @@ Return JSON with:
     def generate_subject_line(self, headlines: List[str]) -> str:
         """
         Step 2, Node 29: Generate email subject line from 5 headlines
+
+        Database prompts use {variable} syntax for Python .format() substitution.
         """
         # Load base prompt from database
-        base_prompt = get_prompt('subject_line')
+        prompt_template = get_prompt('subject_line')
 
-        if base_prompt:
-            # Inject today's headlines into the prompt
-            headlines_text = "\n".join([f"{i+1}. {h}" for i, h in enumerate(headlines[:5])])
-            prompt = base_prompt + f"\n\nTODAY'S HEADLINES:\n{headlines_text}\n\nReturn ONLY the subject line, no quotes or explanation."
-        else:
+        if prompt_template:
+            try:
+                # Substitute variables using Python .format()
+                prompt = prompt_template.format(
+                    slot1_headline=headlines[0] if len(headlines) > 0 else '(none)',
+                    slot2_headline=headlines[1] if len(headlines) > 1 else '(none)',
+                    slot3_headline=headlines[2] if len(headlines) > 2 else '(none)',
+                    slot4_headline=headlines[3] if len(headlines) > 3 else '(none)',
+                    slot5_headline=headlines[4] if len(headlines) > 4 else '(none)',
+                    recent_subject_lines='(not available)'  # Could be enhanced to load from database
+                )
+            except KeyError as e:
+                logger.warning(f"Missing variable in subject_line prompt: {e}, using fallback")
+                prompt_template = None
+
+        if not prompt_template:
             logger.warning("subject_line prompt not found in database, using fallback")
             prompt = f"""Generate a compelling email subject line for this daily AI newsletter.
 
@@ -225,44 +260,94 @@ Return ONLY the subject line, no quotes or explanation."""
         """
         Step 3: Generate headline, dek, bullets, and image prompt
 
+        Database prompts use {variable} syntax for Python .format() substitution.
+
         Args:
-            story_data: {headline, source, url, topic}
+            story_data: {headline, source, url, topic, slot_number}
             cleaned_content: Cleaned article markdown
 
         Returns:
             {ai_headline, ai_dek, b1, b2, b3, image_prompt, label}
         """
-        # Load prompts from database - combine headline, bullet, and image prompts
-        headline_prompt = get_prompt('headline_generator')
-        bullet_prompt = get_prompt('bullet_generator')
+        # Extract story data
+        original_headline = story_data.get('headline', '')
+        source = story_data.get('source', '')
+        topic = story_data.get('topic', '')
+        slot_number = story_data.get('slot_number', 0)
+
+        # Slot focus descriptions
+        slot_focus_map = {
+            1: "Jobs & Economy",
+            2: "Big Tech / Tier 1 AI",
+            3: "Industry Verticals",
+            4: "Emerging Tech",
+            5: "Consumer AI"
+        }
+        slot_focus = slot_focus_map.get(slot_number, "AI News")
+
+        # Truncate content for prompt
+        content_summary = cleaned_content[:6000]
+
+        # Load prompts from database
+        headline_template = get_prompt('headline_generator')
+        bullet_template = get_prompt('bullet_generator')
         image_prompt_template = get_prompt('image_prompt')
 
-        # Build combined prompt with story context
-        story_context = f"""ORIGINAL HEADLINE: {story_data.get('headline', '')}
-SOURCE: {story_data.get('source', '')}
-TOPIC: {story_data.get('topic', '')}
+        # Build combined prompt by substituting variables in each
+        combined_parts = []
 
-ARTICLE CONTENT:
-{cleaned_content[:6000]}"""
+        if headline_template:
+            try:
+                combined_parts.append(headline_template.format(
+                    original_headline=original_headline,
+                    summary=content_summary[:2000],
+                    slot_number=slot_number,
+                    slot_focus=slot_focus
+                ))
+            except KeyError as e:
+                logger.warning(f"Missing variable in headline_generator prompt: {e}")
 
-        if headline_prompt and bullet_prompt and image_prompt_template:
-            # Use database prompts
-            prompt = f"""{headline_prompt}
+        if bullet_template:
+            try:
+                combined_parts.append(bullet_template.format(
+                    headline=original_headline,
+                    content=content_summary
+                ))
+            except KeyError as e:
+                logger.warning(f"Missing variable in bullet_generator prompt: {e}")
 
-{bullet_prompt}
+        if image_prompt_template:
+            try:
+                combined_parts.append(image_prompt_template.format(
+                    headline=original_headline,
+                    summary=content_summary[:2000],
+                    slot_number=slot_number
+                ))
+            except KeyError as e:
+                logger.warning(f"Missing variable in image_prompt prompt: {e}")
 
-{image_prompt_template}
+        if combined_parts:
+            # Combine all prompts with story context
+            prompt = "\n\n".join(combined_parts)
+            prompt += f"""
 
-{story_context}
+FULL ARTICLE CONTENT:
+{content_summary}
 
 Generate all of the above in JSON format with keys: ai_headline, ai_dek, b1, b2, b3, label, image_prompt
 
 Return JSON only."""
         else:
+            # Fallback to hardcoded prompt
             logger.warning("Decoration prompts not found in database, using fallback")
             prompt = f"""You are decorating a story for Pivot 5, a professional AI newsletter.
 
-{story_context}
+ORIGINAL HEADLINE: {original_headline}
+SOURCE: {source}
+TOPIC: {topic}
+
+ARTICLE CONTENT:
+{content_summary}
 
 Generate the following in JSON format:
 
@@ -302,29 +387,41 @@ Return JSON only."""
     def apply_bolding(self, bullets: List[str]) -> List[str]:
         """
         Step 3: Apply markdown bold to key phrases in bullets
+
+        Database prompt uses {bullets} variable for Python .format() substitution.
         """
         # Load bold_formatter prompt from database
-        base_prompt = get_prompt('bold_formatter')
+        prompt_template = get_prompt('bold_formatter')
 
-        bullets_text = f"""Bullet 1: {bullets[0] if len(bullets) > 0 else ''}
-Bullet 2: {bullets[1] if len(bullets) > 1 else ''}
-Bullet 3: {bullets[2] if len(bullets) > 2 else ''}"""
+        # Format bullets as text
+        bullets_text = '\n'.join([f"- {b}" for b in bullets])
 
-        if base_prompt:
-            prompt = f"""{base_prompt}
+        prompt = None
+        if prompt_template:
+            try:
+                prompt = prompt_template.format(
+                    bullets=bullets_text
+                )
+            except KeyError as e:
+                logger.warning(f"Missing variable in bold_formatter prompt: {e}, using fallback")
+                prompt_template = None
 
-{bullets_text}
-
-Return JSON array with the 3 bolded bullets."""
-        else:
+        if not prompt:
             logger.warning("bold_formatter prompt not found in database, using fallback")
             prompt = f"""Apply markdown bold (**text**) to 1-2 key phrases in each bullet point.
 Bold the most impactful/newsworthy phrases.
 
+BULLETS:
 {bullets_text}
 
-Return JSON array with the 3 bolded bullets. Example:
-["**Key phrase** rest of bullet one.", "Bullet two with **important part**.", "Third bullet **highlight** here."]"""
+Return JSON only:
+{{
+  "formatted_bullets": [
+    "Bullet with **key phrase** bolded...",
+    "Another bullet with **important stat** highlighted...",
+    "Third bullet with **company name** emphasized..."
+  ]
+}}"""
 
         # Get model/temperature from database
         prompt_meta = get_prompt_with_metadata('bold_formatter')
@@ -339,7 +436,15 @@ Return JSON array with the 3 bolded bullets. Example:
         )
 
         try:
-            return json.loads(response.content[0].text)
+            result = json.loads(response.content[0].text)
+            # Handle both JSON object with formatted_bullets key and plain array
+            if isinstance(result, dict) and 'formatted_bullets' in result:
+                return result['formatted_bullets']
+            elif isinstance(result, list):
+                return result
+            else:
+                logger.warning("Unexpected bold_formatter response format")
+                return bullets
         except json.JSONDecodeError:
             return bullets  # Return original if parsing fails
 
@@ -372,30 +477,44 @@ Return JSON array with the 3 bolded bullets. Example:
     def generate_summary(self, headlines: List[str], max_words: int = 15) -> str:
         """
         Step 4: Generate newsletter summary (15-word or 20-word)
+
+        Database prompt uses {slot1_headline} through {slot5_headline} for Python .format() substitution.
         """
         # Load summary_generator prompt from database
-        base_prompt = get_prompt('summary_generator')
+        prompt_template = get_prompt('summary_generator')
 
-        headlines_text = "\n".join([f"{i+1}. {h}" for i, h in enumerate(headlines[:5])])
+        prompt = None
+        if prompt_template:
+            try:
+                prompt = prompt_template.format(
+                    slot1_headline=headlines[0] if len(headlines) > 0 else '(none)',
+                    slot2_headline=headlines[1] if len(headlines) > 1 else '(none)',
+                    slot3_headline=headlines[2] if len(headlines) > 2 else '(none)',
+                    slot4_headline=headlines[3] if len(headlines) > 3 else '(none)',
+                    slot5_headline=headlines[4] if len(headlines) > 4 else '(none)'
+                )
+            except KeyError as e:
+                logger.warning(f"Missing variable in summary_generator prompt: {e}, using fallback")
+                prompt_template = None
 
-        if base_prompt:
-            prompt = f"""{base_prompt}
-
-Max words: {max_words}
-
-HEADLINES:
-{headlines_text}
-
-Return ONLY the summary, no explanation."""
-        else:
+        if not prompt:
             logger.warning("summary_generator prompt not found in database, using fallback")
-            prompt = f"""Summarize today's AI newsletter in exactly {max_words} words or fewer.
+            headlines_text = "\n".join([f"{i+1}. {h}" for i, h in enumerate(headlines[:5])])
+            prompt = f"""Generate a {max_words}-word summary of today's newsletter for the email preview text.
 
-HEADLINES:
+TODAY'S STORIES:
 {headlines_text}
 
-Write a single sentence summarizing the key themes. Professional tone.
-Return ONLY the summary, no explanation."""
+GUIDELINES:
+- Exactly {max_words} words
+- Mention 1-2 key stories
+- Create interest to open the email
+- Professional tone
+
+Return JSON only:
+{{
+  "summary": "Your {max_words}-word summary here..."
+}}"""
 
         # Get model/temperature from database
         prompt_meta = get_prompt_with_metadata('summary_generator')
@@ -409,4 +528,13 @@ Return ONLY the summary, no explanation."""
             messages=[{"role": "user", "content": prompt}]
         )
 
-        return response.content[0].text.strip()
+        # Parse JSON response or extract text
+        response_text = response.content[0].text.strip()
+        try:
+            result = json.loads(response_text)
+            if isinstance(result, dict) and 'summary' in result:
+                return result['summary']
+            return response_text
+        except json.JSONDecodeError:
+            # Return raw text if not JSON
+            return response_text

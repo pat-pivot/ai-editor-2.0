@@ -9,15 +9,15 @@ Usage:
     # Run worker with scheduler (for cron jobs)
     python worker.py --with-scheduler
 
-Schedule (EST → UTC):
-    Step 1: Pre-filter      - 9:00 PM EST  = 2:00 AM UTC
-    Step 2: Slot Selection  - 11:55 PM EST = 4:55 AM UTC
-    Step 3: Decoration      - 9:25 PM EST  = 2:25 AM UTC
-    Step 3b: Images         - 9:30 PM EST  = 2:30 AM UTC
-    Step 4: HTML Compile    - 10:00 PM EST = 3:00 AM UTC
-    Step 4b: Mautic Send    - 5:00 AM EST  = 10:00 AM UTC
-    Step 5: Social Sync     - 4:30 AM EST  = 9:30 AM UTC
-    Step 5b: Social Sync 2  - 5:00 AM EST  = 10:00 AM UTC
+Schedule (ET → UTC):
+    Step 1: Pre-filter      - 9:00 PM ET  = 2:00 AM UTC
+    Step 2: Slot Selection  - 9:15 PM ET  = 2:15 AM UTC
+    Step 3: Decoration      - 9:25 PM ET  = 2:25 AM UTC
+    Step 3b: Images         - 9:30 PM ET  = 2:30 AM UTC
+    Step 4: HTML Compile    - 10:00 PM ET = 3:00 AM UTC
+    Step 4b: Mautic Send    - 5:00 AM ET  = 10:00 AM UTC
+    Step 5: Social Sync     - 4:30 AM ET  = 9:30 AM UTC
+    Step 5b: Social Sync 2  - 5:00 AM ET  = 10:00 AM UTC
 """
 
 import os
@@ -61,7 +61,7 @@ def setup_scheduled_jobs(scheduler: Scheduler):
 
     print("[Scheduler] Setting up scheduled jobs...")
 
-    # Step 1: Pre-filter - 9 PM EST = 2 AM UTC (Tue-Sat)
+    # Step 1: Pre-filter - 9:00 PM ET = 2:00 AM UTC (Tue-Sat)
     scheduler.cron(
         '0 2 * * 2-6',  # minute hour day month day_of_week
         func=prefilter_stories,
@@ -71,17 +71,17 @@ def setup_scheduled_jobs(scheduler: Scheduler):
     )
     print("[Scheduler] Step 1 (prefilter) scheduled: 2:00 AM UTC Tue-Sat")
 
-    # Step 2: Slot Selection - 11:55 PM EST = 4:55 AM UTC (Tue-Sat)
+    # Step 2: Slot Selection - 9:15 PM ET = 2:15 AM UTC (Tue-Sat)
     scheduler.cron(
-        '55 4 * * 2-6',
+        '15 2 * * 2-6',
         func=select_slots,
         queue_name='high',
         id='step2_slot_selection',
         description='Step 2: Claude agents select 5 stories'
     )
-    print("[Scheduler] Step 2 (slot_selection) scheduled: 4:55 AM UTC Tue-Sat")
+    print("[Scheduler] Step 2 (slot_selection) scheduled: 2:15 AM UTC Tue-Sat")
 
-    # Step 3: Decoration - 9:25 PM EST = 2:25 AM UTC (Tue-Sat)
+    # Step 3: Decoration - 9:25 PM ET = 2:25 AM UTC (Tue-Sat)
     scheduler.cron(
         '25 2 * * 2-6',
         func=decorate_stories,
@@ -91,7 +91,7 @@ def setup_scheduled_jobs(scheduler: Scheduler):
     )
     print("[Scheduler] Step 3 (decoration) scheduled: 2:25 AM UTC Tue-Sat")
 
-    # Step 3b: Image Generation - 9:30 PM EST = 2:30 AM UTC (Tue-Sat)
+    # Step 3b: Image Generation - 9:30 PM ET = 2:30 AM UTC (Tue-Sat)
     scheduler.cron(
         '30 2 * * 2-6',
         func=generate_images,
@@ -101,7 +101,7 @@ def setup_scheduled_jobs(scheduler: Scheduler):
     )
     print("[Scheduler] Step 3b (images) scheduled: 2:30 AM UTC Tue-Sat")
 
-    # Step 4: HTML Compile - 10 PM EST = 3 AM UTC (Tue-Sat)
+    # Step 4: HTML Compile - 10:00 PM ET = 3:00 AM UTC (Tue-Sat)
     scheduler.cron(
         '0 3 * * 2-6',
         func=compile_html,
@@ -111,7 +111,7 @@ def setup_scheduled_jobs(scheduler: Scheduler):
     )
     print("[Scheduler] Step 4 (html_compile) scheduled: 3:00 AM UTC Tue-Sat")
 
-    # Step 4b: Mautic Send - 5 AM EST = 10 AM UTC (Tue-Sat)
+    # Step 4b: Mautic Send - 5:00 AM ET = 10:00 AM UTC (Tue-Sat)
     scheduler.cron(
         '0 10 * * 2-6',
         func=send_via_mautic,
@@ -121,7 +121,7 @@ def setup_scheduled_jobs(scheduler: Scheduler):
     )
     print("[Scheduler] Step 4b (mautic_send) scheduled: 10:00 AM UTC Tue-Sat")
 
-    # Step 5: Social Sync - 4:30 AM EST = 9:30 AM UTC (Tue-Sat)
+    # Step 5: Social Sync - 4:30 AM ET = 9:30 AM UTC (Tue-Sat)
     scheduler.cron(
         '30 9 * * 2-6',
         func=sync_social_posts,
@@ -131,7 +131,7 @@ def setup_scheduled_jobs(scheduler: Scheduler):
     )
     print("[Scheduler] Step 5 (social_sync) scheduled: 9:30 AM UTC Tue-Sat")
 
-    # Step 5b: Social Sync (second run) - 5 AM EST = 10 AM UTC (Tue-Sat)
+    # Step 5b: Social Sync (second run) - 5:00 AM ET = 10:00 AM UTC (Tue-Sat)
     scheduler.cron(
         '0 10 * * 2-6',
         func=sync_social_posts,
