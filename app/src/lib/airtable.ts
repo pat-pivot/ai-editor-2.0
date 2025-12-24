@@ -352,7 +352,7 @@ export async function getPreFilterLog(): Promise<PreFilterEntry[]> {
   const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.prefilterLog, {
     maxRecords: 200,
     sort: [{ field: "date_prefiltered", direction: "desc" }],
-    fields: ["storyID", "pivotId", "headline", "original_url", "source_id", "date_og_published", "date_prefiltered", "slot"],
+    fields: ["storyID", "pivotId", "headline", "core_url", "source_id", "date_og_published", "date_prefiltered", "slot"],
   });
 
   return records.map((record) => ({
@@ -360,7 +360,7 @@ export async function getPreFilterLog(): Promise<PreFilterEntry[]> {
     storyId: (record.fields.storyID as string) || "",
     pivotId: (record.fields.pivotId as string) || "",
     headline: (record.fields.headline as string) || "Untitled",
-    originalUrl: (record.fields.original_url as string) || "",
+    originalUrl: (record.fields.core_url as string) || "",
     sourceId: (record.fields.source_id as string) || "",
     datePublished: (record.fields.date_og_published as string) || "",
     datePrefiltered: (record.fields.date_prefiltered as string) || "",
