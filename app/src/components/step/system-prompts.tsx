@@ -1,15 +1,24 @@
 "use client";
 
-import { useState, Suspense, lazy } from "react";
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardAction } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { PromptConfig } from "@/lib/step-config";
 
-// Lazy load Monaco editor to avoid SSR issues
-const PromptEditor = lazy(() =>
-  import("@/components/ui/prompt-editor").then((mod) => ({ default: mod.PromptEditor }))
+// Dynamic import with SSR disabled - Monaco requires browser DOM
+const PromptEditor = dynamic(
+  () => import("@/components/ui/prompt-editor").then((mod) => mod.PromptEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-64 rounded-md border bg-muted/30 flex items-center justify-center text-muted-foreground text-sm">
+        Loading editor...
+      </div>
+    ),
+  }
 );
 
 function MaterialIcon({ name, className }: { name: string; className?: string }) {
@@ -445,20 +454,12 @@ export function SystemPrompts({ stepId, prompts }: SystemPromptsProps) {
               <CardContent className="pt-0">
                 {isEditing ? (
                   <div className="space-y-4">
-                    <Suspense
-                      fallback={
-                        <div className="w-full h-64 rounded-md border bg-muted/30 flex items-center justify-center text-muted-foreground text-sm">
-                          Loading editor...
-                        </div>
-                      }
-                    >
-                      <PromptEditor
-                        value={content}
-                        onChange={(value) => handleTextChange(prompt.id, value)}
-                        minHeight={256}
-                        maxHeight={400}
-                      />
-                    </Suspense>
+                    <PromptEditor
+                      value={content}
+                      onChange={(value) => handleTextChange(prompt.id, value)}
+                      minHeight={256}
+                      maxHeight={400}
+                    />
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">
                         Last modified: Dec 20, 2025 by pat@pivotstudio.ai
@@ -485,21 +486,13 @@ export function SystemPrompts({ stepId, prompts }: SystemPromptsProps) {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <Suspense
-                      fallback={
-                        <div className="w-full h-64 rounded-md border bg-muted/30 flex items-center justify-center text-muted-foreground text-sm">
-                          Loading...
-                        </div>
-                      }
-                    >
-                      <PromptEditor
-                        value={content || "(No prompt content)"}
-                        onChange={() => {}}
-                        readOnly
-                        minHeight={200}
-                        maxHeight={256}
-                      />
-                    </Suspense>
+                    <PromptEditor
+                      value={content || "(No prompt content)"}
+                      onChange={() => {}}
+                      readOnly
+                      minHeight={200}
+                      maxHeight={256}
+                    />
                     <span className="text-xs text-muted-foreground">
                       Last modified: Dec 20, 2025 by pat@pivotstudio.ai
                     </span>
