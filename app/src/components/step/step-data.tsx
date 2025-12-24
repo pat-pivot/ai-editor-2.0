@@ -35,8 +35,7 @@ interface PreFilterRecord {
   storyId: string;
   headline: string;
   slot: number;
-  score: number;
-  date: string;
+  datePublished: string;
   sourceId?: string;
 }
 
@@ -71,6 +70,11 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
   const [slotsData, setSlotsData] = useState<SelectedSlotsRecord | null>(null);
   const [decorationData, setDecorationData] = useState<DecorationRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Filtering and pagination state
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   const airtableUrl = `https://airtable.com/${baseId}/${tableId}`;
 
@@ -111,15 +115,36 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
     fetchData();
   }, [stepId]);
 
+  // Filter pre-filter data by selected slot
+  const filteredPreFilterData = selectedSlot
+    ? preFilterData.filter((item) => item.slot === selectedSlot)
+    : preFilterData;
+
+  // Pagination calculations
+  const totalFilteredCount = stepId === 1 ? filteredPreFilterData.length
+    : stepId === 2 ? (slotsData?.slots?.length || 0)
+    : stepId === 3 ? decorationData.length
+    : 0;
+
+  const totalPages = Math.ceil(totalFilteredCount / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+
+  // Get paginated data
+  const paginatedPreFilterData = filteredPreFilterData.slice(startIndex, endIndex);
+  const paginatedDecorationData = decorationData.slice(startIndex, endIndex);
+
   const hasData = stepId === 1 ? preFilterData.length > 0
     : stepId === 2 ? slotsData !== null
     : stepId === 3 ? decorationData.length > 0
     : false;
 
-  const dataCount = stepId === 1 ? preFilterData.length
-    : stepId === 2 ? (slotsData?.slots?.length || 0)
-    : stepId === 3 ? decorationData.length
-    : 0;
+  const dataCount = totalFilteredCount;
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedSlot]);
 
   return (
     <Card>
@@ -153,6 +178,33 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
               className="pl-10"
             />
           </div>
+          {/* Slot Filter - only show for Step 1 */}
+          {stepId === 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Slot:</span>
+              <div className="flex gap-1">
+                <Button
+                  variant={selectedSlot === null ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedSlot(null)}
+                  className="px-3"
+                >
+                  All
+                </Button>
+                {[1, 2, 3, 4, 5].map((slot) => (
+                  <Button
+                    key={slot}
+                    variant={selectedSlot === slot ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedSlot(slot)}
+                    className="px-3"
+                  >
+                    {slot}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Data Table */}
@@ -170,8 +222,14 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
             </p>
           </div>
         ) : stepId === 1 ? (
-          preFilterData.length > 0 ? (
-            <PreFilterTable data={preFilterData} />
+          paginatedPreFilterData.length > 0 ? (
+            <PreFilterTable data={paginatedPreFilterData} />
+          ) : filteredPreFilterData.length === 0 && selectedSlot ? (
+            <EmptyState
+              icon="filter_alt_off"
+              title={`No stories for Slot ${selectedSlot}`}
+              description="Try selecting a different slot or view all slots."
+            />
           ) : (
             <EmptyState
               icon="filter_alt"
@@ -190,8 +248,8 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
             />
           )
         ) : stepId === 3 ? (
-          decorationData.length > 0 ? (
-            <DecorationTable data={decorationData} />
+          paginatedDecorationData.length > 0 ? (
+            <DecorationTable data={paginatedDecorationData} />
           ) : (
             <EmptyState
               icon="edit_note"
@@ -217,14 +275,26 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
         {hasData && dataCount > 0 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t">
             <span className="text-sm text-muted-foreground">
-              Showing 1-{Math.min(dataCount, 20)} of {dataCount}
+              Showing {startIndex + 1}-{Math.min(endIndex, dataCount)} of {dataCount}
             </span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              >
                 <MaterialIcon name="chevron_left" className="text-lg" />
               </Button>
-              <span className="text-sm font-medium px-2">1</span>
-              <Button variant="outline" size="sm" disabled={dataCount <= 20}>
+              <span className="text-sm font-medium px-2">
+                {currentPage} / {totalPages || 1}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              >
                 <MaterialIcon name="chevron_right" className="text-lg" />
               </Button>
             </div>
@@ -246,6 +316,21 @@ function EmptyState({ icon, title, description }: { icon: string; title: string;
 }
 
 function PreFilterTable({ data }: { data: PreFilterRecord[] }) {
+  // Format date for display
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "-";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <Table>
       <TableHeader>
@@ -253,12 +338,11 @@ function PreFilterTable({ data }: { data: PreFilterRecord[] }) {
           <TableHead className="w-24">Story ID</TableHead>
           <TableHead>Headline</TableHead>
           <TableHead className="w-16 text-center">Slot</TableHead>
-          <TableHead className="w-20 text-right">Score</TableHead>
-          <TableHead className="w-24">Date</TableHead>
+          <TableHead className="w-28">Published</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {data.slice(0, 20).map((row) => (
+        {data.map((row) => (
           <TableRow key={row.id}>
             <TableCell className="font-mono text-xs text-muted-foreground">
               {row.storyId}
@@ -269,8 +353,9 @@ function PreFilterTable({ data }: { data: PreFilterRecord[] }) {
                 {row.slot}
               </Badge>
             </TableCell>
-            <TableCell className="text-right font-mono">{row.score?.toFixed(1) || "-"}</TableCell>
-            <TableCell className="text-muted-foreground">{row.date}</TableCell>
+            <TableCell className="text-muted-foreground text-sm">
+              {formatDate(row.datePublished)}
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -344,7 +429,7 @@ function DecorationTable({ data }: { data: DecorationRecord[] }) {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {data.slice(0, 20).map((row) => (
+        {data.map((row) => (
           <TableRow key={row.id}>
             <TableCell className="text-center">
               <Badge variant="outline" className="font-mono font-bold">
