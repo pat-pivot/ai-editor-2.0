@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { PromptConfig } from "@/lib/step-config";
-import { getPromptContent, type PromptContent } from "@/lib/prompts-content";
 
 // Lazy load Monaco editor to avoid SSR issues
 const PromptEditor = lazy(() =>
@@ -21,6 +20,20 @@ function MaterialIcon({ name, className }: { name: string; className?: string })
   );
 }
 
+interface DBPrompt {
+  id: string;
+  prompt_key: string;
+  step_id: number;
+  name: string;
+  description: string;
+  model: string;
+  temperature: number;
+  slot_number: number | null;
+  content: string;
+  version: number;
+  updated_at: string;
+}
+
 interface SystemPromptsProps {
   stepId: number;
   prompts: PromptConfig[];
@@ -32,48 +45,75 @@ export function SystemPrompts({ stepId, prompts }: SystemPromptsProps) {
   );
   const [editingPrompt, setEditingPrompt] = useState<string | null>(null);
 
-  // Track original content from static file
+  // Track original content from database
   const [originalContent, setOriginalContent] = useState<Record<string, string>>({});
   // Track current edited content
   const [editedContent, setEditedContent] = useState<Record<string, string>>({});
   // Track which prompts have unsaved changes
   const [hasChanges, setHasChanges] = useState<Set<string>>(new Set());
+  // Track saving state
+  const [saving, setSaving] = useState<string | null>(null);
+  // Track loading state
+  const [loading, setLoading] = useState(true);
+  // Track error state
+  const [error, setError] = useState<string | null>(null);
 
-  // Metadata from static file
+  // Metadata from database
   const [promptMeta, setPromptMeta] = useState<Record<string, { version: number; lastModified: string }>>({});
 
-  // Load prompts from static file on mount
+  // Load prompts from database API on mount
   useEffect(() => {
-    const contentMap: Record<string, string> = {};
-    const metaMap: Record<string, { version: number; lastModified: string }> = {};
+    async function loadPrompts() {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/prompts?stepId=${stepId}`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch prompts");
+        }
+        const data = await response.json();
+        const dbPrompts: DBPrompt[] = data.prompts || [];
 
-    prompts.forEach((p) => {
-      const promptData = getPromptContent(p.id);
-      if (promptData) {
-        contentMap[p.id] = promptData.content;
-        metaMap[p.id] = {
-          version: promptData.version,
-          lastModified: promptData.lastModified,
-        };
-      } else {
-        // Fallback for prompts not in static file
-        contentMap[p.id] = `You are an AI assistant for the Pivot 5 newsletter pipeline.
+        const contentMap: Record<string, string> = {};
+        const metaMap: Record<string, { version: number; lastModified: string }> = {};
+
+        // Match prompts by prompt_key
+        prompts.forEach((p) => {
+          const dbPrompt = dbPrompts.find((dp) => dp.prompt_key === p.id);
+          if (dbPrompt) {
+            contentMap[p.id] = dbPrompt.content || "";
+            metaMap[p.id] = {
+              version: dbPrompt.version || 1,
+              lastModified: dbPrompt.updated_at || new Date().toISOString(),
+            };
+          } else {
+            // Fallback for prompts not in database
+            contentMap[p.id] = `You are an AI assistant for the Pivot 5 newsletter pipeline.
 
 Task: ${p.description}
 
 Model: ${p.model}
 Temperature: ${p.temperature}`;
-        metaMap[p.id] = {
-          version: 1,
-          lastModified: new Date().toISOString().split('T')[0],
-        };
-      }
-    });
+            metaMap[p.id] = {
+              version: 1,
+              lastModified: new Date().toISOString(),
+            };
+          }
+        });
 
-    setOriginalContent(contentMap);
-    setEditedContent(contentMap);
-    setPromptMeta(metaMap);
-  }, [prompts]);
+        setOriginalContent(contentMap);
+        setEditedContent(contentMap);
+        setPromptMeta(metaMap);
+      } catch (err) {
+        console.error("Failed to load prompts:", err);
+        setError(err instanceof Error ? err.message : "Failed to load prompts");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPrompts();
+  }, [stepId, prompts]);
 
   const toggleExpand = (promptId: string) => {
     setExpandedPrompts((prev) => {
@@ -124,6 +164,59 @@ Temperature: ${p.temperature}`;
     setEditingPrompt(null);
   };
 
+  const handleSave = async (promptId: string) => {
+    setSaving(promptId);
+    setError(null);
+    try {
+      const response = await fetch("/api/prompts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          promptKey: promptId,
+          content: editedContent[promptId],
+          changeSummary: "Updated via dashboard",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save prompt");
+      }
+
+      const data = await response.json();
+
+      // Update original content to match saved content
+      setOriginalContent((prev) => ({
+        ...prev,
+        [promptId]: editedContent[promptId],
+      }));
+
+      // Update metadata
+      if (data.prompt) {
+        setPromptMeta((prev) => ({
+          ...prev,
+          [promptId]: {
+            version: data.prompt.version || (prev[promptId]?.version || 0) + 1,
+            lastModified: data.prompt.updated_at || new Date().toISOString(),
+          },
+        }));
+      }
+
+      // Clear changes flag
+      setHasChanges((prev) => {
+        const next = new Set(prev);
+        next.delete(promptId);
+        return next;
+      });
+
+      setEditingPrompt(null);
+    } catch (err) {
+      console.error("Failed to save prompt:", err);
+      setError(err instanceof Error ? err.message : "Failed to save prompt");
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return "Unknown";
     try {
@@ -137,16 +230,33 @@ Temperature: ${p.temperature}`;
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-md bg-muted/30 border p-8 text-center text-muted-foreground">
+          Loading prompts from database...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Info banner */}
-      <div className="rounded-md bg-blue-50 border border-blue-200 p-4 text-blue-800 text-sm flex items-center gap-2">
-        <MaterialIcon name="info" className="text-blue-600" />
+      <div className="rounded-md bg-green-50 border border-green-200 p-4 text-green-800 text-sm flex items-center gap-2">
+        <MaterialIcon name="database" className="text-green-600" />
         <div>
-          Prompts are loaded from <code className="bg-blue-100 px-1 rounded">src/lib/prompts-content.ts</code>.
-          Edit this file to update the prompts used by the pipeline.
+          Prompts are stored in PostgreSQL. Changes you save here will be used by the pipeline on the next run.
         </div>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 p-4 text-red-800 text-sm flex items-center gap-2">
+          <MaterialIcon name="error" className="text-red-600" />
+          <div>{error}</div>
+        </div>
+      )}
 
       {/* Prompt Cards */}
       {prompts.map((prompt) => {
@@ -234,12 +344,20 @@ Temperature: ${p.temperature}`;
                         </Button>
                         <Button
                           size="sm"
-                          disabled={true}
-                          className="bg-muted text-muted-foreground cursor-not-allowed"
-                          title="Edit prompts-content.ts to save changes"
+                          disabled={!promptHasChanges || saving === prompt.id}
+                          onClick={() => handleSave(prompt.id)}
                         >
-                          <MaterialIcon name="code" className="text-base mr-1" />
-                          Edit in Code
+                          {saving === prompt.id ? (
+                            <>
+                              <MaterialIcon name="sync" className="text-base mr-1 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <MaterialIcon name="save" className="text-base mr-1" />
+                              Save
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
