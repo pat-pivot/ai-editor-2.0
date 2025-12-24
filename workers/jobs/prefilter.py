@@ -68,25 +68,37 @@ def prefilter_stories() -> dict:
         fresh_stories = airtable.get_fresh_stories(days=7, max_records=100)
         print(f"[Step 1] Found {len(fresh_stories)} fresh stories")
 
-        # 2. Get queued stories (manual priority)
+        # 2. Get queued stories (manual priority) - optional, may not have API access
         print("[Step 1] Fetching queued stories...")
-        queued_stories = airtable.get_queued_stories()
-        print(f"[Step 1] Found {len(queued_stories)} queued stories")
+        try:
+            queued_stories = airtable.get_queued_stories()
+            print(f"[Step 1] Found {len(queued_stories)} queued stories")
+        except Exception as e:
+            print(f"[Step 1] Warning: Could not fetch queued stories (API access issue): {e}")
+            queued_stories = []
 
         # 3. Merge story sources (queued have priority)
         all_stories = _merge_stories(fresh_stories, queued_stories)
         print(f"[Step 1] Total stories to process: {len(all_stories)}")
 
-        # 4. Get source credibility lookup
+        # 4. Get source credibility lookup - optional, may not have API access
         print("[Step 1] Building source credibility lookup...")
-        source_lookup = airtable.build_source_lookup()
-        print(f"[Step 1] Loaded {len(source_lookup)} source scores")
+        try:
+            source_lookup = airtable.build_source_lookup()
+            print(f"[Step 1] Loaded {len(source_lookup)} source scores")
+        except Exception as e:
+            print(f"[Step 1] Warning: Could not load source scores (API access issue): {e}")
+            source_lookup = {}  # Default: no source filtering
 
-        # 5. Get yesterday's issue for diversity rules + exclusion
+        # 5. Get yesterday's issue for diversity rules + exclusion - optional
         print("[Step 1] Fetching yesterday's issue...")
-        yesterday_issue = airtable.get_yesterday_issue()
-        yesterday_data = _extract_yesterday_data(yesterday_issue)
-        print(f"[Step 1] Yesterday's headlines: {len(yesterday_data['headlines'])}")
+        try:
+            yesterday_issue = airtable.get_yesterday_issue()
+            yesterday_data = _extract_yesterday_data(yesterday_issue)
+            print(f"[Step 1] Yesterday's headlines: {len(yesterday_data['headlines'])}")
+        except Exception as e:
+            print(f"[Step 1] Warning: Could not fetch yesterday's issue (API access issue): {e}")
+            yesterday_data = {"headlines": [], "storyIds": [], "pivotIds": [], "slot1Company": None}
 
         # Build yesterday's storyId exclusion set
         yesterday_story_ids = set(yesterday_data['storyIds'])
@@ -279,9 +291,16 @@ def prefilter_stories() -> dict:
 
         if prefilter_records:
             print(f"[Step 1] Writing {len(prefilter_records)} pre-filter records...")
-            record_ids = airtable.write_prefilter_log_batch(prefilter_records)
-            results["written"] = len(record_ids)
-            print(f"[Step 1] Successfully wrote {len(record_ids)} records")
+            try:
+                record_ids = airtable.write_prefilter_log_batch(prefilter_records)
+                results["written"] = len(record_ids)
+                print(f"[Step 1] Successfully wrote {len(record_ids)} records")
+            except Exception as e:
+                print(f"[Step 1] ERROR: Could not write pre-filter records: {e}")
+                results["errors"].append({"write_error": str(e)})
+                # Still report what would have been written
+                results["would_have_written"] = len(prefilter_records)
+                print(f"[Step 1] Would have written {len(prefilter_records)} records")
 
         print(f"[Step 1] Pre-filter complete:")
         print(f"  Processed: {results['processed']}")
