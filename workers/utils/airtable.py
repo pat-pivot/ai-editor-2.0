@@ -34,7 +34,7 @@ class AirtableClient:
         self.selected_slots_table_id = os.environ.get('AI_EDITOR_SELECTED_SLOTS_TABLE', 'tblzt2z7r512Kto3O')
         self.decoration_table_id = os.environ.get('AI_EDITOR_DECORATION_TABLE', 'tbla16LJCf5Z6cRn3')
         self.source_scores_table_id = os.environ.get('AI_EDITOR_SOURCE_SCORES_TABLE', 'tbl3Zkdl1No2edDLK')
-        self.queued_stories_table_id = os.environ.get('AI_EDITOR_QUEUED_STORIES_TABLE', 'tblN1RypWAOBMOfQ5')
+        self.queued_stories_table_id = os.environ.get('AI_EDITOR_QUEUED_STORIES_TABLE', 'tblkVBP5mKq3sBpkv')
 
         # Table IDs - P5 Social Posts
         self.p5_social_posts_table_id = os.environ.get('P5_SOCIAL_POSTS_TABLE', 'tbllJMN2QBPJoG3jA')
