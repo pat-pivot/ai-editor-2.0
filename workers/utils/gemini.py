@@ -358,13 +358,23 @@ If no stories match, return: {{"matches": []}}"""
         Slot 3 Batch Pre-Filter: Industry Impact
 
         n8n Workflow: Node 21 - Gemini Slot 3 Pre-Filter
+
+        Uses chunking for large batches to prevent Gemini response truncation.
         """
         if not articles:
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
 
-        prompt = f"""You are a pre-filter for an AI newsletter's Slot 3: Industry Impact.
+        # Chunk large batches to prevent Gemini response truncation
+        all_matches = []
+        chunks = self._chunk_articles(articles, chunk_size=30)
+
+        for i, chunk in enumerate(chunks):
+            if len(chunks) > 1:
+                logger.info(f"[Gemini slot_3] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} articles)")
+
+            prompt = f"""You are a pre-filter for an AI newsletter's Slot 3: Industry Impact.
 
 Review these candidates and identify stories about AI's impact on NON-TECH INDUSTRIES:
 - Healthcare / Medical
@@ -389,14 +399,17 @@ YESTERDAY'S HEADLINES (avoid similar topics):
 {yesterday_text}
 
 CANDIDATES:
-{json.dumps(articles, indent=2)}
+{json.dumps(chunk, indent=2)}
 
 Return ONLY valid JSON with matching story IDs:
 {{"matches": [{{"story_id": "recXXX", "headline": "headline text"}}]}}
 
 If no stories match, return: {{"matches": []}}"""
 
-        return self._execute_batch_prefilter(prompt, "slot_3")
+            matches = self._execute_batch_prefilter(prompt, f"slot_3_chunk_{i+1}")
+            all_matches.extend(matches)
+
+        return all_matches
 
     def prefilter_batch_slot_4(self, articles: List[Dict], yesterday_headlines: List[str]) -> List[Dict]:
         """
@@ -443,13 +456,23 @@ If no stories match, return: {{"matches": []}}"""
         Slot 5 Batch Pre-Filter: Consumer AI
 
         n8n Workflow: Node 29 - Gemini Slot 5 Pre-Filter
+
+        Uses chunking for large batches to prevent Gemini response truncation.
         """
         if not articles:
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
 
-        prompt = f"""You are a pre-filter for an AI newsletter's Slot 5: Consumer AI.
+        # Chunk large batches to prevent Gemini response truncation
+        all_matches = []
+        chunks = self._chunk_articles(articles, chunk_size=30)
+
+        for i, chunk in enumerate(chunks):
+            if len(chunks) > 1:
+                logger.info(f"[Gemini slot_5] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} articles)")
+
+            prompt = f"""You are a pre-filter for an AI newsletter's Slot 5: Consumer AI.
 
 Review these candidates and identify stories about:
 1. AI's impact on HUMANITY and SOCIETY (philosophical, ethical)
@@ -465,32 +488,38 @@ YESTERDAY'S HEADLINES (avoid similar topics):
 {yesterday_text}
 
 CANDIDATES:
-{json.dumps(articles, indent=2)}
+{json.dumps(chunk, indent=2)}
 
 Return ONLY valid JSON with matching story IDs:
 {{"matches": [{{"story_id": "recXXX", "headline": "headline text"}}]}}
 
 If no stories match, return: {{"matches": []}}"""
 
-        return self._execute_batch_prefilter(prompt, "slot_5")
+            matches = self._execute_batch_prefilter(prompt, f"slot_5_chunk_{i+1}")
+            all_matches.extend(matches)
 
-    def _execute_batch_prefilter(self, prompt: str, slot_name: str) -> List[Dict]:
+        return all_matches
+
+    def _execute_batch_prefilter(self, prompt: str, slot_name: str, retry_count: int = 0) -> List[Dict]:
         """
-        Execute a batch pre-filter call to Gemini.
+        Execute a batch pre-filter call to Gemini with retry logic.
 
         Args:
             prompt: The complete prompt with articles embedded
             slot_name: For logging purposes (e.g., "slot_1")
+            retry_count: Current retry attempt (max 2 retries)
 
         Returns:
             List of matching articles: [{story_id, headline}]
         """
+        import time
+
         try:
             response = self.flash_model.generate_content(
                 prompt,
                 generation_config=genai.GenerationConfig(
                     temperature=0.3,
-                    max_output_tokens=4096,
+                    max_output_tokens=8192,  # Increased from 4096 for large batches
                     response_mime_type="application/json"
                 )
             )
@@ -502,11 +531,29 @@ If no stories match, return: {{"matches": []}}"""
 
         except json.JSONDecodeError as e:
             logger.error(f"[Gemini {slot_name}] JSON parse error: {e}")
-            # Try to extract JSON from response
-            return self._parse_batch_response(response.text)
+            # Try to extract partial matches from truncated response
+            partial_matches = self._parse_batch_response(response.text)
+            if partial_matches:
+                logger.info(f"[Gemini {slot_name}] Recovered {len(partial_matches)} matches from partial response")
+                return partial_matches
+            # Retry with exponential backoff if we got nothing
+            if retry_count < 2:
+                wait_time = (retry_count + 1) * 2
+                logger.info(f"[Gemini {slot_name}] Retrying in {wait_time}s (attempt {retry_count + 2}/3)")
+                time.sleep(wait_time)
+                return self._execute_batch_prefilter(prompt, slot_name, retry_count + 1)
+            return []
         except Exception as e:
             logger.error(f"[Gemini {slot_name}] Error: {e}")
+            # Retry on generic errors too
+            if retry_count < 2:
+                time.sleep((retry_count + 1) * 2)
+                return self._execute_batch_prefilter(prompt, slot_name, retry_count + 1)
             return []
+
+    def _chunk_articles(self, articles: List[Dict], chunk_size: int = 30) -> List[List[Dict]]:
+        """Split articles into smaller chunks for reliable Gemini processing."""
+        return [articles[i:i + chunk_size] for i in range(0, len(articles), chunk_size)]
 
     def _parse_batch_response(self, text: str) -> List[Dict]:
         """Fallback parser for batch responses that aren't clean JSON."""
