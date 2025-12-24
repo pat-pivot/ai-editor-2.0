@@ -2,6 +2,7 @@
 
 import { notFound } from "next/navigation";
 import { use, useState } from "react";
+import { toast } from "sonner";
 import { getStepConfig } from "@/lib/step-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExecutionLogs } from "@/components/step/execution-logs";
 import { SystemPrompts } from "@/components/step/system-prompts";
 import { StepData } from "@/components/step/step-data";
-import { useToast } from "@/hooks/use-toast";
 
 function MaterialIcon({ name, className }: { name: string; className?: string }) {
   return (
@@ -37,7 +37,6 @@ export default function StepPage({ params }: PageProps) {
   const { id } = use(params);
   const stepId = parseInt(id, 10);
   const [isRunning, setIsRunning] = useState(false);
-  const { toast } = useToast();
 
   if (isNaN(stepId) || stepId < 1 || stepId > 5) {
     notFound();
@@ -64,18 +63,15 @@ export default function StepPage({ params }: PageProps) {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        toast({
-          title: "Job Started",
+        toast.success("Job Started", {
           description: `${stepConfig.name} job queued successfully (ID: ${data.job_id?.slice(0, 8)}...)`,
         });
       } else {
         throw new Error(data.error || "Failed to start job");
       }
     } catch (error) {
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: error instanceof Error ? error.message : "Failed to start job",
-        variant: "destructive",
       });
     } finally {
       setIsRunning(false);
