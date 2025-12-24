@@ -5,10 +5,9 @@
 The working directory is `/app/` - this IS the Next.js project root.
 
 - `src/` - The actual source code (Next.js App Router)
-- `app/src/` - DUPLICATE, do NOT edit these files
 - `workers/` - Python workers for cron jobs
 
-**ONLY edit files in `src/`, NOT `app/src/`**
+**ONLY edit files in `src/`**
 
 ## CRITICAL: Deployment
 
@@ -16,12 +15,6 @@ The working directory is `/app/` - this IS the Next.js project root.
 
 - Render dashboard: https://dashboard.render.com
 - Deployment is automatic on push to main
-
-## Git Tracked Files
-
-Git tracks files in:
-- `src/` (correct)
-- `app/src/` (duplicate - needs cleanup)
 
 ## Airtable Field Names
 
