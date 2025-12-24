@@ -11,8 +11,8 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 
-from ..utils.airtable import AirtableClient
-from ..utils.gemini import GeminiClient
+from utils.airtable import AirtableClient
+from utils.gemini import GeminiClient
 
 
 def prefilter_stories() -> dict:

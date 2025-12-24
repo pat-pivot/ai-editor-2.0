@@ -11,8 +11,8 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
-from ..utils.airtable import AirtableClient
-from ..utils.images import ImageClient
+from utils.airtable import AirtableClient
+from utils.images import ImageClient
 
 
 def generate_images() -> dict:

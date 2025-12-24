@@ -204,12 +204,6 @@ export function SystemPrompts({ stepId, prompts }: SystemPromptsProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    {prompt.model}
-                  </Badge>
-                  <Badge variant="outline" className="font-mono text-xs">
-                    temp: {prompt.temperature}
-                  </Badge>
                   {isExpanded && !isEditing && (
                     <Button
                       variant="outline"

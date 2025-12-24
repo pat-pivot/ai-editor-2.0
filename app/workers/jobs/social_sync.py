@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
-from ..utils.airtable import AirtableClient
+from utils.airtable import AirtableClient
 
 
 def sync_social_posts() -> dict:

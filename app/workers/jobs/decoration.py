@@ -11,9 +11,9 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
-from ..utils.airtable import AirtableClient
-from ..utils.gemini import GeminiClient
-from ..utils.claude import ClaudeClient
+from utils.airtable import AirtableClient
+from utils.gemini import GeminiClient
+from utils.claude import ClaudeClient
 
 
 def decorate_stories() -> dict:

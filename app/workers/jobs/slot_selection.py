@@ -11,8 +11,8 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
-from ..utils.airtable import AirtableClient
-from ..utils.claude import ClaudeClient
+from utils.airtable import AirtableClient
+from utils.claude import ClaudeClient
 
 
 # Slot-specific freshness windows (in days)

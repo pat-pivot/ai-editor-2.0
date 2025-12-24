@@ -10,8 +10,8 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
-from ..utils.airtable import AirtableClient
-from ..utils.mautic import MauticClient
+from utils.airtable import AirtableClient
+from utils.mautic import MauticClient
 
 
 def send_via_mautic() -> dict:

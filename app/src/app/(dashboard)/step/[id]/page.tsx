@@ -37,15 +37,6 @@ export default function StepPage({ params }: PageProps) {
     notFound();
   }
 
-  // Mock execution data - in production this would come from an API
-  const lastRun = {
-    date: "Dec 23, 2025 9:00:15 PM",
-    duration: "1m 42s",
-    status: "success" as const,
-  };
-
-  const nextRun = "Dec 24, 2025 9:00:00 PM";
-
   return (
     <div className="p-6 space-y-6">
       {/* Step Header */}
@@ -80,15 +71,11 @@ export default function StepPage({ params }: PageProps) {
           <div className="flex items-center gap-8 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Last Run:</span>
-              <span className="font-medium">{lastRun.date}</span>
-              <span className="text-muted-foreground">|</span>
-              <span className="font-mono text-muted-foreground">{lastRun.duration}</span>
-              <span className="text-muted-foreground">|</span>
-              <StatusBadge status={lastRun.status} />
+              <span className="font-medium text-gray-400">Not yet run</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Next Run:</span>
-              <span className="font-medium">{nextRun}</span>
+              <span className="text-muted-foreground">Schedule:</span>
+              <span className="font-medium">{stepConfig.schedule}</span>
             </div>
           </div>
         </CardContent>
