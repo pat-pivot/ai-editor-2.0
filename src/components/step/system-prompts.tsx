@@ -243,10 +243,11 @@ Temperature: ${p.temperature}`;
   return (
     <div className="space-y-4">
       {/* Info banner */}
-      <div className="rounded-md bg-green-50 border border-green-200 p-4 text-green-800 text-sm flex items-center gap-2">
-        <MaterialIcon name="database" className="text-green-600" />
+      <div className="rounded-md bg-amber-50 border border-amber-200 p-4 text-amber-800 text-sm flex items-start gap-2">
+        <MaterialIcon name="info" className="text-amber-600 mt-0.5" />
         <div>
-          Prompts are stored in PostgreSQL. Changes you save here will be used by the pipeline on the next run.
+          <p className="font-medium">Prompts are stored in PostgreSQL with version history.</p>
+          <p className="mt-1 text-amber-700">Note: Step 1 Pre-Filter prompts are not yet wired to the workers. See <code className="bg-amber-100 px-1 rounded">System-Prompt-Engineering-12-26-25.md</code> in the docs folder for details.</p>
         </div>
       </div>
 

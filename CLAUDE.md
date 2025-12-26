@@ -105,7 +105,9 @@ PostgreSQL (prompts) + Airtable (articles)
 
 ## System Prompts (17 Total)
 
-Prompts are stored in PostgreSQL `system_prompts` table with versioning. Workers load prompts via `workers/utils/prompts.py`.
+Prompts are stored in PostgreSQL `system_prompts` table with versioning. The utility `workers/utils/prompts.py` provides functions to load prompts.
+
+**⚠️ IMPORTANT:** Step 1 Pre-Filter prompts are currently HARDCODED in `workers/utils/gemini.py` and do NOT load from the database. See `docs/System-Prompt-Engineering-12-26-25.md` for details and fix plan.
 
 | Step | Prompt Key | Model | Purpose |
 |------|------------|-------|---------|

@@ -289,8 +289,26 @@ Return ONLY the cleaned article content, no explanations."""
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
+        candidates_json = json.dumps(articles, indent=2)
 
-        prompt = f"""You are a pre-filter for an AI newsletter's LEAD STORY slot (Slot 1: Jobs/Economy).
+        # Try to load prompt from database
+        prompt_template = get_prompt('slot_1_prefilter')
+
+        if prompt_template:
+            try:
+                prompt = prompt_template.format(
+                    yesterday_headlines=yesterday_text,
+                    candidates=candidates_json
+                )
+                logger.info("[Gemini slot_1] Using prompt from database")
+            except KeyError as e:
+                logger.warning(f"[Gemini slot_1] Missing variable in database prompt: {e}, using fallback")
+                prompt_template = None
+
+        if not prompt_template:
+            # Fallback to hardcoded prompt
+            logger.info("[Gemini slot_1] Using hardcoded fallback prompt")
+            prompt = f"""You are a pre-filter for an AI newsletter's LEAD STORY slot (Slot 1: Jobs/Economy).
 
 Review these candidates and identify ONLY stories about:
 1. AI impact on JOBS (layoffs, hiring, workforce changes, labor market shifts)
@@ -307,7 +325,7 @@ YESTERDAY'S HEADLINES (avoid similar topics):
 {yesterday_text}
 
 CANDIDATES:
-{json.dumps(articles, indent=2)}
+{candidates_json}
 
 Return ONLY valid JSON with matching story IDs:
 {{"matches": [{{"story_id": "recXXX", "headline": "headline text"}}]}}
@@ -326,8 +344,25 @@ If no stories match, return: {{"matches": []}}"""
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
+        candidates_json = json.dumps(articles, indent=2)
 
-        prompt = f"""You are a pre-filter for an AI newsletter's Slot 2: Tier 1 Companies / Insight.
+        # Try to load prompt from database
+        prompt_template = get_prompt('slot_2_prefilter')
+
+        if prompt_template:
+            try:
+                prompt = prompt_template.format(
+                    yesterday_headlines=yesterday_text,
+                    candidates=candidates_json
+                )
+                logger.info("[Gemini slot_2] Using prompt from database")
+            except KeyError as e:
+                logger.warning(f"[Gemini slot_2] Missing variable in database prompt: {e}, using fallback")
+                prompt_template = None
+
+        if not prompt_template:
+            logger.info("[Gemini slot_2] Using hardcoded fallback prompt")
+            prompt = f"""You are a pre-filter for an AI newsletter's Slot 2: Tier 1 Companies / Insight.
 
 Review these candidates and identify stories about:
 1. TIER 1 AI COMPANIES: OpenAI, Google/DeepMind, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon
@@ -344,7 +379,7 @@ YESTERDAY'S HEADLINES (avoid similar topics):
 {yesterday_text}
 
 CANDIDATES:
-{json.dumps(articles, indent=2)}
+{candidates_json}
 
 Return ONLY valid JSON with matching story IDs:
 {{"matches": [{{"story_id": "recXXX", "headline": "headline text"}}]}}
@@ -366,6 +401,14 @@ If no stories match, return: {{"matches": []}}"""
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
 
+        # Try to load prompt template from database
+        prompt_template = get_prompt('slot_3_prefilter')
+        use_db_prompt = False
+
+        if prompt_template:
+            use_db_prompt = True
+            logger.info("[Gemini slot_3] Using prompt from database")
+
         # Chunk large batches to prevent Gemini response truncation
         all_matches = []
         chunks = self._chunk_articles(articles, chunk_size=30)
@@ -374,7 +417,20 @@ If no stories match, return: {{"matches": []}}"""
             if len(chunks) > 1:
                 logger.info(f"[Gemini slot_3] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} articles)")
 
-            prompt = f"""You are a pre-filter for an AI newsletter's Slot 3: Industry Impact.
+            candidates_json = json.dumps(chunk, indent=2)
+
+            if use_db_prompt:
+                try:
+                    prompt = prompt_template.format(
+                        yesterday_headlines=yesterday_text,
+                        candidates=candidates_json
+                    )
+                except KeyError as e:
+                    logger.warning(f"[Gemini slot_3] Missing variable in database prompt: {e}, using fallback")
+                    use_db_prompt = False
+
+            if not use_db_prompt:
+                prompt = f"""You are a pre-filter for an AI newsletter's Slot 3: Industry Impact.
 
 Review these candidates and identify stories about AI's impact on NON-TECH INDUSTRIES:
 - Healthcare / Medical
@@ -399,7 +455,7 @@ YESTERDAY'S HEADLINES (avoid similar topics):
 {yesterday_text}
 
 CANDIDATES:
-{json.dumps(chunk, indent=2)}
+{candidates_json}
 
 Return ONLY valid JSON with matching story IDs:
 {{"matches": [{{"story_id": "recXXX", "headline": "headline text"}}]}}
@@ -421,8 +477,25 @@ If no stories match, return: {{"matches": []}}"""
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
+        candidates_json = json.dumps(articles, indent=2)
 
-        prompt = f"""You are a pre-filter for an AI newsletter's Slot 4: Emerging Companies.
+        # Try to load prompt from database
+        prompt_template = get_prompt('slot_4_prefilter')
+
+        if prompt_template:
+            try:
+                prompt = prompt_template.format(
+                    yesterday_headlines=yesterday_text,
+                    candidates=candidates_json
+                )
+                logger.info("[Gemini slot_4] Using prompt from database")
+            except KeyError as e:
+                logger.warning(f"[Gemini slot_4] Missing variable in database prompt: {e}, using fallback")
+                prompt_template = None
+
+        if not prompt_template:
+            logger.info("[Gemini slot_4] Using hardcoded fallback prompt")
+            prompt = f"""You are a pre-filter for an AI newsletter's Slot 4: Emerging Companies.
 
 Review these candidates and identify stories about:
 1. Smaller/emerging AI companies (NOT Tier 1 giants)
@@ -442,7 +515,7 @@ YESTERDAY'S HEADLINES (avoid similar topics):
 {yesterday_text}
 
 CANDIDATES:
-{json.dumps(articles, indent=2)}
+{candidates_json}
 
 Return ONLY valid JSON with matching story IDs:
 {{"matches": [{{"story_id": "recXXX", "headline": "headline text"}}]}}
@@ -464,6 +537,14 @@ If no stories match, return: {{"matches": []}}"""
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
 
+        # Try to load prompt template from database
+        prompt_template = get_prompt('slot_5_prefilter')
+        use_db_prompt = False
+
+        if prompt_template:
+            use_db_prompt = True
+            logger.info("[Gemini slot_5] Using prompt from database")
+
         # Chunk large batches to prevent Gemini response truncation
         all_matches = []
         chunks = self._chunk_articles(articles, chunk_size=30)
@@ -472,7 +553,20 @@ If no stories match, return: {{"matches": []}}"""
             if len(chunks) > 1:
                 logger.info(f"[Gemini slot_5] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} articles)")
 
-            prompt = f"""You are a pre-filter for an AI newsletter's Slot 5: Consumer AI.
+            candidates_json = json.dumps(chunk, indent=2)
+
+            if use_db_prompt:
+                try:
+                    prompt = prompt_template.format(
+                        yesterday_headlines=yesterday_text,
+                        candidates=candidates_json
+                    )
+                except KeyError as e:
+                    logger.warning(f"[Gemini slot_5] Missing variable in database prompt: {e}, using fallback")
+                    use_db_prompt = False
+
+            if not use_db_prompt:
+                prompt = f"""You are a pre-filter for an AI newsletter's Slot 5: Consumer AI.
 
 Review these candidates and identify stories about:
 1. AI's impact on HUMANITY and SOCIETY (philosophical, ethical)
@@ -488,7 +582,7 @@ YESTERDAY'S HEADLINES (avoid similar topics):
 {yesterday_text}
 
 CANDIDATES:
-{json.dumps(chunk, indent=2)}
+{candidates_json}
 
 Return ONLY valid JSON with matching story IDs:
 {{"matches": [{{"story_id": "recXXX", "headline": "headline text"}}]}}
