@@ -242,14 +242,6 @@ Temperature: ${p.temperature}`;
 
   return (
     <div className="space-y-4">
-      {/* Info banner */}
-      <div className="rounded-md bg-emerald-50 border border-emerald-200 p-4 text-emerald-800 text-sm flex items-start gap-2">
-        <MaterialIcon name="check_circle" className="text-emerald-600 mt-0.5" />
-        <div>
-          <p className="font-medium">Changes saved here will be used by the pipeline on the next run.</p>
-        </div>
-      </div>
-
       {/* Error banner */}
       {error && (
         <div className="rounded-md bg-red-50 border border-red-200 p-4 text-red-800 text-sm flex items-center gap-2">
