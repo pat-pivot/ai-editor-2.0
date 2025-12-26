@@ -47,47 +47,65 @@ async function fetchAirtable(
     throw new Error("AIRTABLE_API_KEY is not set");
   }
 
-  const url = new URL(`https://api.airtable.com/v0/${baseId}/${tableId}`);
+  const allRecords: AirtableRecord[] = [];
+  let offset: string | undefined;
+  const maxRecords = options.maxRecords || 10000; // Default high limit
 
-  if (options.maxRecords) {
-    url.searchParams.set("maxRecords", options.maxRecords.toString());
-  }
-  if (options.view) {
-    url.searchParams.set("view", options.view);
-  }
-  if (options.filterByFormula) {
-    url.searchParams.set("filterByFormula", options.filterByFormula);
-  }
-  if (options.sort) {
-    options.sort.forEach((s, i) => {
-      url.searchParams.set(`sort[${i}][field]`, s.field);
-      url.searchParams.set(`sort[${i}][direction]`, s.direction);
+  do {
+    const url = new URL(`https://api.airtable.com/v0/${baseId}/${tableId}`);
+
+    // Airtable returns max 100 per page, so we paginate
+    url.searchParams.set("pageSize", "100");
+
+    if (offset) {
+      url.searchParams.set("offset", offset);
+    }
+    if (options.view) {
+      url.searchParams.set("view", options.view);
+    }
+    if (options.filterByFormula) {
+      url.searchParams.set("filterByFormula", options.filterByFormula);
+    }
+    if (options.sort) {
+      options.sort.forEach((s, i) => {
+        url.searchParams.set(`sort[${i}][field]`, s.field);
+        url.searchParams.set(`sort[${i}][direction]`, s.direction);
+      });
+    }
+    if (options.fields) {
+      options.fields.forEach((f) => {
+        url.searchParams.append("fields[]", f);
+      });
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      // Skip cache when refresh is requested, otherwise cache for 60 seconds
+      ...(options.skipCache
+        ? { cache: "no-store" as const }
+        : { next: { revalidate: 60 } }),
     });
-  }
-  if (options.fields) {
-    options.fields.forEach((f) => {
-      url.searchParams.append("fields[]", f);
-    });
-  }
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    // Skip cache when refresh is requested, otherwise cache for 60 seconds
-    ...(options.skipCache
-      ? { cache: "no-store" as const }
-      : { next: { revalidate: 60 } }),
-  });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Airtable API error: ${response.status} - ${error}`);
+    }
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Airtable API error: ${response.status} - ${error}`);
-  }
+    const data: AirtableResponse = await response.json();
+    allRecords.push(...data.records);
+    offset = data.offset;
 
-  const data: AirtableResponse = await response.json();
-  return data.records;
+    // Stop if we've reached the requested max
+    if (allRecords.length >= maxRecords) {
+      break;
+    }
+  } while (offset);
+
+  // Trim to maxRecords if we fetched more
+  return allRecords.slice(0, maxRecords);
 }
 
 async function updateAirtable(
