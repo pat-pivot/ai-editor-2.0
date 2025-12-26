@@ -231,8 +231,15 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
           </div>
         )}
 
+        {/* Subheader for Step 1 */}
+        {stepId === 1 && (
+          <p className="text-sm text-muted-foreground mb-4 -mt-2">
+            Stories prefiltered today. Click any row to view in Airtable.
+          </p>
+        )}
+
         {/* Data Table - varies by step */}
-        {stepId === 1 && <PreFilterTable data={paginatedData} loading={loading} />}
+        {stepId === 1 && <PreFilterTable data={paginatedData} loading={loading} baseId={baseId} tableId={tableId} />}
         {stepId === 2 && <SelectedSlotsTable />}
         {stepId === 3 && <DecorationTable />}
         {stepId === 4 && <IssuesTable />}
@@ -272,15 +279,53 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
   );
 }
 
-function PreFilterTable({ data, loading }: { data: PreFilterEntry[]; loading: boolean }) {
+function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEntry[]; loading: boolean; baseId: string; tableId: string }) {
+  const [sortField, setSortField] = useState<"slot" | "date" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: "slot" | "date") => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection(field === "slot" ? "asc" : "desc");
+    }
+  };
+
+  const sortedData = useMemo(() => {
+    if (!sortField) return data;
+
+    return [...data].sort((a, b) => {
+      if (sortField === "slot") {
+        const diff = a.slot - b.slot;
+        return sortDirection === "asc" ? diff : -diff;
+      } else {
+        const dateA = new Date(a.datePrefiltered || a.datePublished || 0).getTime();
+        const dateB = new Date(b.datePrefiltered || b.datePublished || 0).getTime();
+        const diff = dateA - dateB;
+        return sortDirection === "asc" ? diff : -diff;
+      }
+    });
+  }, [data, sortField, sortDirection]);
+
   const formatDate = (dateString: string) => {
     if (!dateString) return "—";
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      });
     } catch {
       return dateString;
     }
+  };
+
+  const openInAirtable = (recordId: string) => {
+    const url = `https://airtable.com/${baseId}/${tableId}/${recordId}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   if (loading) {
@@ -300,6 +345,18 @@ function PreFilterTable({ data, loading }: { data: PreFilterEntry[]; loading: bo
     );
   }
 
+  const SortIndicator = ({ field }: { field: "slot" | "date" }) => {
+    if (sortField !== field) {
+      return <MaterialIcon name="unfold_more" className="text-sm opacity-50" />;
+    }
+    return (
+      <MaterialIcon
+        name={sortDirection === "asc" ? "arrow_upward" : "arrow_downward"}
+        className="text-sm"
+      />
+    );
+  };
+
   return (
     <Table>
       <TableHeader>
@@ -307,13 +364,33 @@ function PreFilterTable({ data, loading }: { data: PreFilterEntry[]; loading: bo
           <TableHead className="w-28">Story ID</TableHead>
           <TableHead>Headline</TableHead>
           <TableHead className="w-24">Source</TableHead>
-          <TableHead className="w-16 text-center">Slot</TableHead>
-          <TableHead className="w-24">Date</TableHead>
+          <TableHead
+            className="w-20 text-center cursor-pointer hover:bg-muted/50 select-none"
+            onClick={() => handleSort("slot")}
+          >
+            <div className="flex items-center justify-center gap-1">
+              Slot
+              <SortIndicator field="slot" />
+            </div>
+          </TableHead>
+          <TableHead
+            className="w-32 cursor-pointer hover:bg-muted/50 select-none"
+            onClick={() => handleSort("date")}
+          >
+            <div className="flex items-center gap-1">
+              Date
+              <SortIndicator field="date" />
+            </div>
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {data.map((row) => (
-          <TableRow key={row.id}>
+        {sortedData.map((row) => (
+          <TableRow
+            key={row.id}
+            className="cursor-pointer hover:bg-muted/50"
+            onClick={() => openInAirtable(row.id)}
+          >
             <TableCell className="font-mono text-xs text-muted-foreground">
               {row.storyId || row.pivotId || "—"}
             </TableCell>
@@ -326,7 +403,7 @@ function PreFilterTable({ data, loading }: { data: PreFilterEntry[]; loading: bo
                 {row.slot}
               </Badge>
             </TableCell>
-            <TableCell className="text-muted-foreground">
+            <TableCell className="text-muted-foreground text-sm">
               {formatDate(row.datePrefiltered || row.datePublished)}
             </TableCell>
           </TableRow>

@@ -354,7 +354,7 @@ export async function getPreFilterLog(skipCache: boolean = false): Promise<PreFi
   }
 
   const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.prefilterLog, {
-    maxRecords: 200,
+    maxRecords: 1000,
     sort: [{ field: "date_prefiltered", direction: "desc" }],
     fields: ["storyID", "pivotId", "headline", "core_url", "source_id", "date_og_published", "date_prefiltered", "slot"],
     skipCache,
