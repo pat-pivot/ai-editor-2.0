@@ -170,11 +170,28 @@ To verify the fix is working:
 After the Google News fix was confirmed working, a separate issue was discovered with AI Scoring:
 
 **Problem:** AI Scoring job failed to update articles (422 errors)
-- Non-existent Airtable fields being written (`primary_newsletter_slug`, `fit_score_*`)
+- Non-existent Airtable fields being written
 
-**Solution:**
-1. Removed non-existent fields from ai_scoring.py update_fields
-2. Note: `headline` field does NOT exist in Articles table - AI Scoring works with URL/source info
+**Fixes Applied (all verified against n8n workflow Airtable schema):**
+
+| Fix | Wrong Field | Correct Field/Action |
+|-----|-------------|---------------------|
+| 1 | `primary_newsletter_slug` | Removed (doesn't exist) |
+| 2 | `fit_score_*` | Removed (doesn't exist) |
+| 3 | `date_ai_scored` | → `date_scored` |
+| 4 | `headline` in ingest.py | Removed (doesn't exist in Articles) |
+| 5 | `source_id` in Newsletter Stories | Removed (doesn't exist) |
+| 6 | `interest_score` in Newsletter Stories | Removed (doesn't exist) |
+
+**Verified Airtable Schemas:**
+
+Articles table (`tblGumae8KDpsrWvh`):
+- `pivot_Id`, `original_url`, `source_id`, `date_published`, `date_ingested`
+- `needs_ai`, `interest_score`, `sentiment`, `topic`, `tags`, `date_scored`
+
+Newsletter Stories table (`tblY78ziWp5yhiGXp`):
+- `pivotId`, `core_url`, `date_og_published`
+- `sentiment`, `topic`, `tags`, `fit_score`, `newsletter`
 
 See `workers/jobs/ai_scoring.py` for details.
 
