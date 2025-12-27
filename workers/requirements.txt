@@ -29,3 +29,8 @@ gunicorn==23.0.0
 
 # RSS Feed Parsing
 feedparser==6.0.11
+
+# Google News URL decoding (calls Google's batchexecute API)
+googlenewsdecoder==0.1.7
+beautifulsoup4==4.12.3
+lxml==5.3.0

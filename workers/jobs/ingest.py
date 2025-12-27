@@ -21,15 +21,22 @@ import os
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from email.utils import parsedate_to_datetime
+from concurrent.futures import ThreadPoolExecutor
 
 from pyairtable import Api
 from urllib.parse import urlparse
 from redis import Redis
 from rq import Queue
 
+# Google News URL decoding - calls Google's batchexecute API
+from googlenewsdecoder import gnewsdecoder
+
 # Import local utilities
 from utils.pivot_id import generate_pivot_id
 from config.rss_feeds import get_feeds
+
+# Thread pool for blocking gnewsdecoder calls (it makes HTTP requests)
+_google_news_executor = ThreadPoolExecutor(max_workers=10)
 
 
 # Source name mappings from domain to display name
@@ -196,82 +203,23 @@ def extract_source_from_url(url: str) -> Optional[str]:
         return None
 
 
-def decode_google_news_url(url: str) -> Optional[str]:
-    """
-    Decode a Google News article URL to get the actual source URL.
-
-    Google News RSS feeds use URLs like:
-    https://news.google.com/rss/articles/CBMi...
-
-    The part after 'articles/' is a Base64-encoded protobuf containing the real URL.
-
-    Args:
-        url: Google News article URL
-
-    Returns:
-        Decoded actual article URL, or None if decoding fails
-    """
-    import base64
-    import re
-
-    try:
-        # Extract the encoded part from the URL
-        # URL format: https://news.google.com/rss/articles/ENCODED_PART?...
-        match = re.search(r'/articles/([^?]+)', url)
-        if not match:
-            return None
-
-        encoded = match.group(1)
-
-        # Add padding if needed for base64
-        padding = 4 - len(encoded) % 4
-        if padding != 4:
-            encoded += '=' * padding
-
-        # URL-safe base64 decode
-        try:
-            decoded_bytes = base64.urlsafe_b64decode(encoded)
-        except Exception:
-            # Try standard base64 if URL-safe fails
-            decoded_bytes = base64.b64decode(encoded)
-
-        # The decoded bytes contain the URL - extract it
-        # Look for http:// or https:// in the decoded bytes
-        decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
-
-        # Find URL patterns in the decoded string
-        url_match = re.search(r'(https?://[^\s\x00-\x1f"<>]+)', decoded_str)
-        if url_match:
-            found_url = url_match.group(1)
-            # Clean up any trailing garbage
-            found_url = re.sub(r'[\x00-\x1f].*$', '', found_url)
-            # Remove any trailing special chars
-            found_url = found_url.rstrip('"\'>)}]')
-            return found_url
-
-        return None
-
-    except Exception as e:
-        print(f"[Ingest] Error decoding Google News URL: {e}")
-        return None
-
-
 async def resolve_google_news_url(
     session: aiohttp.ClientSession,
     url: str
 ) -> tuple[str, Optional[str]]:
     """
-    Resolve a Google News redirect URL to the actual article URL.
+    Resolve a Google News URL to the actual article URL.
 
-    Google News RSS feeds contain URLs like:
-    https://news.google.com/rss/articles/CBMi...
+    Uses the googlenewsdecoder package which calls Google's batchexecute API.
+    This is the ONLY reliable way to decode modern Google News URLs.
 
-    The encoded part contains a Base64-encoded protobuf with the real URL.
-    We decode it directly instead of following redirects (which doesn't work).
+    Pure Base64 decoding DOES NOT WORK because:
+    - The encoded portion is a protobuf structure, not a direct URL
+    - The inner string is an encrypted token that requires API calls to resolve
 
     Args:
-        session: aiohttp client session
-        url: Potentially a Google News redirect URL
+        session: aiohttp client session (unused, kept for API compatibility)
+        url: Google News article URL
 
     Returns:
         Tuple of (resolved_url, extracted_source_name)
@@ -281,35 +229,25 @@ async def resolve_google_news_url(
         return url, None
 
     try:
-        # Decode the Google News URL to get the actual article URL
-        decoded_url = decode_google_news_url(url)
+        # Run blocking gnewsdecoder in thread pool
+        # The gnewsdecoder package makes HTTP calls to Google's batchexecute API
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            _google_news_executor,
+            lambda: gnewsdecoder(url, interval=0.3)  # 0.3s delay between retries
+        )
 
-        if decoded_url and decoded_url != url:
-            # Extract source from the resolved URL
+        if result.get("status") and result.get("decoded_url"):
+            decoded_url = result["decoded_url"]
             source_name = extract_source_from_url(decoded_url)
             print(f"[Ingest] Decoded Google News URL: {url[:50]}... -> {decoded_url[:60]}... (source: {source_name})")
             return decoded_url, source_name
         else:
-            # Fallback: try HTTP redirect method (sometimes works for older URLs)
-            async with session.get(
-                url,
-                timeout=aiohttp.ClientTimeout(total=10),
-                allow_redirects=True,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            ) as response:
-                final_url = str(response.url)
-
-                # Only use if we actually got a different URL
-                if final_url != url and "news.google.com" not in final_url:
-                    source_name = extract_source_from_url(final_url)
-                    print(f"[Ingest] Resolved Google News URL via redirect: {url[:50]}... -> {final_url[:60]}... (source: {source_name})")
-                    return final_url, source_name
-
-        print(f"[Ingest] Could not resolve Google News URL: {url[:60]}...")
-        return url, "Google News"
+            print(f"[Ingest] Could not decode Google News URL: {url[:60]}...")
+            return url, "Google News"
 
     except Exception as e:
-        print(f"[Ingest] Failed to resolve Google News URL: {e}")
+        print(f"[Ingest] Error decoding Google News URL: {e}")
         return url, "Google News"
 
 
@@ -399,8 +337,8 @@ async def resolve_article_urls(
     """
     Resolve Google News redirect URLs to actual article URLs.
 
-    For articles with Google News URLs, follows the redirect to get the
-    real article URL and extracts the actual source name.
+    Uses the googlenewsdecoder package which calls Google's batchexecute API.
+    Processes in small batches with delays to avoid rate limiting.
 
     Args:
         session: aiohttp client session
@@ -417,14 +355,19 @@ async def resolve_article_urls(
     if not google_news_articles:
         return articles, 0  # Return tuple to match expected return type
 
-    print(f"[Ingest] Resolving {len(google_news_articles)} Google News URLs...")
+    print(f"[Ingest] Resolving {len(google_news_articles)} Google News URLs using googlenewsdecoder...")
 
-    # Process in batches of 20 to avoid overwhelming servers
-    batch_size = 20
+    # Process in smaller batches with delays to avoid Google rate limiting
+    # googlenewsdecoder makes HTTP calls to Google's batchexecute API
+    batch_size = 10  # Reduced from 20 to be gentler on Google's API
     resolved_count = 0
 
     for batch_start in range(0, len(google_news_articles), batch_size):
         batch = google_news_articles[batch_start:batch_start + batch_size]
+        batch_num = (batch_start // batch_size) + 1
+        total_batches = (len(google_news_articles) + batch_size - 1) // batch_size
+        print(f"[Ingest] Processing batch {batch_num}/{total_batches} ({len(batch)} URLs)...")
+
         tasks = [
             resolve_google_news_url(session, articles[idx]["link"])
             for idx, _ in batch
@@ -446,6 +389,10 @@ async def resolve_article_urls(
             # Update source_id if we got a better one from the resolved URL
             if source_name:
                 articles[idx]["source_id"] = source_name
+
+        # Add delay between batches to avoid rate limiting
+        if batch_start + batch_size < len(google_news_articles):
+            await asyncio.sleep(1)  # 1 second delay between batches
 
     print(f"[Ingest] Resolved {resolved_count} Google News URLs to actual sources")
     return articles, resolved_count
