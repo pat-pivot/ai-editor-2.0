@@ -42,9 +42,23 @@ interface PreFilterEntry {
   slot: number;
 }
 
+// Matches Story interface from src/lib/airtable.ts
+interface NewsletterStory {
+  id: string;
+  storyId: string;
+  pivotId: string;
+  headline: string;
+  source: string;
+  date: string;
+  eligibleSlots: number[];
+  selected: boolean;
+  selectedSlot?: number;
+}
+
 export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) {
   const airtableUrl = `https://airtable.com/${baseId}/${tableId}`;
   const [preFilterData, setPreFilterData] = useState<PreFilterEntry[]>([]);
+  const [newsletterStories, setNewsletterStories] = useState<NewsletterStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -53,21 +67,33 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50; // Show 50 records per page
 
-  // Fetch pre-filter data from API
+  // Fetch data from API based on step
   const fetchData = async (forceRefresh: boolean = false) => {
-    if (stepId !== 1) return; // Only fetch for pre-filter step
+    // Only fetch for Step 0 (Newsletter Stories) and Step 1 (Pre-Filter)
+    if (stepId !== 0 && stepId !== 1) return;
 
     setLoading(true);
     setError(null);
     try {
-      // Add refresh=true to bypass cache when data needs to be fresh
-      const url = forceRefresh
-        ? "/api/stories?type=prefilter&refresh=true"
-        : "/api/stories?type=prefilter";
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Failed to fetch data");
-      const data = await response.json();
-      setPreFilterData(data.stories || []);
+      if (stepId === 0) {
+        // Newsletter Stories (Step 0)
+        const url = forceRefresh
+          ? "/api/stories?type=stories&refresh=true"
+          : "/api/stories?type=stories";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch newsletter stories");
+        const data = await response.json();
+        setNewsletterStories(data.stories || []);
+      } else if (stepId === 1) {
+        // Pre-Filter Log (Step 1)
+        const url = forceRefresh
+          ? "/api/stories?type=prefilter&refresh=true"
+          : "/api/stories?type=prefilter";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch data");
+        const data = await response.json();
+        setPreFilterData(data.stories || []);
+      }
       setLastSync(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -105,8 +131,8 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
     return counts;
   }, [preFilterData]);
 
-  // Filter data by slot and search
-  const filteredData = useMemo(() => {
+  // Filter Pre-Filter data by slot and search (Step 1)
+  const filteredPreFilterData = useMemo(() => {
     let data = preFilterData;
 
     if (selectedSlot !== null) {
@@ -125,14 +151,34 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
     return data;
   }, [preFilterData, selectedSlot, searchQuery]);
 
+  // Filter Newsletter Stories by search (Step 0)
+  const filteredNewsletterStories = useMemo(() => {
+    let data = newsletterStories;
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      data = data.filter((entry) =>
+        entry.headline.toLowerCase().includes(query) ||
+        entry.pivotId.toLowerCase().includes(query) ||
+        entry.storyId.toLowerCase().includes(query) ||
+        entry.source.toLowerCase().includes(query)
+      );
+    }
+
+    return data;
+  }, [newsletterStories, searchQuery]);
+
+  // Get active data based on step
+  const activeData = stepId === 0 ? filteredNewsletterStories : filteredPreFilterData;
+
   // Paginate filtered data
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
-    return filteredData.slice(startIndex, endIndex);
-  }, [filteredData, currentPage, pageSize]);
+    return activeData.slice(startIndex, endIndex);
+  }, [activeData, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredData.length / pageSize);
+  const totalPages = Math.ceil(activeData.length / pageSize);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -231,6 +277,13 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
           </div>
         )}
 
+        {/* Subheader for Step 0 */}
+        {stepId === 0 && (
+          <p className="text-sm text-muted-foreground mb-4 -mt-2">
+            Stories available for newsletter selection. Click any row to view in Airtable.
+          </p>
+        )}
+
         {/* Subheader for Step 1 */}
         {stepId === 1 && (
           <p className="text-sm text-muted-foreground mb-4 -mt-2">
@@ -239,7 +292,8 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
         )}
 
         {/* Data Table - varies by step */}
-        {stepId === 1 && <PreFilterTable data={paginatedData} loading={loading} baseId={baseId} tableId={tableId} />}
+        {stepId === 0 && <NewsletterStoriesTable data={paginatedData as NewsletterStory[]} loading={loading} baseId={baseId} tableId={tableId} />}
+        {stepId === 1 && <PreFilterTable data={paginatedData as PreFilterEntry[]} loading={loading} baseId={baseId} tableId={tableId} />}
         {stepId === 2 && <SelectedSlotsTable />}
         {stepId === 3 && <DecorationTable />}
         {stepId === 4 && <IssuesTable />}
@@ -249,8 +303,8 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
         <div className="flex items-center justify-between mt-4 pt-4 border-t">
           <span className="text-sm text-muted-foreground">
             Showing {paginatedData.length > 0 ? ((currentPage - 1) * pageSize + 1) : 0}
-            -{Math.min(currentPage * pageSize, filteredData.length)} of {filteredData.length} records
-            {selectedSlot !== null && ` (filtered from ${preFilterData.length})`}
+            -{Math.min(currentPage * pageSize, activeData.length)} of {activeData.length} records
+            {stepId === 1 && selectedSlot !== null && ` (filtered from ${preFilterData.length})`}
           </span>
           <div className="flex items-center gap-2">
             <Button
@@ -405,6 +459,148 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
             </TableCell>
             <TableCell className="text-muted-foreground text-sm">
               {formatDate(row.datePrefiltered || row.datePublished)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+// Newsletter Stories table for Step 0
+function NewsletterStoriesTable({ data, loading, baseId, tableId }: { data: NewsletterStory[]; loading: boolean; baseId: string; tableId: string }) {
+  const [sortField, setSortField] = useState<"slots" | "date" | null>("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: "slots" | "date") => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
+
+  const sortedData = useMemo(() => {
+    if (!sortField) return data;
+
+    return [...data].sort((a, b) => {
+      if (sortField === "slots") {
+        // Sort by number of eligible slots
+        const diff = (a.eligibleSlots?.length || 0) - (b.eligibleSlots?.length || 0);
+        return sortDirection === "asc" ? diff : -diff;
+      } else {
+        const dateA = new Date(a.date || 0).getTime();
+        const dateB = new Date(b.date || 0).getTime();
+        const diff = dateA - dateB;
+        return sortDirection === "asc" ? diff : -diff;
+      }
+    });
+  }, [data, sortField, sortDirection]);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "—";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const openInAirtable = (recordId: string) => {
+    const url = `https://airtable.com/${baseId}/${tableId}/${recordId}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <MaterialIcon name="sync" className="text-4xl text-muted-foreground animate-spin" />
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+        <MaterialIcon name="inbox" className="text-4xl mb-2" />
+        <p>No newsletter stories found</p>
+      </div>
+    );
+  }
+
+  const SortIndicator = ({ field }: { field: "slots" | "date" }) => {
+    if (sortField !== field) {
+      return <MaterialIcon name="unfold_more" className="text-sm opacity-50" />;
+    }
+    return (
+      <MaterialIcon
+        name={sortDirection === "asc" ? "arrow_upward" : "arrow_downward"}
+        className="text-sm"
+      />
+    );
+  };
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-28">Story ID</TableHead>
+          <TableHead>Headline</TableHead>
+          <TableHead className="w-24">Source</TableHead>
+          <TableHead
+            className="w-28 cursor-pointer hover:bg-muted/50 select-none"
+            onClick={() => handleSort("slots")}
+          >
+            <div className="flex items-center gap-1">
+              Slots
+              <SortIndicator field="slots" />
+            </div>
+          </TableHead>
+          <TableHead
+            className="w-32 cursor-pointer hover:bg-muted/50 select-none"
+            onClick={() => handleSort("date")}
+          >
+            <div className="flex items-center gap-1">
+              Date
+              <SortIndicator field="date" />
+            </div>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sortedData.map((row) => (
+          <TableRow
+            key={row.id}
+            className="cursor-pointer hover:bg-muted/50"
+            onClick={() => openInAirtable(row.id)}
+          >
+            <TableCell className="font-mono text-xs text-muted-foreground">
+              {row.storyId || row.pivotId || "—"}
+            </TableCell>
+            <TableCell className="font-medium">
+              {row.headline || "Untitled"}
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground">
+              {row.source || "—"}
+            </TableCell>
+            <TableCell>
+              <div className="flex gap-1 flex-wrap">
+                {(row.eligibleSlots || []).map((slot) => (
+                  <Badge key={slot} variant="outline" className="font-mono text-xs">
+                    {slot}
+                  </Badge>
+                ))}
+              </div>
+            </TableCell>
+            <TableCell className="text-muted-foreground text-sm">
+              {formatDate(row.date)}
             </TableCell>
           </TableRow>
         ))}

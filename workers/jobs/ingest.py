@@ -262,7 +262,7 @@ async def resolve_article_urls(
     ]
 
     if not google_news_articles:
-        return articles
+        return articles, 0  # Return tuple to match expected return type
 
     print(f"[Ingest] Resolving {len(google_news_articles)} Google News URLs...")
 

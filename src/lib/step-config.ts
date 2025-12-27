@@ -32,8 +32,8 @@ export const stepConfigs: StepConfig[] = [
     icon: "cloud_download",
     prompts: [],
     dataTable: {
-      name: "Newsletter Issue Stories",
-      tableId: "tblaHcFFG6Iw3w7lL",
+      name: "Newsletter Stories",
+      tableId: "tblY78ziWp5yhiGXp",
       baseId: "appwSozYTkrsQWUXB",
     },
   },
