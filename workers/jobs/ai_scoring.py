@@ -368,6 +368,7 @@ def run_ai_scoring(batch_size: int = 50) -> Dict[str, Any]:
                 # Create Newsletter Story record with FULL decoration
                 newsletter_story = {
                     # Core identifiers
+                    "id": article_id,  # Required unique identifier for Newsletter Stories
                     "pivotId": pivot_id,
                     "storyID": article_id,  # Link to Articles record
                     "core_url": fields.get("original_url", ""),
@@ -419,10 +420,11 @@ def run_ai_scoring(batch_size: int = 50) -> Dict[str, Any]:
 
 
 # Job configuration for RQ scheduler
-JOB_CONFIG = {
-    "func": run_ai_scoring,
-    "trigger": "interval",
-    "minutes": 20,
-    "id": "ai_scoring",
-    "replace_existing": True
-}
+# DISABLED: User wants manual control only, not automatic scheduling
+# JOB_CONFIG = {
+#     "func": run_ai_scoring,
+#     "trigger": "interval",
+#     "minutes": 20,
+#     "id": "ai_scoring",
+#     "replace_existing": True
+# }

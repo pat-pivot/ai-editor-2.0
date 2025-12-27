@@ -162,6 +162,62 @@ To verify the fix is working:
 |------|---------|--------|-------|
 | 12/27/2025 | v1 | BROKEN | Base64 decode approach - doesn't work for modern URLs |
 | 12/27/2025 | v2 | ✅ CONFIRMED | googlenewsdecoder package - verified working |
+| 12/27/2025 | v3 | ✅ CONFIRMED | AI Scoring job confirmed working via Airtable API |
+
+---
+
+## CRITICAL: Duplicate Records Issue (12/27/2025)
+
+### Problem Discovered
+Both Python AI Scoring AND n8n AI Scoring workflows are running simultaneously, creating duplicate Newsletter Story records.
+
+### Evidence
+For pivotId `p_cvgpzy`, THREE records exist:
+1. **19:30 UTC** - Old Python run (missing fields, broken tags format)
+2. **19:56 UTC** - Current Python run (✅ correct format)
+3. **20:02 UTC** - n8n workflow (has `ai_headline`, `date_ai_processed`)
+
+### How to Identify Source
+- **Python-created records**: `id` = `pivotId`, NO `ai_headline`, NO `date_ai_processed`
+- **n8n-created records**: `id` = Airtable record ID (rec...), HAS `ai_headline`, HAS `date_ai_processed`
+
+### Resolution Applied (12/27/2025)
+**Removed Newsletter Story creation from Python AI Scoring.**
+
+Python AI Scoring now ONLY:
+- Scores articles (interest_score, sentiment, topic, tags, fit_score, newsletter)
+- Updates the Articles table
+- Does NOT create Newsletter Stories
+
+n8n "Pivot Media AI Decoration" workflow handles:
+- Creating Newsletter Stories with full decoration (ai_headline, ai_dek, bullets, image_prompt)
+- This prevents duplicates since only ONE system creates records
+
+---
+
+## Python AI Scoring: CONFIRMED WORKING (12/27/2025)
+
+### Verified via Airtable API
+```bash
+# Articles scored today (needs_ai=false with interest_score)
+curl "https://api.airtable.com/v0/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh?filterByFormula=..."
+
+# Newsletter Stories created today
+curl "https://api.airtable.com/v0/appwSozYTkrsQWUXB/tblY78ziWp5yhiGXp?filterByFormula=..."
+```
+
+### Fields Written by Python AI Scoring
+
+**To Articles table:**
+- `interest_score`, `sentiment`, `topic`, `tags` (comma-separated)
+- `newsletter`, `fit_score`, `date_scored`
+- `needs_ai` → false
+
+**To Newsletter Stories table (interest_score >= 15):**
+- `id`, `storyID`, `pivotId`
+- `core_url`, `date_og_published`
+- `interest_score`, `sentiment`, `topic`, `tags`, `fit_score`, `newsletter`
+- `image_status` → "pending"
 
 ---
 

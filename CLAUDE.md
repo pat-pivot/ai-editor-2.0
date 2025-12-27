@@ -159,6 +159,44 @@ prompt = get_prompt('headline_generator')
 prompt = get_slot_prompt(step=1, slot=1)  # Returns slot_1_prefilter content
 ```
 
+## CRITICAL: Airtable API Access
+
+**When the user asks to "look at Airtable" or verify data in Airtable tables, use the Airtable API directly via curl.**
+
+Credentials are in `.env.local`:
+```bash
+AIRTABLE_API_KEY=<stored in .env.local>
+AIRTABLE_BASE_ID=appwSozYTkrsQWUXB  # Pivot Media Master
+AI_EDITOR_BASE_ID=appglKSJZxmA9iHpl  # AI Editor 2.0
+```
+
+### Quick Query Examples
+
+**List records from Newsletter Stories:**
+```bash
+curl "https://api.airtable.com/v0/appwSozYTkrsQWUXB/tblY78ziWp5yhiGXp?maxRecords=10" \
+  -H "Authorization: Bearer $AIRTABLE_API_KEY"
+```
+
+**Filter by date (URL-encoded formula):**
+```bash
+# filterByFormula: IS_SAME({date_og_published}, '2025-12-27', 'day')
+curl "https://api.airtable.com/v0/appwSozYTkrsQWUXB/tblY78ziWp5yhiGXp?filterByFormula=IS_SAME(%7Bdate_og_published%7D%2C%20%272025-12-27%27%2C%20%27day%27)" \
+  -H "Authorization: Bearer $AIRTABLE_API_KEY"
+```
+
+### Key Table IDs
+
+| Table | Base | Table ID |
+|-------|------|----------|
+| Newsletter Stories | Pivot Media Master | `tblY78ziWp5yhiGXp` |
+| Articles | Pivot Media Master | `tblGumae8KDpsrWvh` |
+| Pre-Filter Log | AI Editor 2.0 | `tbl72YMsm9iRHj3sp` |
+| Selected Slots | AI Editor 2.0 | `tblzt2z7r512Kto3O` |
+| Decoration | AI Editor 2.0 | `tbla16LJCf5Z6cRn3` |
+
+---
+
 ## Airtable Field Names (Verified via API 12/24/25)
 
 ### Newsletter Stories Table (tblY78ziWp5yhiGXp) - Pivot Media Master

@@ -19,6 +19,7 @@ const TRIGGER_SECRET = process.env.TRIGGER_SECRET || "";
 // Valid step names that can be triggered
 const VALID_STEPS = [
   "ingest",
+  "ai_scoring",  // AI Scoring - scores articles and creates Newsletter Stories
   "prefilter",
   "slot_selection",
   "decoration",

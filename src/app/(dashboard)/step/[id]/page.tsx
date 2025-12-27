@@ -35,6 +35,12 @@ const STEP_JOB_NAMES: Record<number, string> = {
   5: "mautic_send",
 };
 
+// Step 0 has two jobs: ingest and ai_scoring
+const STEP_0_JOBS = {
+  ingest: { name: "Ingest Articles", icon: "download" },
+  ai_scoring: { name: "Run AI Scoring", icon: "psychology" },
+};
+
 export default function StepPage({ params }: PageProps) {
   const { id } = use(params);
   const stepId = parseInt(id, 10);
@@ -46,6 +52,13 @@ export default function StepPage({ params }: PageProps) {
   const [lastResult, setLastResult] = useState<{ processed: number; elapsed: number } | null>(null);
   const [activeTab, setActiveTab] = useState("logs");
 
+  // Step 0 specific: Track AI Scoring job separately
+  const [isAiScoringRunning, setIsAiScoringRunning] = useState(false);
+  const [aiScoringJobId, setAiScoringJobId] = useState<string | null>(null);
+  const [aiScoringJobStatus, setAiScoringJobStatus] = useState<"queued" | "started" | "finished" | "failed" | null>(null);
+  const [aiScoringElapsedTime, setAiScoringElapsedTime] = useState(0);
+  const [currentJobType, setCurrentJobType] = useState<"ingest" | "ai_scoring" | null>(null);
+
   if (isNaN(stepId) || stepId < 0 || stepId > 5) {
     notFound();
   }
@@ -56,12 +69,25 @@ export default function StepPage({ params }: PageProps) {
     notFound();
   }
 
-  const handleRunNow = async () => {
-    const jobName = STEP_JOB_NAMES[stepId];
+  const handleRunNow = async (jobType?: "ingest" | "ai_scoring") => {
+    // For Step 0, use the specified jobType; otherwise use the step's job name
+    const jobName = stepId === 0 && jobType ? jobType : STEP_JOB_NAMES[stepId];
     if (!jobName) return;
 
-    setIsRunning(true);
-    setElapsedTime(0);
+    const jobDisplayName = stepId === 0 && jobType
+      ? STEP_0_JOBS[jobType].name
+      : stepConfig.name;
+
+    // For Step 0 AI Scoring, use separate state
+    if (stepId === 0 && jobType === "ai_scoring") {
+      setIsAiScoringRunning(true);
+      setAiScoringElapsedTime(0);
+      setCurrentJobType("ai_scoring");
+    } else {
+      setIsRunning(true);
+      setElapsedTime(0);
+      setCurrentJobType(stepId === 0 ? "ingest" : null);
+    }
     setShowCompletion(false);
 
     try {
@@ -74,22 +100,34 @@ export default function StepPage({ params }: PageProps) {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setJobId(data.job_id);  // Store job ID for polling
-        setJobStatus("queued");
+        if (stepId === 0 && jobType === "ai_scoring") {
+          setAiScoringJobId(data.job_id);
+          setAiScoringJobStatus("queued");
+        } else {
+          setJobId(data.job_id);
+          setJobStatus("queued");
+        }
         toast.success("Job Started", {
-          description: `${stepConfig.name} job queued successfully`,
+          description: `${jobDisplayName} job queued successfully`,
         });
       } else {
-        setIsRunning(false);
+        if (stepId === 0 && jobType === "ai_scoring") {
+          setIsAiScoringRunning(false);
+        } else {
+          setIsRunning(false);
+        }
         throw new Error(data.error || "Failed to start job");
       }
     } catch (error) {
-      setIsRunning(false);
+      if (stepId === 0 && jobType === "ai_scoring") {
+        setIsAiScoringRunning(false);
+      } else {
+        setIsRunning(false);
+      }
       toast.error("Error", {
         description: error instanceof Error ? error.message : "Failed to start job",
       });
     }
-    // Note: Don't setIsRunning(false) here - polling effect will handle it
   };
 
   // Poll job status until completion
@@ -149,6 +187,61 @@ export default function StepPage({ params }: PageProps) {
     };
   }, [jobId, stepId]);
 
+  // Poll AI Scoring job status (Step 0 only)
+  useEffect(() => {
+    if (!aiScoringJobId) return;
+
+    const startTime = Date.now();
+
+    const timerInterval = setInterval(() => {
+      setAiScoringElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/jobs/${aiScoringJobId}`);
+        const status = await response.json();
+
+        if (status.status === "started" || status.status === "queued") {
+          setAiScoringJobStatus(status.status);
+        }
+
+        if (status.status === "finished" || status.status === "failed") {
+          clearInterval(pollInterval);
+          clearInterval(timerInterval);
+          setIsAiScoringRunning(false);
+          setAiScoringJobId(null);
+          setAiScoringJobStatus(status.status);
+          setCurrentJobType(null);
+
+          const finalElapsed = Math.floor((Date.now() - startTime) / 1000);
+
+          if (status.status === "finished") {
+            const processedCount = status.result?.articles_scored || status.result?.processed || 0;
+            const storiesCreated = status.result?.newsletter_stories_created || 0;
+            setLastResult({ processed: processedCount, elapsed: finalElapsed });
+            setShowCompletion(true);
+            toast.success("AI Scoring Completed", {
+              description: `Scored ${processedCount} articles, created ${storiesCreated} Newsletter Stories in ${finalElapsed}s`,
+            });
+            window.dispatchEvent(new CustomEvent("jobCompleted", { detail: { stepId } }));
+          } else {
+            toast.error("AI Scoring Failed", {
+              description: status.error || "Unknown error occurred",
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error polling AI Scoring job status:", error);
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearInterval(timerInterval);
+    };
+  }, [aiScoringJobId, stepId]);
+
   // Mock execution data - in production this would come from an API
   const lastRun = {
     date: "Dec 23, 2025 9:00:15 PM",
@@ -182,10 +275,39 @@ export default function StepPage({ params }: PageProps) {
                 </CardDescription>
               </div>
             </div>
-            <Button className="gap-2" onClick={handleRunNow} disabled={isRunning}>
-              <MaterialIcon name={isRunning ? "sync" : "play_arrow"} className={`text-lg ${isRunning ? "animate-spin" : ""}`} />
-              {isRunning ? `Running... ${elapsedTime}s` : "Run Now"}
-            </Button>
+            {/* Step 0: Two buttons for Ingest and AI Scoring */}
+            {stepId === 0 ? (
+              <div className="flex gap-2">
+                <Button
+                  className="gap-2"
+                  onClick={() => handleRunNow("ingest")}
+                  disabled={isRunning || isAiScoringRunning}
+                >
+                  <MaterialIcon
+                    name={isRunning ? "sync" : "download"}
+                    className={`text-lg ${isRunning ? "animate-spin" : ""}`}
+                  />
+                  {isRunning ? `Ingesting... ${elapsedTime}s` : "Ingest Articles"}
+                </Button>
+                <Button
+                  className="gap-2"
+                  variant="secondary"
+                  onClick={() => handleRunNow("ai_scoring")}
+                  disabled={isRunning || isAiScoringRunning}
+                >
+                  <MaterialIcon
+                    name={isAiScoringRunning ? "sync" : "psychology"}
+                    className={`text-lg ${isAiScoringRunning ? "animate-spin" : ""}`}
+                  />
+                  {isAiScoringRunning ? `Scoring... ${aiScoringElapsedTime}s` : "Run AI Scoring"}
+                </Button>
+              </div>
+            ) : (
+              <Button className="gap-2" onClick={() => handleRunNow()} disabled={isRunning}>
+                <MaterialIcon name={isRunning ? "sync" : "play_arrow"} className={`text-lg ${isRunning ? "animate-spin" : ""}`} />
+                {isRunning ? `Running... ${elapsedTime}s` : "Run Now"}
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="pt-0">
@@ -251,7 +373,7 @@ export default function StepPage({ params }: PageProps) {
       )}
 
       {/* Running Status Banner */}
-      {isRunning && (
+      {(isRunning || isAiScoringRunning) && (
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="py-4">
             <div className="flex items-center gap-4">
@@ -262,19 +384,26 @@ export default function StepPage({ params }: PageProps) {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
                     <span className="font-semibold text-blue-900">
-                      {jobStatus === "queued" ? "Job Queued" : "Job Running"}
+                      {currentJobType === "ai_scoring"
+                        ? (aiScoringJobStatus === "queued" ? "AI Scoring Queued" : "AI Scoring Running")
+                        : currentJobType === "ingest"
+                        ? (jobStatus === "queued" ? "Ingest Queued" : "Ingest Running")
+                        : (jobStatus === "queued" ? "Job Queued" : "Job Running")}
                     </span>
                     <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-                      {jobStatus === "queued" ? "Waiting for worker..." : "Processing..."}
+                      {(currentJobType === "ai_scoring" ? aiScoringJobStatus : jobStatus) === "queued"
+                        ? "Waiting for worker..."
+                        : "Processing..."}
                     </Badge>
                   </div>
                   <span className="font-mono text-lg font-bold text-blue-700">
-                    {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, "0")}
+                    {Math.floor((currentJobType === "ai_scoring" ? aiScoringElapsedTime : elapsedTime) / 60)}:
+                    {String((currentJobType === "ai_scoring" ? aiScoringElapsedTime : elapsedTime) % 60).padStart(2, "0")}
                   </span>
                 </div>
                 <Progress value={undefined} className="h-2 bg-blue-100" />
                 <div className="mt-2 text-sm text-blue-600">
-                  <span>Job ID: {jobId?.slice(0, 8)}...</span>
+                  <span>Job ID: {(currentJobType === "ai_scoring" ? aiScoringJobId : jobId)?.slice(0, 8)}...</span>
                 </div>
               </div>
             </div>
