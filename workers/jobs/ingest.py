@@ -526,6 +526,7 @@ def ingest_articles(debug: bool = False) -> Dict[str, Any]:
             # Note: We don't have markdown since we're RSS-only (no Firecrawl)
             record = {
                 "pivot_Id": pivot_id,  # Primary deduplication key
+                "headline": article["title"],  # Article title from RSS feed
                 "original_url": article["link"],  # Source URL
                 "source_id": article["source_id"],  # Publication name
                 "date_ingested": datetime.now(timezone.utc).isoformat(),  # When we ingested

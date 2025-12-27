@@ -234,22 +234,17 @@ def run_ai_scoring(batch_size: int = 50) -> Dict[str, Any]:
                 continue
 
             # Prepare update record
+            # Note: Only include fields that exist in the Articles table
             update_fields = {
                 "needs_ai": False,  # Mark as scored
                 "interest_score": scores.get("interest_score"),
                 "sentiment": scores.get("sentiment"),
                 "topic": scores.get("topic"),
                 "tags": json.dumps(scores.get("tags", [])),
-                "primary_newsletter_slug": scores.get("primary_newsletter_slug"),
                 "date_ai_scored": datetime.now(timezone.utc).isoformat(),
             }
-
-            # Add fit scores for each newsletter
-            for rec in scores.get("newsletter_recommendations", []):
-                slug = rec.get("newsletter_slug")
-                fit_score = rec.get("fit_score")
-                if slug and fit_score is not None:
-                    update_fields[f"fit_score_{slug}"] = fit_score
+            # Removed: primary_newsletter_slug (field doesn't exist in Airtable)
+            # Removed: fit_score_{slug} loop (fields don't exist in Airtable)
 
             # Update Articles table record
             try:
@@ -287,7 +282,7 @@ def run_ai_scoring(batch_size: int = 50) -> Dict[str, Any]:
 
                     newsletter_stories_table.create(newsletter_story)
                     results["newsletter_stories_created"] += 1
-                    print(f"[AI Scoring] ✓ Created Newsletter Story: interest={interest_score}")
+                    print(f"[AI Scoring] ✅ Created Newsletter Story: {headline[:50]}... (score: {interest_score})")
                 except Exception as e:
                     error_msg = f"Failed to create Newsletter Story for {article_id}: {e}"
                     print(f"[AI Scoring] {error_msg}")

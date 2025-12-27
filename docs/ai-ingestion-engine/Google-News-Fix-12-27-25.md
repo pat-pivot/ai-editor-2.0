@@ -2,7 +2,7 @@
 
 **Date:** December 27, 2025
 **File Modified:** `workers/jobs/ingest.py`
-**Status:** PENDING CONFIRMATION - Awaiting Pat's verification after deploy
+**Status:** ✅ CONFIRMED WORKING (12/27/2025)
 
 ---
 
@@ -161,7 +161,23 @@ To verify the fix is working:
 | Date | Version | Status | Notes |
 |------|---------|--------|-------|
 | 12/27/2025 | v1 | BROKEN | Base64 decode approach - doesn't work for modern URLs |
-| 12/27/2025 | v2 | PENDING | googlenewsdecoder package - awaiting Pat's confirmation |
+| 12/27/2025 | v2 | ✅ CONFIRMED | googlenewsdecoder package - verified working |
+
+---
+
+## Related Fix: AI Scoring Bug (12/27/2025)
+
+After the Google News fix was confirmed working, a separate issue was discovered with AI Scoring:
+
+**Problem:** AI Scoring job failed to update articles (422 errors)
+- Missing `headline` field in ingest record creation
+- Non-existent Airtable fields being written (`primary_newsletter_slug`, `fit_score_*`)
+
+**Solution:**
+1. Added `headline: article["title"]` to ingest.py record creation
+2. Removed non-existent fields from ai_scoring.py update_fields
+
+See `workers/jobs/ingest.py` and `workers/jobs/ai_scoring.py` for details.
 
 ---
 
