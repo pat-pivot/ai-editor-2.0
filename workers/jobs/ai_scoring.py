@@ -235,13 +235,14 @@ def run_ai_scoring(batch_size: int = 50) -> Dict[str, Any]:
 
             # Prepare update record
             # Note: Only include fields that exist in the Articles table
+            # Field names verified against n8n Ingestion Engine Airtable schema
             update_fields = {
                 "needs_ai": False,  # Mark as scored
                 "interest_score": scores.get("interest_score"),
                 "sentiment": scores.get("sentiment"),
                 "topic": scores.get("topic"),
                 "tags": json.dumps(scores.get("tags", [])),
-                "date_ai_scored": datetime.now(timezone.utc).isoformat(),
+                "date_scored": datetime.now(timezone.utc).isoformat(),  # Fixed: was date_ai_scored
             }
             # Removed: primary_newsletter_slug (field doesn't exist in Airtable)
             # Removed: fit_score_{slug} loop (fields don't exist in Airtable)
@@ -264,13 +265,16 @@ def run_ai_scoring(batch_size: int = 50) -> Dict[str, Any]:
                 results["high_interest_count"] += 1
 
                 # Create Newsletter Stories record for high-interest articles
+                # Fields verified against CLAUDE.md Newsletter Stories Table schema:
+                # id, pivotId, storyID, ai_headline, ai_dek, ai_bullet_1/2/3,
+                # core_url, topic, sentiment, fit_score, tags, newsletter, date_og_published
                 try:
                     newsletter_story = {
                         "pivotId": fields.get("pivot_Id"),
                         "core_url": fields.get("original_url"),
-                        "source_id": fields.get("source_id", "Unknown"),
+                        # Removed: source_id (field doesn't exist in Newsletter Stories)
                         "date_og_published": fields.get("date_published"),
-                        "interest_score": interest_score,
+                        # Removed: interest_score (field doesn't exist in Newsletter Stories)
                         "sentiment": scores.get("sentiment"),
                         "topic": scores.get("topic"),
                         "tags": json.dumps(scores.get("tags", [])),
