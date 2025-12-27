@@ -4,12 +4,14 @@ Step 0: RSS Ingestion Job
 Fetches articles from RSS feeds and creates records in Airtable.
 This is Step 0 of the newsletter pipeline - raw ingestion to Articles table.
 
-ARCHITECTURE:
-  Step 0 (Ingest) → Articles table (raw RSS data)
-  Step 1 (Pre-Filter) → Reads from Articles, AI scores → Pre-Filter Log
-  Step 2 (Slot Selection) → Selects best articles → Newsletter Issue Stories
+ARCHITECTURE (ONE-CLICK PIPELINE):
+  Step 0a (Ingest) → Articles table (raw RSS data, needs_ai=true)
+  Step 0b (AI Scoring) → Updates Articles (needs_ai=false) + Creates Newsletter Stories
+
+  ONE CLICK triggers both steps automatically in sequence.
 
 Target Table: Articles (tblGumae8KDpsrWvh) in Pivot Media Master base
+Output Table: Newsletter Stories (tblY78ziWp5yhiGXp) for high-interest articles
 """
 
 import asyncio
@@ -21,6 +23,8 @@ from typing import List, Dict, Any, Optional
 
 from pyairtable import Api
 from urllib.parse import urlparse
+from redis import Redis
+from rq import Queue
 
 # Import local utilities
 from utils.pivot_id import generate_pivot_id
@@ -163,6 +167,9 @@ ARTICLES_TABLE = os.environ.get(
     "AIRTABLE_ARTICLES_TABLE",
     "tblGumae8KDpsrWvh"  # Articles table - raw ingestion target
 )
+
+# Redis configuration for job chaining
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379')
 
 
 async def fetch_feed(
@@ -446,6 +453,32 @@ def ingest_articles(debug: bool = False) -> Dict[str, Any]:
         print(f"  - Duplicates skipped: {results['articles_skipped_duplicate']}")
         print(f"  - Invalid skipped: {results['articles_skipped_invalid']}")
         print(f"  - Errors: {len(results['errors'])}")
+
+        # AUTOMATIC CHAINING: Trigger AI Scoring if we ingested any articles
+        if results["articles_ingested"] > 0:
+            print(f"[Ingest] Chaining AI Scoring job for {results['articles_ingested']} new articles...")
+            try:
+                from jobs.ai_scoring import run_ai_scoring
+
+                redis_conn = Redis.from_url(REDIS_URL)
+                queue = Queue('default', connection=redis_conn)
+
+                # Enqueue AI Scoring with batch size matching ingested count
+                ai_job = queue.enqueue(
+                    run_ai_scoring,
+                    batch_size=min(results["articles_ingested"], 100),  # Cap at 100 per run
+                    job_timeout='60m'  # AI scoring takes longer
+                )
+
+                results["ai_scoring_job_id"] = ai_job.id
+                print(f"[Ingest] ✓ AI Scoring job enqueued: {ai_job.id}")
+
+            except Exception as e:
+                error_msg = f"Failed to chain AI Scoring job: {str(e)}"
+                print(f"[Ingest] {error_msg}")
+                results["errors"].append(error_msg)
+        else:
+            print("[Ingest] No new articles ingested, skipping AI Scoring")
 
     except Exception as e:
         error_msg = f"Ingestion job failed: {str(e)}"
