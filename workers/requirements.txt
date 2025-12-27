@@ -1,5 +1,6 @@
 # Redis Queue for background jobs
 rq==2.1.0
+rq-scheduler==0.13.1
 redis==5.2.1
 
 # API clients
