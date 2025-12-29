@@ -182,7 +182,7 @@ Return JSON only:
     slotNumber: 1,
     name: "Slot 1 Selection Agent",
     description: "Select lead story for Jobs/Economy",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `You are selecting the lead story for Slot 1 of the Pivot 5 AI newsletter.
 
@@ -225,7 +225,7 @@ Return JSON only:
     slotNumber: 2,
     name: "Slot 2 Selection Agent",
     description: "Select story for Tier 1 AI",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `You are selecting the story for Slot 2 of the Pivot 5 AI newsletter.
 
@@ -266,7 +266,7 @@ Return JSON only:
     slotNumber: 3,
     name: "Slot 3 Selection Agent",
     description: "Select story for Industry Verticals",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `You are selecting the story for Slot 3 of the Pivot 5 AI newsletter.
 
@@ -310,7 +310,7 @@ Return JSON only:
     slotNumber: 4,
     name: "Slot 4 Selection Agent",
     description: "Select story for Emerging Tech",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `You are selecting the story for Slot 4 of the Pivot 5 AI newsletter.
 
@@ -352,7 +352,7 @@ Return JSON only:
     slotNumber: 5,
     name: "Slot 5 Selection Agent",
     description: "Select story for Consumer AI",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `You are selecting the story for Slot 5 of the Pivot 5 AI newsletter.
 
@@ -395,7 +395,7 @@ Return JSON only:
     slotNumber: null,
     name: "Subject Line Generator",
     description: "Generate email subject line",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.8,
     content: `Generate a compelling email subject line for today's Pivot 5 AI newsletter.
 
@@ -458,7 +458,7 @@ Return the cleaned article text only, preserving:
     slotNumber: null,
     name: "Headline Generator",
     description: "Generate newsletter headline",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `Generate a punchy, engaging headline for this newsletter story.
 
@@ -485,7 +485,7 @@ Return JSON only:
     slotNumber: null,
     name: "Bullet Point Generator",
     description: "Generate 3 bullet points",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `Generate 3 informative bullet points summarizing this article for the newsletter.
 
@@ -514,7 +514,7 @@ Return JSON only:
     slotNumber: null,
     name: "Bold Formatter",
     description: "Apply bold formatting",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.3,
     content: `Apply markdown bold formatting to key phrases in these bullet points.
 
@@ -542,7 +542,7 @@ Return JSON only:
     slotNumber: null,
     name: "Image Prompt Generator",
     description: "Generate image prompt",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.8,
     content: `Generate an image prompt for this newsletter story.
 
@@ -583,7 +583,7 @@ Style: Professional newsletter illustration, clean modern design, suitable for b
     slotNumber: null,
     name: "Summary Generator",
     description: "Generate 15-word newsletter summary",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     content: `Generate a 15-word summary of today's newsletter for the email preview text.
 

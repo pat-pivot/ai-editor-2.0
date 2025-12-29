@@ -18,6 +18,27 @@
 
 ---
 
+## ⚠️ CRITICAL: Anthropic Claude Model Requirements
+
+**DO NOT USE OUTDATED CLAUDE MODELS.** Claude 4.5 models use a different naming convention than Claude 3.x models.
+
+| Use Case | Required Model | NEVER Use |
+|----------|----------------|-----------|
+| Fast AI Scoring | `claude-haiku-4-5-20251001` | ~~claude-3-5-haiku-20241022~~ |
+| Standard Tasks | `claude-sonnet-4-5-20250929` | ~~claude-sonnet-4-20250514~~ |
+| Complex Tasks | `claude-opus-4-5-20251101` | ~~claude-3-opus~~ |
+
+**Claude 4.5 Model ID Format:** `claude-{tier}-{major}-{minor}-{YYYYMMDD}`
+- Haiku 4.5: `claude-haiku-4-5-20251001` (October 1, 2025)
+- Sonnet 4.5: `claude-sonnet-4-5-20250929` (September 29, 2025)
+- Opus 4.5: `claude-opus-4-5-20251101` (November 1, 2025)
+
+**Files that use Claude (verify these):**
+- `workers/jobs/ai_scoring.py` - AI Scoring job (MUST use `claude-haiku-4-5-20251001`)
+- `workers/utils/claude.py` - Claude API client
+
+---
+
 ## ⚠️ CRITICAL: Git Repository Structure
 
 **This `app/` folder is its OWN git repository, separate from the parent folder.**

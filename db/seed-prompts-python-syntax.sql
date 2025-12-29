@@ -184,12 +184,12 @@ Return JSON only:
 
 INSERT INTO system_prompts (prompt_key, step_id, name, description, model, temperature, slot_number, is_active)
 VALUES
-    ('slot_1_agent', 2, 'Slot 1 Selection Agent', 'Select lead story for Jobs/Economy', 'claude-sonnet-4-20250514', 0.7, 1, true),
-    ('slot_2_agent', 2, 'Slot 2 Selection Agent', 'Select story for Tier 1 AI', 'claude-sonnet-4-20250514', 0.7, 2, true),
-    ('slot_3_agent', 2, 'Slot 3 Selection Agent', 'Select story for Industry Verticals', 'claude-sonnet-4-20250514', 0.7, 3, true),
-    ('slot_4_agent', 2, 'Slot 4 Selection Agent', 'Select story for Emerging Tech', 'claude-sonnet-4-20250514', 0.7, 4, true),
-    ('slot_5_agent', 2, 'Slot 5 Selection Agent', 'Select story for Consumer AI', 'claude-sonnet-4-20250514', 0.7, 5, true),
-    ('subject_line', 2, 'Subject Line Generator', 'Generate email subject line', 'claude-sonnet-4-20250514', 0.8, NULL, true)
+    ('slot_1_agent', 2, 'Slot 1 Selection Agent', 'Select lead story for Jobs/Economy', 'claude-sonnet-4-5-20250929', 0.7, 1, true),
+    ('slot_2_agent', 2, 'Slot 2 Selection Agent', 'Select story for Tier 1 AI', 'claude-sonnet-4-5-20250929', 0.7, 2, true),
+    ('slot_3_agent', 2, 'Slot 3 Selection Agent', 'Select story for Industry Verticals', 'claude-sonnet-4-5-20250929', 0.7, 3, true),
+    ('slot_4_agent', 2, 'Slot 4 Selection Agent', 'Select story for Emerging Tech', 'claude-sonnet-4-5-20250929', 0.7, 4, true),
+    ('slot_5_agent', 2, 'Slot 5 Selection Agent', 'Select story for Consumer AI', 'claude-sonnet-4-5-20250929', 0.7, 5, true),
+    ('subject_line', 2, 'Subject Line Generator', 'Generate email subject line', 'claude-sonnet-4-5-20250929', 0.8, NULL, true)
 ON CONFLICT (prompt_key) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,
@@ -438,10 +438,10 @@ Return JSON only:
 INSERT INTO system_prompts (prompt_key, step_id, name, description, model, temperature, slot_number, is_active)
 VALUES
     ('content_cleaner', 3, 'Content Cleaner', 'Clean article content', 'gemini-2.0-flash-exp', 0.2, NULL, true),
-    ('headline_generator', 3, 'Headline Generator', 'Generate newsletter headline', 'claude-sonnet-4-20250514', 0.7, NULL, true),
-    ('bullet_generator', 3, 'Bullet Point Generator', 'Generate 3 bullet points', 'claude-sonnet-4-20250514', 0.7, NULL, true),
-    ('bold_formatter', 3, 'Bold Formatter', 'Apply bold formatting', 'claude-sonnet-4-20250514', 0.3, NULL, true),
-    ('image_prompt', 3, 'Image Prompt Generator', 'Generate image prompt', 'claude-sonnet-4-20250514', 0.8, NULL, true),
+    ('headline_generator', 3, 'Headline Generator', 'Generate newsletter headline', 'claude-sonnet-4-5-20250929', 0.7, NULL, true),
+    ('bullet_generator', 3, 'Bullet Point Generator', 'Generate 3 bullet points', 'claude-sonnet-4-5-20250929', 0.7, NULL, true),
+    ('bold_formatter', 3, 'Bold Formatter', 'Apply bold formatting', 'claude-sonnet-4-5-20250929', 0.3, NULL, true),
+    ('image_prompt', 3, 'Image Prompt Generator', 'Generate image prompt', 'claude-sonnet-4-5-20250929', 0.8, NULL, true),
     ('image_generator', 3, 'Image Generator', 'Generate newsletter image', 'gemini-imagen', 0.7, NULL, true)
 ON CONFLICT (prompt_key) DO UPDATE SET
     name = EXCLUDED.name,
@@ -597,7 +597,7 @@ Style: Professional newsletter illustration, clean modern design, suitable for b
 
 INSERT INTO system_prompts (prompt_key, step_id, name, description, model, temperature, slot_number, is_active)
 VALUES
-    ('summary_generator', 4, 'Summary Generator', 'Generate 15-word newsletter summary', 'claude-sonnet-4-20250514', 0.7, NULL, true)
+    ('summary_generator', 4, 'Summary Generator', 'Generate 15-word newsletter summary', 'claude-sonnet-4-5-20250929', 0.7, NULL, true)
 ON CONFLICT (prompt_key) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,

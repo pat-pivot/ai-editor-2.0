@@ -190,7 +190,7 @@ Return JSON only:
     step_id: 2,
     name: "Slot 1 Selection Agent",
     description: "Selects best Jobs/Economy story using Claude",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: 1,
     content: `You are selecting the lead story for Slot 1 of the Pivot 5 AI newsletter.
@@ -225,7 +225,7 @@ Return JSON:
     step_id: 2,
     name: "Slot 2 Selection Agent",
     description: "Selects best Tier 1 AI story using Claude",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: 2,
     content: `You are selecting the story for Slot 2 of the Pivot 5 AI newsletter.
@@ -261,7 +261,7 @@ Return JSON:
     step_id: 2,
     name: "Slot 3 Selection Agent",
     description: "Selects best Industry Impact story using Claude",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: 3,
     content: `You are selecting the story for Slot 3 of the Pivot 5 AI newsletter.
@@ -298,7 +298,7 @@ Return JSON:
     step_id: 2,
     name: "Slot 4 Selection Agent",
     description: "Selects best Emerging Companies story using Claude",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: 4,
     content: `You are selecting the story for Slot 4 of the Pivot 5 AI newsletter.
@@ -335,7 +335,7 @@ Return JSON:
     step_id: 2,
     name: "Slot 5 Selection Agent",
     description: "Selects best Consumer AI story using Claude",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: 5,
     content: `You are selecting the story for Slot 5 of the Pivot 5 AI newsletter.
@@ -372,7 +372,7 @@ Return JSON:
     step_id: 2,
     name: "Subject Line Generator",
     description: "Generates email subject line using Claude",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.8,
     slot_number: null,
     content: `Generate a compelling email subject line for today's Pivot 5 AI newsletter.
@@ -406,7 +406,7 @@ Return JSON:
     step_id: 3,
     name: "Content Cleaner",
     description: "Cleans article content for processing",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.3,
     slot_number: null,
     content: `Clean this article content by removing:
@@ -435,7 +435,7 @@ Return the cleaned article text only, preserving:
     step_id: 3,
     name: "Headline Generator",
     description: "Generates newsletter headlines using Claude",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: null,
     content: `Generate a punchy, engaging headline for this newsletter story.
@@ -462,7 +462,7 @@ Return JSON:
     step_id: 3,
     name: "Bullet Point Generator",
     description: "Generates 3 bullet points for each story",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: null,
     content: `Generate 3 informative bullet points summarizing this article for the newsletter.
@@ -491,7 +491,7 @@ Return JSON:
     step_id: 3,
     name: "Bold Formatter",
     description: "Applies bold formatting to key phrases",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.3,
     slot_number: null,
     content: `Apply markdown bold formatting to key phrases in these bullet points.
@@ -519,7 +519,7 @@ Return JSON:
     step_id: 3,
     name: "Image Prompt Generator",
     description: "Generates image prompts for Gemini",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.8,
     slot_number: null,
     content: `Generate an image prompt for this newsletter story.
@@ -560,7 +560,7 @@ Style: Professional newsletter illustration, clean modern design, suitable for b
     step_id: 4,
     name: "Newsletter Summary Generator",
     description: "Generates 15-word email preview text",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.7,
     slot_number: null,
     content: `Generate a 15-word summary of today's newsletter for the email preview text.

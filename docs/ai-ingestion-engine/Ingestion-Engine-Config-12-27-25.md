@@ -71,7 +71,7 @@ Airtable (Articles + Newsletter Stories)
 | Setting | Value |
 |---------|-------|
 | **Batch size** | 150 articles per run |
-| **Model** | `claude-sonnet-4-20250514` |
+| **Model** | `claude-sonnet-4-5-20250929` |
 | **Scoring temperature** | 0.3 |
 | **Decoration temperature** | 0.5 |
 | **Interest threshold** | 15 (for Newsletter Story creation) |
