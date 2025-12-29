@@ -286,9 +286,9 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
         newsletter_stories_table = airtable.table(AIRTABLE_BASE_ID, NEWSLETTER_STORIES_TABLE)
         claude = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-        # Query articles needing AI scoring
-        print("[AI Scoring] Querying articles with needs_ai = true...")
-        formula = "{needs_ai} = 1"
+        # Query articles needing AI scoring (TODAY only to avoid re-scoring old articles)
+        print("[AI Scoring] Querying articles with needs_ai = true (today only)...")
+        formula = "AND({needs_ai} = 1, IS_SAME({date_ingested}, TODAY(), 'day'))"
         articles = articles_table.all(formula=formula, max_records=batch_size)
 
         results["articles_queried"] = len(articles)
@@ -429,9 +429,11 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
             airtable = Api(AIRTABLE_API_KEY)
             articles_table = airtable.table(AIRTABLE_BASE_ID, ARTICLES_TABLE)
 
-            remaining = articles_table.all(formula="{needs_ai} = 1", max_records=1)
+            # Only check for remaining articles from TODAY
+            today_formula = "AND({needs_ai} = 1, IS_SAME({date_ingested}, TODAY(), 'day'))"
+            remaining = articles_table.all(formula=today_formula, max_records=1)
             if remaining:
-                remaining_count = len(articles_table.all(formula="{needs_ai} = 1", max_records=500))
+                remaining_count = len(articles_table.all(formula=today_formula, max_records=500))
                 print(f"[AI Scoring] 🔄 {remaining_count} more articles remaining, auto-requeueing...")
                 results["remaining_articles"] = remaining_count
                 results["requeued"] = True
