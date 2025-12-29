@@ -139,8 +139,40 @@ export default function PipelinePage() {
   const [selectedSlots, setSelectedSlots] = useState<SelectedSlotsData | null>(null);
   const [decorations, setDecorations] = useState<DecorationData[]>([]);
   const [prefilterCount, setPrefilterCount] = useState(0);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const [ingestStats, setIngestStats] = useState<{ totalArticles: number; todayCount: number } | null>(null);
+
+  // Check if any step is running
+  const hasRunningSteps = steps.some(step => step.status === "running");
+
+  // Cancel all running jobs
+  const cancelAllJobs = async () => {
+    setIsCancelling(true);
+    try {
+      const response = await fetch("/api/jobs/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        // Reset all running steps to idle
+        setSteps(prev =>
+          prev.map(step =>
+            step.status === "running" ? { ...step, status: "idle" as StepStatus } : step
+          )
+        );
+        setIsRunningAll(false);
+      } else {
+        const data = await response.json();
+        console.error("Failed to cancel jobs:", data.error);
+      }
+    } catch (error) {
+      console.error("Error cancelling jobs:", error);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   const fetchPipelineData = useCallback(async () => {
     try {
@@ -263,23 +295,50 @@ export default function PipelinePage() {
             Monitor and control the 5-step AI Editor workflow
           </p>
         </div>
-        <Button
-          onClick={runAllSteps}
-          disabled={isRunningAll}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground"
-        >
-          {isRunningAll ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              Running Pipeline...
-            </>
-          ) : (
-            "Run Full Pipeline"
+        <div className="flex items-center gap-3">
+          {(hasRunningSteps || isRunningAll) && (
+            <Button
+              onClick={cancelAllJobs}
+              disabled={isCancelling}
+              variant="destructive"
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isCancelling ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Stopping...
+                </>
+              ) : (
+                <>
+                  <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                  </svg>
+                  Stop All Jobs
+                </>
+              )}
+            </Button>
           )}
-        </Button>
+          <Button
+            onClick={runAllSteps}
+            disabled={isRunningAll}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            {isRunningAll ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Running Pipeline...
+              </>
+            ) : (
+              "Run Full Pipeline"
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Today's Issue Preview - TOP */}
@@ -444,25 +503,39 @@ export default function PipelinePage() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => runStep(step.id)}
-                    disabled={step.status === "running"}
-                  >
-                    {step.status === "running" ? (
-                      <>
+                <div className="flex-shrink-0 flex items-center gap-2">
+                  {step.status === "running" ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled
+                      >
                         <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
                         Running...
-                      </>
-                    ) : (
-                      "Run Step"
-                    )}
-                  </Button>
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={cancelAllJobs}
+                        disabled={isCancelling}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        {isCancelling ? "Stopping..." : "Stop"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => runStep(step.id)}
+                    >
+                      Run Step
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>

@@ -261,6 +261,113 @@ def get_job_status(job_id: str):
         }), 404
 
 
+@app.route('/jobs/cancel/<job_id>', methods=['POST'])
+def cancel_job(job_id: str):
+    """
+    Cancel a job by ID.
+
+    Returns:
+        {
+            "success": true,
+            "job_id": "abc123",
+            "message": "Job cancelled"
+        }
+    """
+    # Verify authentication
+    if not verify_auth():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized'
+        }), 401
+
+    try:
+        conn = get_redis_connection()
+        job = Job.fetch(job_id, connection=conn)
+
+        status = job.get_status()
+        if status in ['finished', 'failed']:
+            return jsonify({
+                'success': False,
+                'job_id': job_id,
+                'error': f'Job already {status}'
+            }), 400
+
+        # Cancel the job
+        job.cancel()
+
+        logger.info(f"Cancelled job {job_id}")
+
+        return jsonify({
+            'success': True,
+            'job_id': job_id,
+            'message': 'Job cancelled',
+            'previous_status': status
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to cancel job {job_id}: {e}")
+        return jsonify({
+            'success': False,
+            'job_id': job_id,
+            'error': str(e)
+        }), 404
+
+
+@app.route('/jobs/cancel-all', methods=['POST'])
+def cancel_all_jobs():
+    """
+    Cancel all jobs in all queues.
+
+    Returns:
+        {
+            "success": true,
+            "cancelled": 5,
+            "details": {...}
+        }
+    """
+    # Verify authentication
+    if not verify_auth():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized'
+        }), 401
+
+    try:
+        conn = get_redis_connection()
+        cancelled = 0
+        details = {}
+
+        for queue_name in ['high', 'default', 'low']:
+            queue = Queue(queue_name, connection=conn)
+            queue_cancelled = 0
+
+            # Cancel all jobs in the queue
+            for job in queue.jobs:
+                try:
+                    job.cancel()
+                    queue_cancelled += 1
+                except Exception as e:
+                    logger.warning(f"Failed to cancel job {job.id}: {e}")
+
+            details[queue_name] = queue_cancelled
+            cancelled += queue_cancelled
+
+        logger.info(f"Cancelled {cancelled} jobs across all queues")
+
+        return jsonify({
+            'success': True,
+            'cancelled': cancelled,
+            'details': details
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to cancel all jobs: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/jobs/queue', methods=['GET'])
 def get_queue_status():
     """
