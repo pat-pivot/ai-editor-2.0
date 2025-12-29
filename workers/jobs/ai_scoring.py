@@ -164,13 +164,13 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 def score_article(client: Anthropic, article: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Score a single article using Claude Sonnet.
+    Score a single article using Claude Haiku 4.5 (fast & cost-efficient).
     """
     prompt = build_scoring_prompt(article)
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251022",
             max_tokens=1024,
             temperature=0.3,
             messages=[
@@ -207,14 +207,14 @@ def score_article(client: Anthropic, article: Dict[str, Any]) -> Optional[Dict[s
 
 def decorate_article(client: Anthropic, article: Dict[str, Any], scores: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Generate full decoration for a high-interest article.
+    Generate full decoration for a high-interest article using Claude Haiku 4.5.
     Returns ai_headline, ai_dek, bullets, and image_prompt.
     """
     prompt = build_decoration_prompt(article, scores)
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251022",
             max_tokens=2048,
             temperature=0.5,  # Slightly more creative for decoration
             messages=[
