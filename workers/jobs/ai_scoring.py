@@ -170,7 +170,7 @@ def score_article(client: Anthropic, article: Dict[str, Any]) -> Optional[Dict[s
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251022",
+            model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             temperature=0.3,
             messages=[
@@ -214,7 +214,7 @@ def decorate_article(client: Anthropic, article: Dict[str, Any], scores: Dict[st
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251022",
+            model="claude-3-5-haiku-20241022",
             max_tokens=2048,
             temperature=0.5,  # Slightly more creative for decoration
             messages=[
