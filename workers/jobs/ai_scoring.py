@@ -51,7 +51,6 @@ def build_scoring_prompt(article: Dict[str, Any]) -> str:
     """
     Build the Claude prompt for scoring an article.
     """
-    headline = article.get("headline") or article.get("title", "No headline")
     source = article.get("source_id", "Unknown")
     url = article.get("original_url", "")
     published = article.get("date_published", "")
@@ -59,10 +58,11 @@ def build_scoring_prompt(article: Dict[str, Any]) -> str:
     return f"""Analyze this news article and provide scoring for newsletter placement.
 
 ARTICLE:
-- Headline: {headline}
 - Source: {source}
 - URL: {url}
 - Published: {published}
+
+IMPORTANT: Extract the article topic and headline from the URL path. The URL contains slug text that reveals the article subject.
 
 SCORING REQUIREMENTS:
 
@@ -114,7 +114,6 @@ def build_decoration_prompt(article: Dict[str, Any], scores: Dict[str, Any]) -> 
     Build the Claude prompt for decorating a high-interest article.
     Generates ai_headline, ai_dek, 3 bullets with bolding, and image_prompt.
     """
-    headline = article.get("headline") or article.get("title", "No headline")
     source = article.get("source_id", "Unknown")
     url = article.get("original_url", "")
     topic = scores.get("topic", "OTHER")
@@ -122,10 +121,11 @@ def build_decoration_prompt(article: Dict[str, Any], scores: Dict[str, Any]) -> 
     return f"""You are decorating a news article for an AI-focused newsletter. Generate compelling content.
 
 ARTICLE:
-- Original Headline: {headline}
 - Source: {source}
 - URL: {url}
 - Topic: {topic}
+
+IMPORTANT: Extract the article's topic and key information from the URL path. The URL slug reveals the article subject.
 
 GENERATE THE FOLLOWING:
 
@@ -306,15 +306,17 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
             fields = record["fields"]
             pivot_id = fields.get("pivot_Id", "")
 
-            headline = fields.get('headline') or fields.get('title', 'Unknown')
-            print(f"[AI Scoring] Scoring: {headline[:50]}...")
+            # Articles table doesn't have headline - use URL slug for logging
+            url = fields.get('original_url', '')
+            url_slug = url.split('/')[-1][:50] if url else 'Unknown'
+            print(f"[AI Scoring] Scoring: {url_slug}...")
 
             # Score with Claude
             scores = score_article(claude, fields)
 
             if not scores:
                 results["articles_failed"] += 1
-                results["errors"].append(f"Failed to score: {headline[:50]}")
+                results["errors"].append(f"Failed to score: {url_slug}")
                 continue
 
             # Get the best newsletter fit score
@@ -364,7 +366,7 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
                 decoration = decorate_article(claude, fields, scores)
 
                 if not decoration:
-                    error_msg = f"Failed to decorate high-interest article: {headline[:50]}"
+                    error_msg = f"Failed to decorate high-interest article: {url_slug}"
                     print(f"[AI Scoring] {error_msg}")
                     results["errors"].append(error_msg)
                     continue
@@ -387,7 +389,7 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
                     "newsletter": scores.get("primary_newsletter_slug", "pivot_ai"),
 
                     # Decoration from Claude
-                    "ai_headline": decoration.get("ai_headline", headline),
+                    "ai_headline": decoration.get("ai_headline", url_slug),
                     "ai_dek": decoration.get("ai_dek", ""),
                     "ai_bullet_1": decoration.get("ai_bullet_1", ""),
                     "ai_bullet_2": decoration.get("ai_bullet_2", ""),
@@ -403,7 +405,7 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
                 try:
                     created = newsletter_stories_table.create(newsletter_story)
                     results["newsletter_stories_created"] += 1
-                    print(f"[AI Scoring] ✅ Created Newsletter Story: {decoration.get('ai_headline', headline)[:50]}...")
+                    print(f"[AI Scoring] ✅ Created Newsletter Story: {decoration.get('ai_headline', url_slug)[:50]}...")
                 except Exception as e:
                     error_msg = f"Failed to create Newsletter Story for {pivot_id}: {e}"
                     print(f"[AI Scoring] {error_msg}")
