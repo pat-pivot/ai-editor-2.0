@@ -43,6 +43,12 @@ const navigation: NavSection[] = [
       { name: "Mautic", href: "/analytics", icon: "analytics" },
     ],
   },
+  {
+    title: "SANDBOX",
+    items: [
+      { name: "FreshRSS Pipeline", href: "/sandbox", icon: "science" },
+    ],
+  },
 ];
 
 function MaterialIcon({ name, className }: { name: string; className?: string }) {
