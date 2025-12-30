@@ -45,21 +45,22 @@ FRESHRSS_API = f"{FRESHRSS_URL}/api/greader.php"
 
 
 # Source name mappings from stream ID to display name
+# Updated Dec 30, 2025 to match current FreshRSS subscriptions
 STREAM_ID_TO_SOURCE = {
     "feed/3": "Bloomberg",
-    "feed/6": "WSJ",
-    "feed/7": "WSJ",
     "feed/8": "The Verge",
     "feed/9": "TechCrunch",
     "feed/10": "CNBC",
     "feed/11": "The Atlantic",
-    "feed/12": "TechRepublic",
-    "feed/13": "New York Times",
     "feed/16": "Google News AI",
     "feed/17": "AI Newsletters",
-    "feed/18": "Reuters",
+    "feed/19": "TechRepublic",
+    "feed/21": "WSJ",
+    "feed/22": "WSJ",
+    "feed/23": "Reuters",
     "feed/27": "Semafor",
     "feed/28": "VentureBeat",
+    "feed/29": "New York Times",
 }
 
 # Domain to source name mappings for URL-based extraction

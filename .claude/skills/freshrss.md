@@ -150,9 +150,9 @@ https://kill-the-newsletter.com/feeds/wursamkt3o49gpvmp6la.xml
 | `feed/21` | WSJ Tech | Google News |
 | `feed/22` | WSJ Business AI | Google News |
 | `feed/23` | Reuters AI | Google News |
-| `feed/26` | NYT Technology | Google News |
 | `feed/27` | Semafor | Google News |
 | `feed/28` | VentureBeat | Direct RSS |
+| `feed/29` | NYT Technology | Google News |
 
 ## CRITICAL: Google News URL Resolution
 
