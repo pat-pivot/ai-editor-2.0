@@ -179,13 +179,32 @@ ARTICLE:
 - URL: {url}
 - Published: {published}
 
+CRITICAL: We want HARD NEWS, not opinion pieces.
+
 SCORING REQUIREMENTS:
 
 1. **interest_score** (0-25): How newsworthy is this for AI/tech professionals?
-   - 0-10: Low interest, generic news, not relevant to AI/tech
-   - 11-15: Moderate interest, tangentially related to AI/tech
-   - 16-20: High interest, directly relevant to AI/tech industry
-   - 21-25: Exceptional, breaking news or major development
+
+   PRIORITIZE (score higher):
+   - Breaking news, announcements, product launches
+   - Concrete events: funding rounds, acquisitions, partnerships
+   - Data-driven stories with numbers, statistics, research findings
+   - Company news: earnings, layoffs, hiring, expansions
+   - Policy/regulatory news with specific actions or decisions
+
+   DEPRIORITIZE (score lower, cap at 12):
+   - Opinion pieces, op-eds, commentary
+   - "Think pieces" without new information
+   - Speculation about future trends
+   - Personal essays or first-person narratives
+   - Listicles like "5 ways AI will change X"
+
+   Score ranges:
+   - 0-8: Opinion/op-ed, not news, or not AI-relevant
+   - 9-12: Soft news, analysis pieces, or tangentially related
+   - 13-17: Solid news story, relevant to AI/tech
+   - 18-22: Important news, significant announcement or development
+   - 23-25: Breaking/major news (rare - major launches, big acquisitions, policy changes)
 
 2. **sentiment** (-10 to 10): Tone of the news
    - -10 to -5: Very negative (crisis, failure, scandal)
