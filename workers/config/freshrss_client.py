@@ -26,6 +26,10 @@ import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
+
+# EST timezone for all timestamps
+EST = ZoneInfo("America/New_York")
 
 
 # FreshRSS Configuration
@@ -267,21 +271,25 @@ class FreshRSSClient:
                 return None
 
             # Extract publication timestamp (for reference/output)
+            # Convert to EST for consistent timezone across pipeline
             published = item.get("published")
             published_dt = None
             if published:
                 try:
-                    published_dt = datetime.fromtimestamp(published, tz=timezone.utc)
+                    # Parse as UTC then convert to EST
+                    published_dt = datetime.fromtimestamp(published, tz=timezone.utc).astimezone(EST)
                 except (ValueError, TypeError):
                     pass
 
             # Extract crawl timestamp (when FreshRSS discovered the article)
             # This is more reliable for filtering "recent" articles
+            # Convert to EST for consistent timezone across pipeline
             crawl_ms = item.get("crawlTimeMsec")
             crawl_dt = None
             if crawl_ms:
                 try:
-                    crawl_dt = datetime.fromtimestamp(int(crawl_ms) / 1000, tz=timezone.utc)
+                    # Parse as UTC then convert to EST
+                    crawl_dt = datetime.fromtimestamp(int(crawl_ms) / 1000, tz=timezone.utc).astimezone(EST)
                 except (ValueError, TypeError):
                     pass
 

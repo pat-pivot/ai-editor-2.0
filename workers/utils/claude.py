@@ -37,7 +37,7 @@ class ClaudeClient:
         self,
         slot: int,
         candidates: List[dict],
-        yesterday_data: dict,
+        recent_data: dict,
         cumulative_state: dict
     ) -> dict:
         """
@@ -46,13 +46,13 @@ class ClaudeClient:
         Args:
             slot: Slot number (1-5)
             candidates: List of story candidates for this slot
-            yesterday_data: {headlines, storyIds, pivotIds, slot1Company}
+            recent_data: {headlines, storyIds, pivotIds, slot1Company} from 14-day lookback
             cumulative_state: {selectedToday, selectedCompanies, selectedSources}
 
         Returns:
             {selected_storyId, selected_pivotId, selected_headline, company, source_id, reasoning}
         """
-        system_prompt = self._build_slot_system_prompt(slot, yesterday_data, cumulative_state)
+        system_prompt = self._build_slot_system_prompt(slot, recent_data, cumulative_state)
         user_prompt = self._build_slot_user_prompt(candidates)
 
         response = self.client.messages.create(
@@ -69,22 +69,30 @@ class ClaudeClient:
         except json.JSONDecodeError:
             return self._parse_slot_response(response.content[0].text, candidates)
 
-    def _build_slot_system_prompt(self, slot: int, yesterday_data: dict, cumulative_state: dict) -> str:
+    def _build_slot_system_prompt(self, slot: int, recent_data: dict, cumulative_state: dict) -> str:
         """
         Build slot-specific system prompt from database with Python variable substitution.
 
         Database prompts use {variable} syntax for Python .format() substitution.
+
+        Updated 12/30/25: Changed from yesterday_data to recent_data (14-day lookback)
+        to prevent story repetition within a 2-week window.
         """
         # Load the base prompt from database
         prompt_key = f"slot_{slot}_agent"
         prompt_template = get_prompt(prompt_key)
 
-        # Build dynamic context values
-        yesterday_headlines = yesterday_data.get('headlines', [])
+        # Build dynamic context values from 14-day lookback
+        recent_headlines = recent_data.get('headlines', [])
+        recent_story_ids = recent_data.get('storyIds', [])
         selected_today = cumulative_state.get('selectedToday', [])
         selected_companies = cumulative_state.get('selectedCompanies', [])
         selected_sources = cumulative_state.get('selectedSources', [])
-        yesterday_slot = yesterday_headlines[slot - 1] if len(yesterday_headlines) >= slot else "(none)"
+
+        # For yesterday_slot context, use recent headlines if available
+        # (showing the first 5 most recent as a sample)
+        sample_headlines = recent_headlines[:5] if recent_headlines else []
+        yesterday_slot = sample_headlines[slot - 1] if len(sample_headlines) >= slot else "(none)"
 
         if prompt_template:
             try:
@@ -99,8 +107,12 @@ class ClaudeClient:
                 )
 
                 # Add slot 1 special rule
-                if slot == 1 and yesterday_data.get('slot1Company'):
-                    prompt += f"\n\nTWO-DAY ROTATION (Slot 1): Do NOT feature {yesterday_data['slot1Company']} (yesterday's Slot 1 company)."
+                if slot == 1 and recent_data.get('slot1Company'):
+                    prompt += f"\n\nTWO-DAY ROTATION (Slot 1): Do NOT feature {recent_data['slot1Company']} (yesterday's Slot 1 company)."
+
+                # Add recent storyIDs context (14-day lookback)
+                if recent_story_ids:
+                    prompt += f"\n\n14-DAY LOOKBACK: Do NOT select any of these storyIDs (already sent in last 2 weeks): {', '.join(recent_story_ids[:20])}{'...' if len(recent_story_ids) > 20 else ''}"
 
                 return prompt
             except KeyError as e:
@@ -119,8 +131,8 @@ class ClaudeClient:
         context = f"""You are a senior editor for Pivot 5. SLOT {slot} FOCUS: {slot_focus.get(slot, '')}
 
 CURRENT CONTEXT:
-1. YESTERDAY'S HEADLINES - Do NOT select stories covering same topics:
-{chr(10).join(f"   - {h}" for h in yesterday_headlines) if yesterday_headlines else '   (none)'}
+1. RECENT STORIES (14-day lookback) - Do NOT select stories covering same topics or storyIDs:
+   Recent storyIDs to avoid: {', '.join(recent_story_ids[:20]) if recent_story_ids else '(none)'}{'...' if len(recent_story_ids) > 20 else ''}
 
 2. ALREADY SELECTED TODAY - Do NOT select these storyIDs:
    {', '.join(selected_today) if selected_today else '(none yet)'}
@@ -133,10 +145,10 @@ CURRENT CONTEXT:
 """
 
         # Slot 1 has special two-day rotation rule
-        if slot == 1 and yesterday_data.get('slot1Company'):
+        if slot == 1 and recent_data.get('slot1Company'):
             context += f"""
 5. TWO-DAY ROTATION (Slot 1 only) - Do NOT feature this company:
-   Yesterday's Slot 1 company: {yesterday_data['slot1Company']}
+   Yesterday's Slot 1 company: {recent_data['slot1Company']}
 """
 
         context += """

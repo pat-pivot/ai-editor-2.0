@@ -8,21 +8,83 @@ previously selected companies/sources/IDs to enforce diversity rules.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 
 from utils.airtable import AirtableClient
 from utils.claude import ClaudeClient
 
 
-# Slot-specific freshness windows (in days)
-SLOT_FRESHNESS = {
-    1: 1,   # 0-24 hours
-    2: 2,   # 24-48 hours
+# Base slot-specific freshness windows (in days)
+# These are extended on weekends (see get_slot_freshness)
+BASE_SLOT_FRESHNESS = {
+    1: 1,   # 0-24 hours (72h on weekends)
+    2: 2,   # 24-48 hours (72h on weekends)
     3: 7,   # 0-7 days
-    4: 2,   # 0-48 hours
+    4: 2,   # 0-48 hours (72h on weekends)
     5: 7,   # 0-7 days
 }
+
+# 14-day lookback for duplicate checking (matches n8n workflow)
+DUPLICATE_LOOKBACK_DAYS = 14
+
+
+def get_next_issue_date() -> tuple[str, str]:
+    """
+    Calculate the next newsletter issue date with weekend skipping.
+
+    n8n Logic:
+    - Newsletter runs Tue-Sat for Mon-Fri issues
+    - Friday run → Monday issue (skip weekend)
+    - Saturday run → Monday issue (skip weekend)
+    - Otherwise → next day
+
+    Returns:
+        Tuple of (issue_date_iso, issue_date_label)
+        e.g., ('2025-01-02', 'Pivot 5 - Jan 02')
+    """
+    now = datetime.utcnow()
+    weekday = now.weekday()  # 0=Monday, 4=Friday, 5=Saturday, 6=Sunday
+
+    # Calculate next issue date based on day of week
+    if weekday == 4:  # Friday -> Monday (skip Sat/Sun)
+        next_issue = now + timedelta(days=3)
+    elif weekday == 5:  # Saturday -> Monday (skip Sun)
+        next_issue = now + timedelta(days=2)
+    else:
+        next_issue = now + timedelta(days=1)
+
+    issue_date_iso = next_issue.strftime('%Y-%m-%d')
+    issue_date_label = f"Pivot 5 - {next_issue.strftime('%b %d')}"
+
+    return issue_date_iso, issue_date_label
+
+
+def get_slot_freshness(slot: int) -> int:
+    """
+    Get freshness window for a slot, extended on weekends.
+
+    n8n Logic:
+    - On Sunday/Monday runs, extend freshness to 72 hours (3 days) for slots 1, 2, 4
+    - This accounts for weekend gap when no newsletters are sent
+
+    Args:
+        slot: Slot number (1-5)
+
+    Returns:
+        Freshness window in days
+    """
+    base_freshness = BASE_SLOT_FRESHNESS.get(slot, 7)
+
+    # Check if it's a weekend (Sunday=6 or Monday=0)
+    weekday = datetime.utcnow().weekday()
+    is_weekend_run = weekday in (6, 0)  # Sunday or Monday
+
+    # Extend to 72 hours (3 days) for slots with short freshness on weekends
+    if is_weekend_run and base_freshness <= 2:
+        return 3  # 72 hours
+
+    return base_freshness
 
 
 def select_slots() -> dict:
@@ -57,11 +119,11 @@ def select_slots() -> dict:
     }
 
     try:
-        # 1. Get yesterday's issue for diversity rules
-        print("[Step 2] Fetching yesterday's issue...")
-        yesterday_issue = airtable.get_yesterday_issue()
-        yesterday_data = _extract_yesterday_data(yesterday_issue)
-        print(f"[Step 2] Yesterday's headlines: {len(yesterday_data['headlines'])}")
+        # 1. Get recent issues for diversity rules (14-day lookback)
+        print(f"[Step 2] Fetching recent issues (last {DUPLICATE_LOOKBACK_DAYS} days)...")
+        recent_issues = airtable.get_recent_sent_issues(DUPLICATE_LOOKBACK_DAYS)
+        recent_data = _extract_recent_issues_data(recent_issues)
+        print(f"[Step 2] Recent issues found: {len(recent_issues)}, total storyIds: {len(recent_data['storyIds'])}")
 
         # 2. Initialize cumulative state for tracking across slots
         cumulative_state = {
@@ -70,12 +132,13 @@ def select_slots() -> dict:
             "selectedSources": []      # sources used today (count for max 2)
         }
 
-        # 3. Build today's issue data
-        today_date = datetime.utcnow().strftime('%Y-%m-%d')
-        issue_date_label = f"Pivot 5 - {datetime.utcnow().strftime('%b %d')}"
+        # 3. Build today's issue data using proper next-issue calculation
+        issue_date_iso, issue_date_label = get_next_issue_date()
+        print(f"[Step 2] Next issue date: {issue_date_label}")
 
         issue_data = {
             "issue_date": issue_date_label,
+            "issue_date_iso": issue_date_iso,
             "status": "pending"
         }
 
@@ -86,8 +149,8 @@ def select_slots() -> dict:
             print(f"[Step 2] Processing Slot {slot}...")
 
             try:
-                # Get pre-filter candidates for this slot
-                freshness_days = SLOT_FRESHNESS.get(slot, 7)
+                # Get pre-filter candidates for this slot (with weekend extension)
+                freshness_days = get_slot_freshness(slot)
                 candidates = airtable.get_prefilter_candidates(slot, freshness_days)
                 print(f"[Step 2] Slot {slot}: Found {len(candidates)} candidates")
 
@@ -98,10 +161,14 @@ def select_slots() -> dict:
                     })
                     continue
 
-                # Filter out already selected stories
+                # Filter out already selected stories AND stories from 14-day lookback
+                recent_story_ids = set(recent_data.get('storyIds', []))
+                selected_today = set(cumulative_state["selectedToday"])
+                excluded_ids = recent_story_ids | selected_today
+
                 available_candidates = [
                     c for c in candidates
-                    if c.get('fields', {}).get('storyID') not in cumulative_state["selectedToday"]
+                    if c.get('fields', {}).get('storyID') not in excluded_ids
                 ]
 
                 if not available_candidates:
@@ -117,7 +184,7 @@ def select_slots() -> dict:
                 selection = claude.select_slot(
                     slot=slot,
                     candidates=available_candidates,
-                    yesterday_data=yesterday_data,
+                    recent_data=recent_data,
                     cumulative_state=cumulative_state
                 )
 
@@ -202,37 +269,42 @@ def select_slots() -> dict:
         raise
 
 
-def _extract_yesterday_data(issue: Optional[dict]) -> dict:
+def _extract_recent_issues_data(issues: List[dict]) -> dict:
     """
-    Extract headlines, storyIds, pivotIds from yesterday's issue
+    Extract headlines, storyIds, pivotIds from recent issues (14-day lookback)
     for diversity rule enforcement.
+
+    Updated 12/30/25: Changed from single-day to 14-day lookback to match n8n workflow.
+    This prevents the same story from appearing in the newsletter within a 2-week window.
     """
     data = {
         "headlines": [],
         "storyIds": [],
         "pivotIds": [],
-        "slot1Company": None
+        "slot1Company": None  # Most recent slot 1 company for two-day rotation
     }
 
-    if not issue:
+    if not issues:
         return data
 
-    fields = issue.get('fields', {})
+    for idx, issue in enumerate(issues):
+        fields = issue.get('fields', {})
 
-    for i in range(1, 6):
-        headline = fields.get(f'slot_{i}_headline', '')
-        story_id = fields.get(f'slot_{i}_storyId', '')
-        pivot_id = fields.get(f'slot_{i}_pivotId', '')
+        for i in range(1, 6):
+            headline = fields.get(f'slot_{i}_headline', '')
+            story_id = fields.get(f'slot_{i}_storyId', '')
+            pivot_id = fields.get(f'slot_{i}_pivotId', '')
 
-        if headline:
-            data["headlines"].append(headline)
-        if story_id:
-            data["storyIds"].append(story_id)
-        if pivot_id:
-            data["pivotIds"].append(pivot_id)
+            if headline:
+                data["headlines"].append(headline)
+            if story_id:
+                data["storyIds"].append(story_id)
+            if pivot_id:
+                data["pivotIds"].append(pivot_id)
 
-    # Slot 1 company for two-day rotation rule
-    data["slot1Company"] = fields.get('slot_1_company')
+        # Only get slot 1 company from most recent issue (for two-day rotation)
+        if idx == 0:
+            data["slot1Company"] = fields.get('slot_1_company')
 
     return data
 

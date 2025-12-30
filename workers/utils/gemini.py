@@ -239,21 +239,23 @@ ARTICLE:
 Return ONLY the cleaned article content, no explanations."""
         else:
             logger.warning("content_cleaner prompt not found in database, using fallback")
-            prompt = f"""Clean the following article content by removing:
-- Navigation elements
-- Advertisements
-- Footer content
-- Subscription prompts
-- Social media buttons
-- Related articles sections
-- Author bios (keep byline if part of story)
+            prompt = f"""You are a content extraction assistant. Extract ONLY the main article body text from the following scraped web content.
 
-Keep ONLY the main article content. Preserve the article structure and formatting.
+Remove ALL of the following:
+- Navigation menus and links
+- Skip to content / accessibility links
+- Share buttons (Share on Facebook, Copy link, etc.)
+- Ad placeholders and sponsored content
+- Footer links and related articles
+- Author bios and newsletter signup prompts
+- Sidebar widgets and table of contents
+- Cookie notices and privacy banners
+- Comments sections
+
+Return ONLY the clean article prose. Do not add any commentary or headers.
 
 ARTICLE:
-{markdown[:8000]}
-
-Return ONLY the cleaned article content, no explanations."""
+{markdown[:8000]}"""
 
         # Get temperature from database if available
         prompt_meta = get_prompt_with_metadata('content_cleaner')

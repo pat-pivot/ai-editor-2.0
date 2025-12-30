@@ -273,11 +273,15 @@ class AirtableClient:
         """
         Step 2, Nodes 3-7: Get pre-filter candidates for a specific slot
 
-        Updated: Uses core_url instead of original_url (n8n Gap #6)
+        Updated 12/30/25:
+        - Uses date_og_published (original publish date) instead of date_prefiltered
+        - This matches n8n workflow behavior for freshness filtering
+        - Uses core_url instead of original_url (n8n Gap #6)
         """
         table = self._get_table(self.ai_editor_base_id, self.prefilter_log_table_id)
 
-        filter_formula = f"AND({{slot}}={slot}, IS_AFTER({{date_prefiltered}}, DATEADD(TODAY(), -{freshness_days}, 'days')))"
+        # Filter on date_og_published (article's original publish date), not date_prefiltered
+        filter_formula = f"AND({{slot}}={slot}, IS_AFTER({{date_og_published}}, DATEADD(TODAY(), -{freshness_days}, 'days')))"
 
         records = table.all(
             formula=filter_formula,
