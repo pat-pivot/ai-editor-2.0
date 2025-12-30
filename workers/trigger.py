@@ -96,6 +96,13 @@ def get_job_function(step_name: str):
         elif step_name == 'social_sync':
             from jobs.social_sync import sync_social_posts
             JOB_FUNCTIONS[step_name] = sync_social_posts
+        # Sandbox jobs (FreshRSS-based pipeline)
+        elif step_name == 'ingest_sandbox':
+            from jobs.ingest_sandbox import ingest_articles_sandbox
+            JOB_FUNCTIONS[step_name] = ingest_articles_sandbox
+        elif step_name == 'ai_scoring_sandbox':
+            from jobs.ai_scoring_sandbox import run_ai_scoring_sandbox
+            JOB_FUNCTIONS[step_name] = run_ai_scoring_sandbox
         else:
             return None
 
@@ -116,6 +123,9 @@ QUEUE_MAPPING = {
     'html_compile': 'default',
     'mautic_send': 'high',
     'social_sync': 'low',
+    # Sandbox jobs (FreshRSS-based pipeline)
+    'ingest_sandbox': 'default',
+    'ai_scoring_sandbox': 'default',
 }
 
 
