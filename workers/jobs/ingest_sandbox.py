@@ -20,16 +20,212 @@ Target Table: 'Articles - All Ingested' in AI Editor 2.0 base
 """
 
 import os
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
+from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor
 
 from pyairtable import Api
 from redis import Redis
 from rq import Queue
 
+# Google News URL decoding - calls Google's batchexecute API
+from googlenewsdecoder import gnewsdecoder
+
 # Import local utilities
 from utils.pivot_id import generate_pivot_id
 from config.freshrss_client import FreshRSSClient, get_articles
+
+# Thread pool for blocking gnewsdecoder calls (it makes HTTP requests)
+_google_news_executor = ThreadPoolExecutor(max_workers=10)
+
+# Source name mappings from domain to display name
+DOMAIN_TO_SOURCE = {
+    "reuters.com": "Reuters",
+    "cnbc.com": "CNBC",
+    "theverge.com": "The Verge",
+    "techcrunch.com": "TechCrunch",
+    "yahoo.com": "Yahoo Finance",
+    "finance.yahoo.com": "Yahoo Finance",
+    "wsj.com": "WSJ",
+    "ft.com": "Financial Times",
+    "bloomberg.com": "Bloomberg",
+    "nytimes.com": "New York Times",
+    "washingtonpost.com": "Washington Post",
+    "bbc.com": "BBC",
+    "bbc.co.uk": "BBC",
+    "cnn.com": "CNN",
+    "forbes.com": "Forbes",
+    "businessinsider.com": "Business Insider",
+    "wired.com": "Wired",
+    "arstechnica.com": "Ars Technica",
+    "engadget.com": "Engadget",
+    "venturebeat.com": "VentureBeat",
+    "zdnet.com": "ZDNet",
+    "techrepublic.com": "TechRepublic",
+    "theatlantic.com": "The Atlantic",
+    "semafor.com": "Semafor",
+    "axios.com": "Axios",
+    "politico.com": "Politico",
+    "apnews.com": "AP News",
+    "marketwatch.com": "MarketWatch",
+    "fortune.com": "Fortune",
+    "inc.com": "Inc.",
+    "fastcompany.com": "Fast Company",
+    "hbr.org": "Harvard Business Review",
+    "thehill.com": "The Hill",
+    "foxbusiness.com": "Fox Business",
+    "theregister.com": "The Register",
+    "thenextweb.com": "The Next Web",
+    "gizmodo.com": "Gizmodo",
+}
+
+
+def extract_source_from_url(url: str) -> Optional[str]:
+    """
+    Extract source name from a URL by matching against known domains.
+
+    Args:
+        url: Article URL
+
+    Returns:
+        Source name if found, None otherwise
+    """
+    if not url:
+        return None
+
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+
+        # Strip www. prefix
+        if domain.startswith("www."):
+            domain = domain[4:]
+
+        # Try exact match first
+        if domain in DOMAIN_TO_SOURCE:
+            return DOMAIN_TO_SOURCE[domain]
+
+        # Try matching root domain (e.g., "news.yahoo.com" -> "yahoo.com")
+        parts = domain.split(".")
+        if len(parts) >= 2:
+            root_domain = ".".join(parts[-2:])
+            if root_domain in DOMAIN_TO_SOURCE:
+                return DOMAIN_TO_SOURCE[root_domain]
+
+        # Fallback: capitalize the main domain name
+        # e.g., "techrepublic.com" -> "Techrepublic"
+        if len(parts) >= 2:
+            main_name = parts[-2]
+            return main_name.capitalize()
+
+        return None
+    except Exception:
+        return None
+
+
+async def resolve_google_news_url(url: str) -> tuple[str, Optional[str]]:
+    """
+    Resolve a Google News URL to the actual article URL.
+
+    Uses the googlenewsdecoder package which calls Google's batchexecute API.
+    This is the ONLY reliable way to decode modern Google News URLs.
+
+    Args:
+        url: Google News article URL
+
+    Returns:
+        Tuple of (resolved_url, extracted_source_name)
+    """
+    # Only process Google News URLs
+    if not url or "news.google.com" not in url:
+        return url, None
+
+    try:
+        # Run blocking gnewsdecoder in thread pool
+        # The gnewsdecoder package makes HTTP calls to Google's batchexecute API
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            _google_news_executor,
+            lambda: gnewsdecoder(url, interval=0.3)  # 0.3s delay between retries
+        )
+
+        if result.get("status") and result.get("decoded_url"):
+            decoded_url = result["decoded_url"]
+            source_name = extract_source_from_url(decoded_url)
+            print(f"[Ingest Sandbox] Decoded Google News URL: {url[:50]}... -> {decoded_url[:60]}... (source: {source_name})")
+            return decoded_url, source_name
+        else:
+            print(f"[Ingest Sandbox] Could not decode Google News URL: {url[:60]}...")
+            return url, "Google News"
+
+    except Exception as e:
+        print(f"[Ingest Sandbox] Error decoding Google News URL: {e}")
+        return url, "Google News"
+
+
+async def resolve_article_urls(articles: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
+    """
+    Resolve Google News redirect URLs to actual article URLs.
+
+    Uses the googlenewsdecoder package which calls Google's batchexecute API.
+    Processes in small batches with delays to avoid rate limiting.
+
+    Args:
+        articles: List of article dicts from FreshRSS
+
+    Returns:
+        Tuple of (articles with resolved URLs and updated source_ids, count of resolved URLs)
+    """
+    google_news_articles = [
+        (i, a) for i, a in enumerate(articles)
+        if a.get("url") and "news.google.com" in a.get("url", "")
+    ]
+
+    if not google_news_articles:
+        return articles, 0
+
+    print(f"[Ingest Sandbox] Resolving {len(google_news_articles)} Google News URLs using googlenewsdecoder...")
+
+    # Process in smaller batches with delays to avoid Google rate limiting
+    batch_size = 10
+    resolved_count = 0
+
+    for batch_start in range(0, len(google_news_articles), batch_size):
+        batch = google_news_articles[batch_start:batch_start + batch_size]
+        batch_num = (batch_start // batch_size) + 1
+        total_batches = (len(google_news_articles) + batch_size - 1) // batch_size
+        print(f"[Ingest Sandbox] Processing batch {batch_num}/{total_batches} ({len(batch)} URLs)...")
+
+        tasks = [
+            resolve_google_news_url(articles[idx]["url"])
+            for idx, _ in batch
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for (idx, article), result in zip(batch, results):
+            if isinstance(result, Exception):
+                print(f"[Ingest Sandbox] Failed to resolve URL for article: {result}")
+                continue
+
+            resolved_url, source_name = result
+
+            # Update article with resolved URL
+            if resolved_url and resolved_url != article["url"]:
+                articles[idx]["url"] = resolved_url
+                resolved_count += 1
+
+            # Update source_id if we got a better one from the resolved URL
+            if source_name:
+                articles[idx]["source_id"] = source_name
+
+        # Add delay between batches to avoid rate limiting
+        if batch_start + batch_size < len(google_news_articles):
+            await asyncio.sleep(1)
+
+    print(f"[Ingest Sandbox] Resolved {resolved_count} Google News URLs to actual sources")
+    return articles, resolved_count
 
 
 # Airtable configuration for AI Editor 2.0 base (SANDBOX)
@@ -78,6 +274,7 @@ def ingest_articles_sandbox(
         "articles_ingested": 0,
         "articles_skipped_duplicate": 0,
         "articles_skipped_invalid": 0,
+        "google_news_resolved": 0,
         "errors": []
     }
 
@@ -109,6 +306,15 @@ def ingest_articles_sandbox(
             print("[Ingest Sandbox] No articles found, exiting")
             results["completed_at"] = datetime.now(timezone.utc).isoformat()
             return results
+
+        # Resolve Google News URLs to get actual article URLs and sources
+        # This decodes news.google.com redirect URLs to their real destinations
+        try:
+            articles, google_news_resolved = asyncio.run(resolve_article_urls(articles))
+            results["google_news_resolved"] = google_news_resolved
+        except Exception as e:
+            print(f"[Ingest Sandbox] Warning: URL resolution failed: {e}")
+            # Continue with unresolved URLs rather than failing entirely
 
         # Get existing pivot_ids from Airtable for deduplication
         print("[Ingest Sandbox] Fetching existing records for deduplication...")
@@ -177,6 +383,7 @@ def ingest_articles_sandbox(
 
         print(f"[Ingest Sandbox] Ingestion complete:")
         print(f"  - Articles fetched: {results['articles_fetched']}")
+        print(f"  - Google News URLs resolved: {results['google_news_resolved']}")
         print(f"  - Articles ingested: {results['articles_ingested']}")
         print(f"  - Skipped (duplicates): {results['articles_skipped_duplicate']}")
         print(f"  - Skipped (invalid): {results['articles_skipped_invalid']}")
