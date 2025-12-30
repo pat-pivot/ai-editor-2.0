@@ -25,6 +25,10 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
+from zoneinfo import ZoneInfo
+
+# EST timezone for all timestamps
+EST = ZoneInfo("America/New_York")
 
 from pyairtable import Api
 from redis import Redis
@@ -262,10 +266,10 @@ def ingest_articles_sandbox(
     Returns:
         Results dict with counts and timing
     """
-    print(f"[Ingest Sandbox] Starting at {datetime.utcnow().isoformat()}")
+    print(f"[Ingest Sandbox] Starting at {datetime.now(EST).isoformat()}")
     print(f"[Ingest Sandbox] Debug mode: {debug}")
     print(f"[Ingest Sandbox] Target base: {AIRTABLE_AI_EDITOR_BASE_ID}")
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(EST)
 
     results = {
         "started_at": started_at.isoformat(),
@@ -299,12 +303,12 @@ def ingest_articles_sandbox(
             error_msg = f"Failed to fetch from FreshRSS: {e}"
             print(f"[Ingest Sandbox] {error_msg}")
             results["errors"].append(error_msg)
-            results["completed_at"] = datetime.now(timezone.utc).isoformat()
+            results["completed_at"] = datetime.now(EST).isoformat()
             return results
 
         if not articles:
             print("[Ingest Sandbox] No articles found, exiting")
-            results["completed_at"] = datetime.now(timezone.utc).isoformat()
+            results["completed_at"] = datetime.now(EST).isoformat()
             return results
 
         # Resolve Google News URLs to get actual article URLs and sources
@@ -360,7 +364,7 @@ def ingest_articles_sandbox(
                 "original_url": url,                     # Source URL
                 "source_name": article.get("source_id", "Unknown"),  # Publication name
                 "headline": title,                       # Original article title
-                "date_ingested": datetime.now(timezone.utc).isoformat(),  # When we ingested
+                "date_ingested": datetime.now(EST).isoformat(),  # When we ingested (EST)
                 "needs_ai": True,                        # Flag for AI Scoring job
                 "fit_status": "pending",                 # Single select status
             }
@@ -398,10 +402,10 @@ def ingest_articles_sandbox(
                 redis_conn = Redis.from_url(REDIS_URL)
                 queue = Queue('default', connection=redis_conn)
 
-                # Enqueue AI Scoring with batch size matching ingested count
+                # Enqueue AI Scoring - no cap, process all ingested articles
                 ai_job = queue.enqueue(
                     run_ai_scoring_sandbox,
-                    batch_size=min(results["articles_ingested"], 50),  # Cap at 50 per run
+                    batch_size=results["articles_ingested"],
                     job_timeout='60m'
                 )
 
@@ -422,7 +426,7 @@ def ingest_articles_sandbox(
         import traceback
         traceback.print_exc()
 
-    results["completed_at"] = datetime.now(timezone.utc).isoformat()
+    results["completed_at"] = datetime.now(EST).isoformat()
     # Add 'processed' key for UI compatibility
     results["processed"] = results["articles_ingested"]
     return results

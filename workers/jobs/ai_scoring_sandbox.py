@@ -26,6 +26,10 @@ import os
 import json
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
+from zoneinfo import ZoneInfo
+
+# EST timezone for all timestamps
+EST = ZoneInfo("America/New_York")
 
 from pyairtable import Api
 from anthropic import Anthropic
@@ -241,9 +245,9 @@ def run_ai_scoring_sandbox(batch_size: int = 50) -> Dict[str, Any]:
     Returns:
         Results dict with counts and timing
     """
-    print(f"[AI Scoring Sandbox] Starting at {datetime.utcnow().isoformat()}")
+    print(f"[AI Scoring Sandbox] Starting at {datetime.now(EST).isoformat()}")
     print(f"[AI Scoring Sandbox] Target base: {AIRTABLE_AI_EDITOR_BASE_ID}")
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(EST)
 
     results = {
         "started_at": started_at.isoformat(),
@@ -279,7 +283,7 @@ def run_ai_scoring_sandbox(batch_size: int = 50) -> Dict[str, Any]:
 
         if not articles:
             print("[AI Scoring Sandbox] No articles need scoring, exiting")
-            results["completed_at"] = datetime.now(timezone.utc).isoformat()
+            results["completed_at"] = datetime.now(EST).isoformat()
             results["processed"] = 0
             return results
 
@@ -309,7 +313,7 @@ def run_ai_scoring_sandbox(batch_size: int = 50) -> Dict[str, Any]:
             # Prepare update for Articles table
             update_fields = {
                 "needs_ai": False,
-                "date_scored": datetime.now(timezone.utc).isoformat(),
+                "date_scored": datetime.now(EST).isoformat(),
                 "interest_score": interest_score,
                 "fit_status": fit_status,
             }
@@ -347,7 +351,7 @@ def run_ai_scoring_sandbox(batch_size: int = 50) -> Dict[str, Any]:
                         "pivot_id": fields.get("pivot_id"),
                         "core_url": article_url,
                         "source_name": fields.get("source_name", "Unknown"),
-                        "date_ai_process": datetime.now(timezone.utc).isoformat(),
+                        "date_ai_process": datetime.now(EST).isoformat(),
                         "date_og_published": fields.get("date_og_published"),
                         "headline": headline,  # Original headline for reference
                         "raw": raw_content,  # Extracted article content from Firecrawl
@@ -385,7 +389,7 @@ def run_ai_scoring_sandbox(batch_size: int = 50) -> Dict[str, Any]:
         import traceback
         traceback.print_exc()
 
-    results["completed_at"] = datetime.now(timezone.utc).isoformat()
+    results["completed_at"] = datetime.now(EST).isoformat()
     results["processed"] = results["articles_scored"]
     return results
 

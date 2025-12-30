@@ -83,6 +83,21 @@ DOMAIN_TO_SOURCE = {
     "fastcompany.com": "Fast Company",
 }
 
+# Newsletter domain mappings for Kill The Newsletter content extraction
+# These newsletters are forwarded to Kill The Newsletter and need source extraction
+NEWSLETTER_DOMAIN_TO_SOURCE = {
+    "theaivalley.com": "AI Valley",
+    "theaireport.ai": "The AI Report",
+    "joinsuperhuman.ai": "Superhuman",
+    "theneurondaily.com": "The Neuron",
+    "superhuman.ai": "Superhuman",
+    "bensbites.co": "Ben's Bites",
+    "bensbites.beehiiv.com": "Ben's Bites",
+    "readwrite.com": "ReadWrite AI",
+    "aibreakfast.beehiiv.com": "AI Breakfast",
+    "tldr.tech": "TLDR AI",
+}
+
 
 class FreshRSSClient:
     """
@@ -270,13 +285,28 @@ class FreshRSSClient:
                 except (ValueError, TypeError):
                     pass
 
+            # Extract summary (needed early for newsletter source extraction)
+            summary = ""
+            if item.get("summary"):
+                summary = item["summary"].get("content", "")
+            elif item.get("content"):
+                summary = item["content"].get("content", "")
+
             # Extract source from origin or URL
             source = None
             origin = item.get("origin", {})
             stream_id = origin.get("streamId", "")
 
-            # Try stream ID first
-            if stream_id in STREAM_ID_TO_SOURCE:
+            # Special handling for Kill The Newsletter (feed/17)
+            # Extract actual newsletter name from content
+            if stream_id == "feed/17":
+                newsletter_source = self._extract_newsletter_source(summary)
+                if newsletter_source:
+                    source = newsletter_source
+                else:
+                    source = "AI Newsletter"  # Generic fallback
+            # Try stream ID for other feeds
+            elif stream_id in STREAM_ID_TO_SOURCE:
                 source = STREAM_ID_TO_SOURCE[stream_id]
             # Try origin title
             elif origin.get("title"):
@@ -284,13 +314,6 @@ class FreshRSSClient:
             # Fall back to URL extraction
             else:
                 source = self._extract_source_from_url(url)
-
-            # Extract summary
-            summary = ""
-            if item.get("summary"):
-                summary = item["summary"].get("content", "")
-            elif item.get("content"):
-                summary = item["content"].get("content", "")
 
             return {
                 "title": title,
@@ -347,6 +370,31 @@ class FreshRSSClient:
 
         except Exception:
             return None
+
+    def _extract_newsletter_source(self, content: str) -> Optional[str]:
+        """
+        Extract newsletter source name from content by finding known newsletter domains.
+
+        Kill The Newsletter articles contain links to the original newsletter's website.
+        We parse the content HTML/text to find these domain references.
+
+        Args:
+            content: Article summary or content HTML
+
+        Returns:
+            Newsletter source name if found, None otherwise
+        """
+        if not content:
+            return None
+
+        content_lower = content.lower()
+
+        # Look for known newsletter domains in content
+        for domain, source_name in NEWSLETTER_DOMAIN_TO_SOURCE.items():
+            if domain in content_lower:
+                return source_name
+
+        return None
 
     def health_check(self) -> bool:
         """
