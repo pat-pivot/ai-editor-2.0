@@ -376,10 +376,9 @@ def run_ai_scoring_sandbox(batch_size: int = 50) -> Dict[str, Any]:
 
                     # NOTE: storyId is NOT set here - it will be generated later
                     # in the decoration step from the AI-generated headline
-                    # NOTE: Original headline is stored in Articles table, not here
-                    # The ai_headline field will be set during decoration step
                     newsletter_select = {
                         "pivot_id": fields.get("pivot_id"),
+                        "headline": fields.get("headline"),  # Original headline from Articles
                         "core_url": article_url,
                         "source_name": fields.get("source_name", "Unknown"),
                         "date_ai_process": datetime.now(EST).isoformat(),
