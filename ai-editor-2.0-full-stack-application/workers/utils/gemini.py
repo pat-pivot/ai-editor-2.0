@@ -285,31 +285,44 @@ Return ONLY the cleaned article content, no explanations."""
 
         Returns:
             List of matching articles: [{story_id, headline}]
+
+        Uses chunking for large batches to prevent Gemini response truncation.
         """
         if not articles:
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
-        candidates_json = json.dumps(articles, indent=2)
 
-        # Try to load prompt from database
+        # Try to load prompt template from database
         prompt_template = get_prompt('slot_1_prefilter')
+        use_db_prompt = False
 
         if prompt_template:
-            try:
-                prompt = prompt_template.format(
-                    yesterday_headlines=yesterday_text,
-                    candidates=candidates_json
-                )
-                logger.info("[Gemini slot_1] Using prompt from database")
-            except KeyError as e:
-                logger.warning(f"[Gemini slot_1] Missing variable in database prompt: {e}, using fallback")
-                prompt_template = None
+            use_db_prompt = True
+            logger.info("[Gemini slot_1] Using prompt from database")
 
-        if not prompt_template:
-            # Fallback to hardcoded prompt
-            logger.info("[Gemini slot_1] Using hardcoded fallback prompt")
-            prompt = f"""You are a pre-filter for an AI newsletter's LEAD STORY slot (Slot 1: Jobs/Economy).
+        # Chunk large batches to prevent Gemini response truncation
+        all_matches = []
+        chunks = self._chunk_articles(articles, chunk_size=15)
+
+        for i, chunk in enumerate(chunks):
+            if len(chunks) > 1:
+                logger.info(f"[Gemini slot_1] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} articles)")
+
+            candidates_json = json.dumps(chunk, indent=2)
+
+            if use_db_prompt:
+                try:
+                    prompt = prompt_template.format(
+                        yesterday_headlines=yesterday_text,
+                        candidates=candidates_json
+                    )
+                except KeyError as e:
+                    logger.warning(f"[Gemini slot_1] Missing variable in database prompt: {e}, using fallback")
+                    use_db_prompt = False
+
+            if not use_db_prompt:
+                prompt = f"""You are a pre-filter for an AI newsletter's LEAD STORY slot (Slot 1: Jobs/Economy).
 
 Review these candidates and identify ONLY stories about:
 1. AI impact on JOBS (layoffs, hiring, workforce changes, labor market shifts)
@@ -333,37 +346,54 @@ Return ONLY valid JSON with matching story IDs:
 
 If no stories match, return: {{"matches": []}}"""
 
-        return self._execute_batch_prefilter(prompt, "slot_1")
+            matches = self._execute_batch_prefilter(prompt, f"slot_1_chunk_{i+1}")
+            all_matches.extend(matches)
+
+        return all_matches
 
     def prefilter_batch_slot_2(self, articles: List[Dict], yesterday_headlines: List[str]) -> List[Dict]:
         """
         Slot 2 Batch Pre-Filter: Tier 1 / Insight
 
         n8n Workflow: Node 17 - Gemini Slot 2 Pre-Filter
+
+        Uses chunking for large batches to prevent Gemini response truncation.
         """
         if not articles:
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
-        candidates_json = json.dumps(articles, indent=2)
 
-        # Try to load prompt from database
+        # Try to load prompt template from database
         prompt_template = get_prompt('slot_2_prefilter')
+        use_db_prompt = False
 
         if prompt_template:
-            try:
-                prompt = prompt_template.format(
-                    yesterday_headlines=yesterday_text,
-                    candidates=candidates_json
-                )
-                logger.info("[Gemini slot_2] Using prompt from database")
-            except KeyError as e:
-                logger.warning(f"[Gemini slot_2] Missing variable in database prompt: {e}, using fallback")
-                prompt_template = None
+            use_db_prompt = True
+            logger.info("[Gemini slot_2] Using prompt from database")
 
-        if not prompt_template:
-            logger.info("[Gemini slot_2] Using hardcoded fallback prompt")
-            prompt = f"""You are a pre-filter for an AI newsletter's Slot 2: Tier 1 Companies / Insight.
+        # Chunk large batches to prevent Gemini response truncation
+        all_matches = []
+        chunks = self._chunk_articles(articles, chunk_size=15)
+
+        for i, chunk in enumerate(chunks):
+            if len(chunks) > 1:
+                logger.info(f"[Gemini slot_2] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} articles)")
+
+            candidates_json = json.dumps(chunk, indent=2)
+
+            if use_db_prompt:
+                try:
+                    prompt = prompt_template.format(
+                        yesterday_headlines=yesterday_text,
+                        candidates=candidates_json
+                    )
+                except KeyError as e:
+                    logger.warning(f"[Gemini slot_2] Missing variable in database prompt: {e}, using fallback")
+                    use_db_prompt = False
+
+            if not use_db_prompt:
+                prompt = f"""You are a pre-filter for an AI newsletter's Slot 2: Tier 1 Companies / Insight.
 
 Review these candidates and identify stories about:
 1. TIER 1 AI COMPANIES: OpenAI, Google/DeepMind, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon
@@ -387,7 +417,10 @@ Return ONLY valid JSON with matching story IDs:
 
 If no stories match, return: {{"matches": []}}"""
 
-        return self._execute_batch_prefilter(prompt, "slot_2")
+            matches = self._execute_batch_prefilter(prompt, f"slot_2_chunk_{i+1}")
+            all_matches.extend(matches)
+
+        return all_matches
 
     def prefilter_batch_slot_3(self, articles: List[Dict], yesterday_headlines: List[str]) -> List[Dict]:
         """
@@ -412,7 +445,7 @@ If no stories match, return: {{"matches": []}}"""
 
         # Chunk large batches to prevent Gemini response truncation
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=30)
+        chunks = self._chunk_articles(articles, chunk_size=15)
 
         for i, chunk in enumerate(chunks):
             if len(chunks) > 1:
@@ -473,30 +506,44 @@ If no stories match, return: {{"matches": []}}"""
         Slot 4 Batch Pre-Filter: Emerging Companies
 
         n8n Workflow: Node 25 - Gemini Slot 4 Pre-Filter
+
+        Uses chunking for large batches to prevent Gemini response truncation.
         """
         if not articles:
             return []
 
         yesterday_text = "\n".join(f"- {h}" for h in yesterday_headlines) if yesterday_headlines else "None"
-        candidates_json = json.dumps(articles, indent=2)
 
-        # Try to load prompt from database
+        # Try to load prompt template from database
         prompt_template = get_prompt('slot_4_prefilter')
+        use_db_prompt = False
 
         if prompt_template:
-            try:
-                prompt = prompt_template.format(
-                    yesterday_headlines=yesterday_text,
-                    candidates=candidates_json
-                )
-                logger.info("[Gemini slot_4] Using prompt from database")
-            except KeyError as e:
-                logger.warning(f"[Gemini slot_4] Missing variable in database prompt: {e}, using fallback")
-                prompt_template = None
+            use_db_prompt = True
+            logger.info("[Gemini slot_4] Using prompt from database")
 
-        if not prompt_template:
-            logger.info("[Gemini slot_4] Using hardcoded fallback prompt")
-            prompt = f"""You are a pre-filter for an AI newsletter's Slot 4: Emerging Companies.
+        # Chunk large batches to prevent Gemini response truncation
+        all_matches = []
+        chunks = self._chunk_articles(articles, chunk_size=15)
+
+        for i, chunk in enumerate(chunks):
+            if len(chunks) > 1:
+                logger.info(f"[Gemini slot_4] Processing chunk {i+1}/{len(chunks)} ({len(chunk)} articles)")
+
+            candidates_json = json.dumps(chunk, indent=2)
+
+            if use_db_prompt:
+                try:
+                    prompt = prompt_template.format(
+                        yesterday_headlines=yesterday_text,
+                        candidates=candidates_json
+                    )
+                except KeyError as e:
+                    logger.warning(f"[Gemini slot_4] Missing variable in database prompt: {e}, using fallback")
+                    use_db_prompt = False
+
+            if not use_db_prompt:
+                prompt = f"""You are a pre-filter for an AI newsletter's Slot 4: Emerging Companies.
 
 Review these candidates and identify stories about:
 1. Smaller/emerging AI companies (NOT Tier 1 giants)
@@ -523,7 +570,10 @@ Return ONLY valid JSON with matching story IDs:
 
 If no stories match, return: {{"matches": []}}"""
 
-        return self._execute_batch_prefilter(prompt, "slot_4")
+            matches = self._execute_batch_prefilter(prompt, f"slot_4_chunk_{i+1}")
+            all_matches.extend(matches)
+
+        return all_matches
 
     def prefilter_batch_slot_5(self, articles: List[Dict], yesterday_headlines: List[str]) -> List[Dict]:
         """
@@ -548,7 +598,7 @@ If no stories match, return: {{"matches": []}}"""
 
         # Chunk large batches to prevent Gemini response truncation
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=30)
+        chunks = self._chunk_articles(articles, chunk_size=15)
 
         for i, chunk in enumerate(chunks):
             if len(chunks) > 1:
@@ -646,7 +696,7 @@ If no stories match, return: {{"matches": []}}"""
                 return self._execute_batch_prefilter(prompt, slot_name, retry_count + 1)
             return []
 
-    def _chunk_articles(self, articles: List[Dict], chunk_size: int = 30) -> List[List[Dict]]:
+    def _chunk_articles(self, articles: List[Dict], chunk_size: int = 15) -> List[List[Dict]]:
         """Split articles into smaller chunks for reliable Gemini processing."""
         return [articles[i:i + chunk_size] for i in range(0, len(articles), chunk_size)]
 
