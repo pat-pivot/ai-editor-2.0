@@ -112,25 +112,98 @@ if article.get("published_dt"):
         continue
 ```
 
+## Feed Types (Pivot 5 Configuration)
+
+We use **3 types of feeds** in FreshRSS:
+
+### 1. Direct RSS Feeds
+Native RSS from publisher websites. URLs point directly to articles.
+- Bloomberg, TechCrunch, The Verge, The Atlantic, CNBC, VentureBeat, TechRepublic
+
+### 2. Google News RSS Searches
+RSS feeds from Google News search queries. **URLs are `news.google.com` redirects** that must be decoded.
+```
+https://news.google.com/rss/search?q=site:wsj.com/tech&hl=en-US&gl=US&ceid=US:en
+https://news.google.com/rss/search?q=AI+OR+"artificial+intelligence"+when:12h
+```
+- WSJ (Tech, Business AI), NYT Technology, Reuters AI, Semafor, Google News AI
+
+### 3. Kill The Newsletter
+Email newsletters converted to RSS via kill-the-newsletter.com
+```
+https://kill-the-newsletter.com/feeds/wursamkt3o49gpvmp6la.xml
+```
+- AI Newsletter forwards (The Neuron, AI Valley, etc.)
+
 ## Feed IDs (Pivot 5 Production)
 
-| Feed ID | Source |
-|---------|--------|
-| `feed/3` | Bloomberg Technology |
-| `feed/8` | The Verge |
-| `feed/9` | TechCrunch |
-| `feed/10` | CNBC Tech |
-| `feed/11` | The Atlantic |
-| `feed/16` | Google News AI |
-| `feed/17` | AI Newsletters (Kill The Newsletter) |
-| `feed/18` | Reuters |
-| `feed/19` | TechRepublic |
-| `feed/21` | WSJ Tech (Google News) |
-| `feed/22` | WSJ Business AI (Google News) |
-| `feed/23` | Reuters AI (Google News) |
-| `feed/26` | NYT Technology (Google News) |
-| `feed/27` | Semafor |
-| `feed/28` | VentureBeat |
+| Feed ID | Source | Type |
+|---------|--------|------|
+| `feed/3` | Bloomberg Technology | Direct RSS |
+| `feed/8` | The Verge | Direct RSS |
+| `feed/9` | TechCrunch | Direct RSS |
+| `feed/10` | CNBC Tech | Direct RSS |
+| `feed/11` | The Atlantic | Direct RSS |
+| `feed/16` | Google News AI | Google News |
+| `feed/17` | AI Newsletters | Kill The Newsletter |
+| `feed/19` | TechRepublic | Direct RSS |
+| `feed/21` | WSJ Tech | Google News |
+| `feed/22` | WSJ Business AI | Google News |
+| `feed/23` | Reuters AI | Google News |
+| `feed/26` | NYT Technology | Google News |
+| `feed/27` | Semafor | Google News |
+| `feed/28` | VentureBeat | Direct RSS |
+
+## CRITICAL: Google News URL Resolution
+
+Google News RSS feeds return **redirect URLs** like:
+```
+https://news.google.com/rss/articles/CBMiWkFVX3lxTE1...
+```
+
+These MUST be decoded to get the actual article URL. We use the `googlenewsdecoder` package:
+
+```python
+from googlenewsdecoder import gnewsdecoder
+
+result = gnewsdecoder(google_news_url, interval=0.3)
+if result.get("status") and result.get("decoded_url"):
+    actual_url = result["decoded_url"]
+```
+
+### Rate Limiting
+- Process Google News URLs in **batches of 10**
+- Add **1 second delay** between batches
+- Use thread pool (max 10 workers) for async resolution
+
+### Source Extraction After Resolution
+After decoding, extract source name from the resolved URL domain:
+```python
+DOMAIN_TO_SOURCE = {
+    "reuters.com": "Reuters",
+    "wsj.com": "WSJ",
+    "nytimes.com": "New York Times",
+    "bloomberg.com": "Bloomberg",
+    "cnbc.com": "CNBC",
+    "techcrunch.com": "TechCrunch",
+    "theverge.com": "The Verge",
+    # ... 30+ mappings in ingest_sandbox.py
+}
+```
+
+## Marking Items as Read (Fever API)
+
+FreshRSS also supports the Fever API for marking items:
+
+```bash
+# Mark single item as read
+curl 'https://freshrss.example.net/api/fever.php?api&mark=item&as=read&id=ITEM_ID'
+
+# Mark entire feed as read
+curl 'https://freshrss.example.net/api/fever.php?api&mark=feed&as=read&feed_id=FEED_ID'
+```
+
+**Note:** Pivot 5 uses `pivot_id` hash deduplication instead of marking items read.
 
 ## Using Context7 for Documentation
 
