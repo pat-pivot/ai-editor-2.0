@@ -34,6 +34,7 @@ EST = ZoneInfo("America/New_York")
 from pyairtable import Api
 from anthropic import Anthropic
 from firecrawl import FirecrawlApp
+from utils.gemini import GeminiClient
 
 
 # Airtable configuration for AI Editor 2.0 base (SANDBOX)
@@ -122,6 +123,32 @@ def extract_article_content(url: str) -> Optional[str]:
         else:
             print(f"[AI Scoring Sandbox] Firecrawl extraction failed for {url[:50]}: {e}")
         return None
+
+
+def clean_article_content(raw_content: str) -> str:
+    """
+    Clean raw Firecrawl content using Gemini to make it readable.
+
+    Removes navigation, ads, footers, subscription prompts, etc.
+
+    Args:
+        raw_content: Raw markdown from Firecrawl
+
+    Returns:
+        Cleaned, readable article content
+    """
+    if not raw_content:
+        return raw_content
+
+    try:
+        gemini = GeminiClient()
+        cleaned = gemini.clean_content(raw_content)
+        print(f"[AI Scoring Sandbox] Cleaned content: {len(raw_content)} -> {len(cleaned)} chars")
+        return cleaned
+    except Exception as e:
+        print(f"[AI Scoring Sandbox] Gemini cleaning failed, using raw: {e}")
+        # Return truncated raw content as fallback
+        return raw_content[:8000]
 
 
 def build_scoring_prompt(article: Dict[str, Any]) -> str:
@@ -341,6 +368,8 @@ def run_ai_scoring_sandbox(batch_size: int = 50) -> Dict[str, Any]:
                     if article_url:
                         raw_content = extract_article_content(article_url)
                         if raw_content:
+                            # Clean the content using Gemini to make it readable
+                            raw_content = clean_article_content(raw_content)
                             results["articles_extracted"] += 1
                         else:
                             results["extraction_failures"] += 1
