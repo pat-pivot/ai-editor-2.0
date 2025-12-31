@@ -200,11 +200,42 @@ class FreshRSSClient:
 
         return data["subscriptions"]
 
+    def trigger_refresh(self, max_feeds: int = 50) -> bool:
+        """
+        Trigger FreshRSS to crawl/refresh all feeds.
+
+        FreshRSS on Render free tier goes to sleep and stops crawling.
+        This endpoint wakes it up and forces a feed refresh.
+
+        Args:
+            max_feeds: Maximum feeds to refresh per call (default 50)
+
+        Returns:
+            True if refresh was triggered successfully
+        """
+        try:
+            # Use the actualize endpoint (from FreshRSS docs)
+            # https://freshrss.github.io/FreshRSS/en/users/09_refreshing_feeds.html
+            url = f"{self.url}/i/?c=feed&a=actualize&ajax=1&maxFeeds={max_feeds}"
+            response = requests.get(url, timeout=30)
+
+            if response.status_code == 200 and response.text.strip() == "OK":
+                print(f"[FreshRSS] Triggered feed refresh (maxFeeds={max_feeds})")
+                return True
+            else:
+                print(f"[FreshRSS] Refresh returned: {response.status_code} - {response.text[:50]}")
+                return False
+
+        except Exception as e:
+            print(f"[FreshRSS] Failed to trigger refresh: {e}")
+            return False
+
     def get_articles(
         self,
         limit: int = 100,
         feed_id: str = None,
-        since_hours: int = 24
+        since_hours: int = 36,
+        auto_refresh: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Fetch recent articles from FreshRSS.
@@ -213,10 +244,16 @@ class FreshRSSClient:
             limit: Maximum number of articles to fetch
             feed_id: Optional specific feed ID (e.g., "feed/3")
             since_hours: Only include articles from the last N hours
+            auto_refresh: Trigger FreshRSS to crawl feeds before fetching (default True)
 
         Returns:
             List of article dicts with normalized fields
         """
+        # Trigger feed refresh to wake up FreshRSS and get fresh articles
+        # This is critical because FreshRSS on Render free tier goes to sleep
+        if auto_refresh:
+            self.trigger_refresh()
+
         # Build endpoint
         if feed_id:
             endpoint = f"/reader/api/0/stream/contents/{feed_id}"

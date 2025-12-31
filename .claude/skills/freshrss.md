@@ -99,12 +99,12 @@ Each article item in the response contains:
 An article published 7 days ago can be crawled today (e.g., backfill when new feeds are added). Using identical time windows for both filters is too aggressive.
 
 **Best Practice:** Use different windows for each filter:
-1. `crawlTimeMsec` - 24h window (prevents reprocessing)
+1. `crawlTimeMsec` - 36h window (prevents reprocessing, allows for FreshRSS crawl delays)
 2. `published` - 72h window (allows 2-3 day old articles, blocks week-old stale news)
 
 ```python
 # Filter by BOTH timestamps with different windows
-cutoff = datetime.now(timezone.utc) - timedelta(hours=24)  # crawl filter
+cutoff = datetime.now(timezone.utc) - timedelta(hours=36)  # crawl filter
 published_cutoff = datetime.now(timezone.utc) - timedelta(hours=72)  # published filter
 
 if article.get("crawl_dt"):
@@ -114,6 +114,8 @@ if article.get("published_dt"):
     if article["published_dt"] < published_cutoff:
         continue
 ```
+
+**Why 36h for crawl?** FreshRSS on Render free tier may not crawl consistently. 36h gives buffer for crawl delays while still preventing stale reprocessing.
 
 **Why 72h for published?** Articles can be crawled days after publication (Google News delays, editorial processes). 72h allows recently-discovered older articles while blocking stale news that would flood the pipeline.
 
@@ -248,7 +250,36 @@ FRESHRSS_URL=https://pivot-media-rss-feed.onrender.com
 FRESHRSS_AUTH=admin/d13c712f15c87f1d9aee574372ed7dffe7e5e880
 ```
 
+## CRITICAL: FreshRSS Feed Refresh (Render Free Tier)
+
+**FreshRSS on Render free tier goes to sleep and stops crawling feeds automatically.**
+
+### Actualize Endpoint (Wake Up FreshRSS)
+```bash
+curl 'https://pivot-media-rss-feed.onrender.com/i/?c=feed&a=actualize&ajax=1&maxFeeds=50'
+```
+
+**Response:** `OK` if successful
+
+### Auto-Refresh in Python Client
+The `FreshRSSClient.get_articles()` method automatically calls `trigger_refresh()` before fetching articles. This ensures feeds are freshly crawled.
+
+```python
+# Auto-refresh is enabled by default
+articles = client.get_articles(limit=100)
+
+# Disable if you just want to read cached articles
+articles = client.get_articles(limit=100, auto_refresh=False)
+```
+
+### Why This Matters
+Without triggering a refresh, articles from some feeds may be 40+ hours old (last crawl time), causing them to be filtered out by the 36h crawl window.
+
 ## Troubleshooting
+
+### "Only getting articles from some feeds"
+- **Cause:** FreshRSS hasn't crawled some feeds recently (Render free tier sleep)
+- **Fix:** Call the actualize endpoint before fetching, or ensure `auto_refresh=True`
 
 ### "Only getting Google News articles"
 - **Cause:** Limit too low, Google News feeds fill quota first
