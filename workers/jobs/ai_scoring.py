@@ -340,12 +340,11 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
             decoration_status = "completed" if interest_score >= INTEREST_SCORE_THRESHOLD else "skipped_low_score"
 
             # Update Articles table (AI Editor 2.0 base)
-            # NOTE: This table has minimal fields. Only update fields that exist:
-            # - needs_ai, decoration_status (created by ingest)
+            # NOTE: This table has ONLY these fields from ingest:
+            # - pivot_Id, original_url, source_id, date_ingested, needs_ai
             # Full scoring data goes to Newsletter Stories in Pivot Media Master
             update_fields = {
                 "needs_ai": False,
-                "decoration_status": decoration_status,
             }
 
             try:
