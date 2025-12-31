@@ -219,20 +219,23 @@ class AirtableClient:
 
     def get_recent_sent_issues(self, lookback_days: int = 14) -> List[dict]:
         """
-        Get all sent issues from the last N days for comprehensive duplicate checking.
+        Get all issues from the last N days for comprehensive duplicate checking.
 
-        Updated 12/26/25: Added to match n8n workflow behavior.
-        n8n uses a 14-day lookback (line 1190) to check for recently used stories.
+        Updated 12/31/25: FIXED to match n8n workflow behavior.
+        n8n does NOT filter by status - it gets ALL issues from the last 14 days.
+        This ensures we catch headlines from pending/decorated/sent issues for deduplication.
 
         Args:
             lookback_days: Number of days to look back (default 14 per n8n)
 
         Returns:
-            List of sent issue records from the last N days
+            List of issue records from the last N days (any status)
         """
         table = self._get_table(self.ai_editor_base_id, self.selected_slots_table_id)
 
-        filter_formula = f"AND({{status}}='sent', IS_AFTER({{issue_date}}, DATEADD(TODAY(), -{lookback_days}, 'days')))"
+        # n8n filter: IS_AFTER({issue_date}, DATEADD(TODAY(), -14, 'days'))
+        # NO status filter - gets all issues regardless of status
+        filter_formula = f"IS_AFTER({{issue_date}}, DATEADD(TODAY(), -{lookback_days}, 'days'))"
 
         records = table.all(
             formula=filter_formula,

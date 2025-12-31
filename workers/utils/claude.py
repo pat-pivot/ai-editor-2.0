@@ -52,15 +52,16 @@ class ClaudeClient:
             source_lookup: {source_name: credibility_score} lookup for source scoring
 
         Returns:
-            {selected_storyId, selected_pivotId, selected_headline, company, source_id, reasoning}
+            {selected_id, selected_headline, selected_company, selected_source, reasoning}
+            Note: Field names match n8n workflow output format (12/31/25 audit fix)
         """
-        system_prompt = self._build_slot_system_prompt(slot, recent_data, cumulative_state)
+        system_prompt = self._build_slot_system_prompt(slot, recent_data, cumulative_state, len(candidates))
         user_prompt = self._build_slot_user_prompt(candidates, source_lookup)
 
         response = self.client.messages.create(
             model=self.default_model,
             max_tokens=2000,
-            temperature=0.5,
+            temperature=0.3,  # n8n uses 0.3 for deterministic selection
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}]
         )
@@ -71,7 +72,7 @@ class ClaudeClient:
         except json.JSONDecodeError:
             return self._parse_slot_response(response.content[0].text, candidates)
 
-    def _build_slot_system_prompt(self, slot: int, recent_data: dict, cumulative_state: dict) -> str:
+    def _build_slot_system_prompt(self, slot: int, recent_data: dict, cumulative_state: dict, candidate_count: int = 0) -> str:
         """
         Build slot-specific system prompt from database with Python variable substitution.
 
@@ -79,6 +80,8 @@ class ClaudeClient:
 
         Updated 12/30/25: Changed from yesterday_data to recent_data (14-day lookback)
         to prevent story repetition within a 2-week window.
+
+        Updated 12/31/25: Added candidate_count parameter to populate {candidate_count} placeholder.
         """
         # Load the base prompt from database
         prompt_key = f"slot_{slot}_agent"
@@ -107,35 +110,38 @@ class ClaudeClient:
 
         if prompt_template:
             try:
+                # Build recent headlines display for the prompt
+                if recent_headlines:
+                    headlines_display = ""
+                    for i, headline in enumerate(recent_headlines[:30], 1):
+                        headlines_display += f"\n{i}. {headline}"
+                    if len(recent_headlines) > 30:
+                        headlines_display += f"\n... and {len(recent_headlines) - 30} more"
+                else:
+                    headlines_display = "(none - this is the first issue)"
+
                 # Substitute variables using Python .format()
-                # Note: {candidates} will be filled in by _build_slot_user_prompt
+                # CRITICAL: All placeholders in database prompts must be provided here
                 prompt = prompt_template.format(
-                    candidates="(See candidates below)",
+                    candidates="(See candidates in user prompt below)",
+                    candidate_count=candidate_count,  # Actual count passed from select_slot()
+                    recent_headlines=headlines_display,
                     selected_stories=', '.join(selected_today) if selected_today else '(none yet)',
                     selected_companies=', '.join(selected_companies) if selected_companies else '(none yet)',
                     selected_sources=sources_display,
                     yesterday_slot=yesterday_slot
                 )
 
-                # Add slot 1 special rule
+                # Add slot 1 special rule (two-day company rotation)
                 if slot == 1 and recent_data.get('slot1Company'):
                     prompt += f"\n\nTWO-DAY ROTATION (Slot 1): Do NOT feature {recent_data['slot1Company']} (yesterday's Slot 1 company)."
 
-                # CRITICAL: Add recent HEADLINES for semantic deduplication (not just IDs)
-                # Claude needs to see actual headlines to avoid stories about the same topic
-                if recent_headlines:
-                    prompt += "\n\n### RECENT HEADLINES (Last 14 Days) - CRITICAL SEMANTIC DEDUPLICATION"
-                    prompt += "\nDo NOT select any story about the same topic/event as these recent headlines."
-                    prompt += "\nEven if worded differently, if it's the SAME underlying news, treat as duplicate:\n"
-                    # Show up to 30 recent headlines for context
-                    for i, headline in enumerate(recent_headlines[:30], 1):
-                        prompt += f"\n{i}. {headline}"
-                    if len(recent_headlines) > 30:
-                        prompt += f"\n... and {len(recent_headlines) - 30} more"
+                # Note: recent_headlines are now included via {recent_headlines} placeholder
+                # in the database prompt template - no longer appended separately.
 
-                # Also add storyIDs as a backup check
+                # Add storyIDs as a backup check (in addition to semantic headline dedup)
                 if recent_story_ids:
-                    prompt += f"\n\nSTORY IDs TO AVOID (already sent): {', '.join(recent_story_ids[:20])}{'...' if len(recent_story_ids) > 20 else ''}"
+                    prompt += f"\n\nSTORY IDs TO AVOID (already sent in last 14 days): {', '.join(recent_story_ids[:30])}{'...' if len(recent_story_ids) > 30 else ''}"
 
                 return prompt
             except KeyError as e:
@@ -190,13 +196,14 @@ Already used today: {sources_display}
 
         context += """
 
-Return JSON with:
-- selected_storyId: the chosen story's storyID
-- selected_pivotId: the chosen story's pivotId
-- selected_headline: the chosen story's headline
-- company: primary company mentioned (or null)
-- source_id: the story's source
-- reasoning: 1-2 sentence explanation"""
+Return ONLY valid JSON with no additional text:
+{
+  "selected_id": "storyID of chosen story",
+  "selected_headline": "headline of chosen story",
+  "selected_source": "source_name",
+  "selected_company": "primary company featured or null",
+  "reasoning": "1-2 sentence explanation"
+}"""
 
         return context
 
@@ -247,15 +254,14 @@ Return JSON with:
             except json.JSONDecodeError:
                 pass
 
-        # Default to first candidate
+        # Default to first candidate (field names match n8n output format)
         if candidates:
             fields = candidates[0].get('fields', candidates[0])
             return {
-                "selected_storyId": fields.get('storyID', ''),
-                "selected_pivotId": fields.get('pivotId', ''),
+                "selected_id": fields.get('storyID', ''),
                 "selected_headline": fields.get('headline', ''),
-                "company": None,
-                "source_id": fields.get('source_id', ''),
+                "selected_company": None,
+                "selected_source": fields.get('source_id', ''),
                 "reasoning": "Fallback: selected first candidate"
             }
 

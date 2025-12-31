@@ -202,12 +202,18 @@ def select_slots() -> dict:
                     })
                     continue
 
-                # Extract selection results
-                selected_story_id = selection.get("selected_storyId", "")
-                selected_pivot_id = selection.get("selected_pivotId", "")
+                # Extract selection results (field names match n8n prompt output)
+                selected_story_id = selection.get("selected_id", "")
                 selected_headline = selection.get("selected_headline", "")
-                company = selection.get("company")
-                source_id = selection.get("source_id", "")
+                company = selection.get("selected_company")  # n8n uses selected_company
+                source_id = selection.get("selected_source", "")  # n8n uses selected_source
+
+                # Look up pivotId from candidates (not returned by Claude, but we have it)
+                selected_pivot_id = ""
+                for c in available_candidates:
+                    if c.get('fields', {}).get('storyID') == selected_story_id:
+                        selected_pivot_id = c.get('fields', {}).get('pivotId', '')
+                        break
 
                 print(f"[Step 2] Slot {slot} selected: {selected_headline[:50]}...")
 
