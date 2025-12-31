@@ -138,9 +138,9 @@ def prefilter_stories() -> dict:
             article = articles_lookup.get(pivot_id, {})
             article_fields = article.get('fields', {}) if article else {}
 
-            # Get source credibility
-            source_id = article_fields.get('source_id', '')
-            source_score = source_lookup.get(source_id.lower(), 3)
+            # Get source credibility - prioritize Newsletter Selects fields
+            source_id = fields.get('source_id', '') or article_fields.get('source_id', '')
+            source_score = source_lookup.get(source_id.lower(), 3) if source_id else 3
 
             # Skip low-credibility sources
             if source_score < 2:
@@ -159,7 +159,8 @@ def prefilter_stories() -> dict:
 
             # Build headline (prefer ai_headline)
             headline = fields.get('ai_headline', '') or fields.get('headline', '')
-            core_url = article_fields.get('core_url', '') or article_fields.get('original_url', '')
+            # Get core_url - prioritize Newsletter Selects fields
+            core_url = fields.get('core_url', '') or article_fields.get('core_url', '') or article_fields.get('original_url', '')
 
             # Build summary from bullets (n8n Gap #3)
             summary_parts = [
