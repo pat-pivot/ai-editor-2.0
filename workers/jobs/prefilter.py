@@ -65,12 +65,13 @@ def prefilter_stories() -> dict:
         # PHASE 1: GATHER ALL DATA
         # =================================================================
 
-        # 1. Get fresh stories from Newsletter Stories table
-        # NOTE: No max_records limit - matches n8n "Pull Fresh Candidates" node
-        # which pulls ALL eligible stories (typically 250-350 per run)
-        print("[Step 1] Fetching fresh stories...")
-        fresh_stories = airtable.get_fresh_stories(days=7)
-        print(f"[Step 1] Found {len(fresh_stories)} fresh stories")
+        # 1. Get fresh stories from Newsletter Selects table (AI Editor 2.0 base)
+        # Updated 12/31/25: Migrated from Newsletter Stories to Newsletter Selects
+        # This is the FreshRSS data source with pre-processed articles
+        print("[Step 1] Fetching stories from Newsletter Selects...")
+        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%d')
+        fresh_stories = airtable.get_newsletter_selects(since_date=seven_days_ago)
+        print(f"[Step 1] Found {len(fresh_stories)} stories from Newsletter Selects")
 
         # 2. Get queued stories (manual priority) - optional, may not have API access
         print("[Step 1] Fetching queued stories...")

@@ -35,6 +35,7 @@ class AirtableClient:
         self.decoration_table_id = os.environ.get('AI_EDITOR_DECORATION_TABLE', 'tbla16LJCf5Z6cRn3')
         self.source_scores_table_id = os.environ.get('AI_EDITOR_SOURCE_SCORES_TABLE', 'tbl3Zkdl1No2edDLK')
         self.queued_stories_table_id = os.environ.get('AI_EDITOR_QUEUED_STORIES_TABLE', 'tblkVBP5mKq3sBpkv')
+        self.newsletter_selects_table_id = os.environ.get('AIRTABLE_NEWSLETTER_SELECTS_TABLE', 'tblKhICCdWnyuqgry')
 
         # Table IDs - P5 Social Posts
         self.p5_social_posts_table_id = os.environ.get('P5_SOCIAL_POSTS_TABLE', 'tbllJMN2QBPJoG3jA')
@@ -152,6 +153,81 @@ class AirtableClient:
     # =========================================================================
     # AI EDITOR 2.0 BASE
     # =========================================================================
+
+    def get_newsletter_selects(self, since_date: str = None) -> List[Dict[str, Any]]:
+        """
+        Get newsletter selects from AI Editor 2.0 base.
+
+        This is the new data source for pre-filter agents, replacing Newsletter Stories.
+        Fields are transformed to maintain compatibility with existing prefilter code.
+
+        Added 12/31/25: Migrated from Newsletter Stories to Newsletter Selects table.
+        """
+        table = self._get_table(self.ai_editor_base_id, self.newsletter_selects_table_id)
+
+        formula = None
+        if since_date:
+            formula = f"IS_AFTER({{date_og_published}}, '{since_date}')"
+
+        records = table.all(formula=formula)
+
+        # Transform fields to match expected format for prefilter agents
+        # IMPORTANT: Return format must match get_fresh_stories() -> {id, fields: {...}}
+        transformed = []
+        for r in records:
+            original_fields = r['fields']
+            raw_content = original_fields.get('raw', '')
+
+            # Extract summary from raw content (first ~300 chars, break at sentence)
+            summary = self._extract_summary(raw_content, max_length=300)
+
+            # Build fields dict that matches Newsletter Stories format
+            transformed_fields = {
+                'storyID': r['id'],  # Use record ID as storyID (no storyID in new table)
+                'pivotId': original_fields.get('pivot_id'),  # snake_case in new table
+                'ai_headline': original_fields.get('headline'),  # Map headline -> ai_headline
+                'ai_dek': summary,  # Derived from raw
+                'raw': raw_content,
+                'source_id': original_fields.get('source_name'),  # Alias for compatibility
+                'source_name': original_fields.get('source_name'),
+                'date_og_published': original_fields.get('date_og_published'),
+                'topic': original_fields.get('topic'),
+                'interest_score': original_fields.get('interest_score'),
+                'sentiment': original_fields.get('sentiment'),
+                'core_url': original_fields.get('core_url'),
+                'ai_complete': original_fields.get('ai_complete'),
+            }
+
+            # Return in same format as get_fresh_stories() for prefilter compatibility
+            transformed.append({
+                'id': r['id'],
+                'fields': transformed_fields
+            })
+
+        return transformed
+
+    def _extract_summary(self, raw_content: str, max_length: int = 300) -> str:
+        """Extract a clean summary from raw content, breaking at sentence boundary."""
+        if not raw_content:
+            return ''
+
+        # Take first portion of content
+        if len(raw_content) <= max_length:
+            return raw_content
+
+        # Try to break at a sentence boundary
+        truncated = raw_content[:max_length]
+        last_period = truncated.rfind('.')
+        last_question = truncated.rfind('?')
+        last_exclaim = truncated.rfind('!')
+
+        # Find the last sentence boundary
+        last_boundary = max(last_period, last_question, last_exclaim)
+
+        if last_boundary > max_length // 2:  # At least half the length
+            return truncated[:last_boundary + 1]
+
+        return truncated.rstrip() + '...'
 
     def get_source_scores(self, max_records: int = 500) -> List[dict]:
         """
