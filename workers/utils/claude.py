@@ -206,9 +206,9 @@ Return JSON with:
 
         Updated 12/31/25: Added missing fields from n8n audit:
         - credibility_score (from source_lookup)
-        - primary_company
         - url (core_url)
         - Candidate count in header
+        Note: primary_company is NOT in Pre-Filter Log table, skipped
         """
         prompt = f"## CANDIDATE STORIES ({len(candidates)} stories)\n\n"
 
@@ -229,7 +229,6 @@ Return JSON with:
 - source_name: {source_id}
 - credibility_score: {cred_score}
 - date_og_published: {fields.get('date_og_published', '')}
-- primary_company: {fields.get('primary_company') or 'null'}
 - url: {fields.get('core_url', '')}
 
 """

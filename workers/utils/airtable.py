@@ -285,12 +285,12 @@ class AirtableClient:
         # Filter on date_og_published (article's original publish date), not date_prefiltered
         filter_formula = f"AND({{slot}}={slot}, IS_AFTER({{date_og_published}}, DATEADD(TODAY(), -{freshness_days}, 'days')))"
 
-        # Updated 12/31/25: Added primary_company per n8n audit
+        # Note: primary_company field does NOT exist in Pre-Filter Log table
         records = table.all(
             formula=filter_formula,
             sort=['-date_og_published'],  # Freshest first
             max_records=max_records,  # Safety cap for Claude context
-            fields=['storyID', 'pivotId', 'headline', 'core_url', 'source_id', 'date_og_published', 'slot', 'primary_company']
+            fields=['storyID', 'pivotId', 'headline', 'core_url', 'source_id', 'date_og_published', 'slot']
         )
 
         return records
