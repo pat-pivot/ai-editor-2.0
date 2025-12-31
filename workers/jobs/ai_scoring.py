@@ -27,8 +27,13 @@ from anthropic import Anthropic
 
 # Configuration
 AIRTABLE_API_KEY = os.environ.get("AIRTABLE_API_KEY")
-AIRTABLE_BASE_ID = os.environ.get("AIRTABLE_BASE_ID", "appwSozYTkrsQWUXB")
-ARTICLES_TABLE = os.environ.get("AIRTABLE_ARTICLES_TABLE", "tblGumae8KDpsrWvh")
+
+# AI Editor 2.0 base - where backfill ingests articles with needs_ai = true
+AI_EDITOR_BASE_ID = os.environ.get("AI_EDITOR_BASE_ID", "appglKSJZxmA9iHpl")
+ARTICLES_TABLE = "tblMfRgSNSyoRIhx1"  # Articles All Ingested in AI Editor 2.0
+
+# Pivot Media Master base - where decorated Newsletter Stories go
+PIVOT_MEDIA_BASE_ID = os.environ.get("AIRTABLE_BASE_ID", "appwSozYTkrsQWUXB")
 NEWSLETTER_STORIES_TABLE = "tblY78ziWp5yhiGXp"  # Newsletter Stories in Pivot Media Master
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
@@ -282,13 +287,13 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
             raise ValueError("ANTHROPIC_API_KEY not set")
 
         airtable = Api(AIRTABLE_API_KEY)
-        articles_table = airtable.table(AIRTABLE_BASE_ID, ARTICLES_TABLE)
-        newsletter_stories_table = airtable.table(AIRTABLE_BASE_ID, NEWSLETTER_STORIES_TABLE)
+        articles_table = airtable.table(AI_EDITOR_BASE_ID, ARTICLES_TABLE)
+        newsletter_stories_table = airtable.table(PIVOT_MEDIA_BASE_ID, NEWSLETTER_STORIES_TABLE)
         claude = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-        # Query articles needing AI scoring (TODAY only to avoid re-scoring old articles)
-        print("[AI Scoring] Querying articles with needs_ai = true (today only)...")
-        formula = "AND({needs_ai} = 1, IS_SAME({date_ingested}, TODAY(), 'day'))"
+        # Query articles needing AI scoring
+        print("[AI Scoring] Querying articles with needs_ai = true...")
+        formula = "{needs_ai} = 1"
         articles = articles_table.all(formula=formula, max_records=batch_size)
 
         results["articles_queried"] = len(articles)
@@ -427,13 +432,13 @@ def run_ai_scoring(batch_size: int = 150) -> Dict[str, Any]:
             print("[AI Scoring] Cannot check remaining: AIRTABLE_API_KEY not set")
         else:
             airtable = Api(AIRTABLE_API_KEY)
-            articles_table = airtable.table(AIRTABLE_BASE_ID, ARTICLES_TABLE)
+            articles_table = airtable.table(AI_EDITOR_BASE_ID, ARTICLES_TABLE)
 
-            # Only check for remaining articles from TODAY
-            today_formula = "AND({needs_ai} = 1, IS_SAME({date_ingested}, TODAY(), 'day'))"
-            remaining = articles_table.all(formula=today_formula, max_records=1)
+            # Check for remaining articles needing scoring
+            remaining_formula = "{needs_ai} = 1"
+            remaining = articles_table.all(formula=remaining_formula, max_records=1)
             if remaining:
-                remaining_count = len(articles_table.all(formula=today_formula, max_records=500))
+                remaining_count = len(articles_table.all(formula=remaining_formula, max_records=500))
                 print(f"[AI Scoring] 🔄 {remaining_count} more articles remaining, auto-requeueing...")
                 results["remaining_articles"] = remaining_count
                 results["requeued"] = True
