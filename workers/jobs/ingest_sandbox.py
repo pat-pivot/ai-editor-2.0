@@ -212,9 +212,9 @@ async def resolve_article_urls(articles: List[Dict[str, Any]]) -> tuple[List[Dic
 
     print(f"[Ingest Sandbox] Resolving {len(google_news_articles)} Google News URLs using googlenewsdecoder...")
 
-    # Process in smaller batches with delays to avoid Google rate limiting
-    # REDUCED from 10 to 5 to prevent 429 errors
-    batch_size = 5
+    # Process in batches with delays to avoid Google rate limiting
+    # gnewsdecoder uses interval=1.0 internally, plus 1s between batches
+    batch_size = 10
     resolved_count = 0
 
     for batch_start in range(0, len(google_news_articles), batch_size):
@@ -246,9 +246,9 @@ async def resolve_article_urls(articles: List[Dict[str, Any]]) -> tuple[List[Dic
                 articles[idx]["source_id"] = source_name
 
         # Add delay between batches to avoid rate limiting
-        # INCREASED from 1s to 5s to prevent 429 errors
+        # Using 1s delay - googlenewsdecoder already has internal interval=1.0
         if batch_start + batch_size < len(google_news_articles):
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
 
     print(f"[Ingest Sandbox] Resolved {resolved_count} Google News URLs to actual sources")
     return articles, resolved_count
