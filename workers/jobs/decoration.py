@@ -201,12 +201,10 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
         if results["decorated"] > 0:
             print("[Step 3] Updating issue status to 'decorated'...")
             try:
-                from utils.airtable import AirtableClient
-                airtable_client = AirtableClient()
-                # Use the selected slots table to update status
-                table = airtable_client._get_table(
-                    airtable_client.ai_editor_base_id,
-                    airtable_client.selected_slots_table_id
+                # Use the existing airtable client from line 56
+                table = airtable._get_table(
+                    airtable.ai_editor_base_id,
+                    airtable.selected_slots_table_id
                 )
                 table.update(issue_record_id, {"status": "decorated"})
                 print("[Step 3] Issue status updated")
