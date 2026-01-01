@@ -172,7 +172,7 @@ async def resolve_google_news_url(url: str) -> tuple[str, Optional[str]]:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             _google_news_executor,
-            lambda: gnewsdecoder(url, interval=0.3)  # 0.3s delay between retries
+            lambda: gnewsdecoder(url, interval=1.0)  # 1.0s delay to avoid rate limiting
         )
 
         if result.get("status") and result.get("decoded_url"):
@@ -213,7 +213,8 @@ async def resolve_article_urls(articles: List[Dict[str, Any]]) -> tuple[List[Dic
     print(f"[Ingest Sandbox] Resolving {len(google_news_articles)} Google News URLs using googlenewsdecoder...")
 
     # Process in smaller batches with delays to avoid Google rate limiting
-    batch_size = 10
+    # REDUCED from 10 to 5 to prevent 429 errors
+    batch_size = 5
     resolved_count = 0
 
     for batch_start in range(0, len(google_news_articles), batch_size):
@@ -245,8 +246,9 @@ async def resolve_article_urls(articles: List[Dict[str, Any]]) -> tuple[List[Dic
                 articles[idx]["source_id"] = source_name
 
         # Add delay between batches to avoid rate limiting
+        # INCREASED from 1s to 5s to prevent 429 errors
         if batch_start + batch_size < len(google_news_articles):
-            await asyncio.sleep(1)
+            await asyncio.sleep(5)
 
     print(f"[Ingest Sandbox] Resolved {resolved_count} Google News URLs to actual sources")
     return articles, resolved_count
