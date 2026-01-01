@@ -30,6 +30,12 @@ const VALID_STEPS = [
   // Sandbox jobs (FreshRSS-based pipeline)
   "ingest_sandbox",
   "ai_scoring_sandbox",
+  // Individual slot prefilter jobs (for testing)
+  "prefilter_slot_1",
+  "prefilter_slot_2",
+  "prefilter_slot_3",
+  "prefilter_slot_4",
+  "prefilter_slot_5",
 ] as const;
 
 type StepName = (typeof VALID_STEPS)[number];

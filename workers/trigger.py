@@ -106,6 +106,22 @@ def get_job_function(step_name: str):
         elif step_name == 'repair_google_news':
             from repair_google_news import repair_google_news_job
             JOB_FUNCTIONS[step_name] = repair_google_news_job
+        # Individual slot prefilter jobs (for testing)
+        elif step_name == 'prefilter_slot_1':
+            from jobs.prefilter import prefilter_slot_1
+            JOB_FUNCTIONS[step_name] = prefilter_slot_1
+        elif step_name == 'prefilter_slot_2':
+            from jobs.prefilter import prefilter_slot_2
+            JOB_FUNCTIONS[step_name] = prefilter_slot_2
+        elif step_name == 'prefilter_slot_3':
+            from jobs.prefilter import prefilter_slot_3
+            JOB_FUNCTIONS[step_name] = prefilter_slot_3
+        elif step_name == 'prefilter_slot_4':
+            from jobs.prefilter import prefilter_slot_4
+            JOB_FUNCTIONS[step_name] = prefilter_slot_4
+        elif step_name == 'prefilter_slot_5':
+            from jobs.prefilter import prefilter_slot_5
+            JOB_FUNCTIONS[step_name] = prefilter_slot_5
         else:
             return None
 
@@ -131,6 +147,12 @@ QUEUE_MAPPING = {
     'ai_scoring_sandbox': 'default',
     # Repair/maintenance jobs
     'repair_google_news': 'low',
+    # Individual slot prefilter jobs (for testing)
+    'prefilter_slot_1': 'default',
+    'prefilter_slot_2': 'default',
+    'prefilter_slot_3': 'default',
+    'prefilter_slot_4': 'default',
+    'prefilter_slot_5': 'default',
 }
 
 
@@ -216,9 +238,11 @@ def trigger_job(step_name: str):
         queue = Queue(queue_name, connection=conn)
 
         # Enqueue the job with optional parameters
+        # Use 2 hour timeout for prefilter jobs, 30 min for others
+        timeout = '2h' if step_name.startswith('prefilter') else '30m'
         job = queue.enqueue(
             job_func,
-            job_timeout='30m',  # 30 minute timeout
+            job_timeout=timeout,
             **params
         )
 

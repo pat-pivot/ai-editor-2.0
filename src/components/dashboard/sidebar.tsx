@@ -47,6 +47,7 @@ const navigation: NavSection[] = [
     title: "SANDBOX",
     items: [
       { name: "FreshRSS Pipeline", href: "/sandbox", icon: "science" },
+      { name: "Slot Testing", href: "/sandbox/slots", icon: "grid_view" },
     ],
   },
 ];
