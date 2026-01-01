@@ -432,6 +432,98 @@ def get_queue_status():
         }), 500
 
 
+@app.route('/admin/sql', methods=['POST'])
+def execute_sql():
+    """
+    Execute SQL query (admin endpoint for migrations).
+    Requires TRIGGER_SECRET authentication.
+
+    Request Body:
+        {
+            "query": "SELECT * FROM system_prompts;"
+        }
+
+    Returns:
+        {
+            "success": true,
+            "rows_affected": 5,
+            "result": [...]  // For SELECT queries
+        }
+    """
+    # Verify authentication
+    if not verify_auth():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized'
+        }), 401
+
+    try:
+        from utils.db import DatabaseClient
+
+        body = request.get_json() or {}
+        query = body.get('query', '')
+
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'No query provided'
+            }), 400
+
+        db = DatabaseClient()
+
+        # Check if it's a SELECT query
+        is_select = query.strip().upper().startswith('SELECT')
+
+        if is_select:
+            result = db.execute_query(query)
+            return jsonify({
+                'success': True,
+                'result': result
+            })
+        else:
+            rows_affected = db.execute_update(query)
+            return jsonify({
+                'success': True,
+                'rows_affected': rows_affected
+            })
+
+    except Exception as e:
+        logger.error(f"SQL execution failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/admin/prompts', methods=['GET'])
+def list_prompts():
+    """
+    List all prompts in the database.
+    Requires TRIGGER_SECRET authentication.
+    """
+    if not verify_auth():
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized'
+        }), 401
+
+    try:
+        from utils.db import DatabaseClient
+        db = DatabaseClient()
+        result = db.execute_query(
+            "SELECT key, version, LENGTH(content) as content_length, created_at FROM system_prompts ORDER BY key;"
+        )
+        return jsonify({
+            'success': True,
+            'prompts': result
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('TRIGGER_PORT', 5001))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'

@@ -231,6 +231,22 @@ class DatabaseClient:
             cursor.execute(sql, (action, entity_type, entity_id,
                                  json.dumps(details) if details else None, user_email))
 
+    # =========================================================================
+    # RAW SQL EXECUTION (for migrations and admin)
+    # =========================================================================
+
+    def execute_query(self, sql: str, params: tuple = None) -> List[Dict[str, Any]]:
+        """Execute a SELECT query and return results as list of dicts"""
+        with self.get_cursor() as cursor:
+            cursor.execute(sql, params)
+            return [dict(row) for row in cursor.fetchall()]
+
+    def execute_update(self, sql: str, params: tuple = None) -> int:
+        """Execute an INSERT/UPDATE/DELETE and return rows affected"""
+        with self.get_cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.rowcount
+
 
 # Singleton instance
 _db_client: Optional[DatabaseClient] = None
