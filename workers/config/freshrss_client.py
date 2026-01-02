@@ -304,7 +304,9 @@ class FreshRSSClient:
             if article.get("published_dt"):
                 if article["published_dt"] < cutoff:
                     title = article.get("title", "Unknown")[:40]
-                    print(f"[FreshRSS] WARNING: API returned old article, skipping: {title}...")
+                    pub_date = article["published_dt"].strftime("%Y-%m-%d %H:%M")
+                    cutoff_date = cutoff.strftime("%Y-%m-%d %H:%M")
+                    print(f"[FreshRSS] WARNING: Skipping old article (published {pub_date}, cutoff {cutoff_date}): {title}...")
                     continue
 
             articles.append(article)
