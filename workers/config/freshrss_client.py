@@ -261,57 +261,59 @@ class FreshRSSClient:
         else:
             endpoint = "/reader/api/0/stream/contents"
 
-        # Two-tier filtering approach:
-        # 1. API level: Use generous 7-day window to reduce data (avoids 3-year-old articles)
-        # 2. Python level: Use strict since_hours filter for final filtering
-        #
-        # This prevents the issue where strict API filtering returned 0 articles
-        # (some feeds have weird/missing publication dates)
-        api_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-        api_cutoff_iso = api_cutoff.strftime("%Y-%m-%dT%H:%M:%S")
-
-        # Python-level cutoff for strict filtering
+        # Calculate cutoff timestamp for filtering
+        # Use since_hours (default 36) for both API and Python filtering
         cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+        cutoff_timestamp = int(cutoff.timestamp())  # Unix seconds for Google Reader API
 
-        # Fetch from API with generous pubdate filter
-        # FreshRSS uses 'q' parameter with 'pubdate:YYYY-MM-DDTHH:MM:SS/' syntax
-        # The trailing '/' means "after this date"
-        # See: https://freshrss.github.io/FreshRSS/en/users/10_filter.html
+        # Fetch from API with 'ot' (oldest timestamp) filter
+        # Google Reader API uses 'ot' parameter as Unix timestamp (seconds)
+        # Only articles with published timestamp > ot will be returned
+        # NOTE: The 'q=pubdate:' syntax is for FreshRSS web search, NOT Google Reader API
         data = self._make_request(
             endpoint,
             params={
                 "n": limit,
                 "output": "json",
-                "q": f"pubdate:{api_cutoff_iso}/"  # Generous 7-day filter at API level
+                "ot": cutoff_timestamp  # Only articles published after this Unix timestamp
             }
         )
-        print(f"[FreshRSS] Querying with pubdate filter: pubdate:{api_cutoff_iso}/ (7-day API window)")
+        print(f"[FreshRSS] Querying with ot={cutoff_timestamp} ({since_hours}h cutoff: {cutoff.strftime('%Y-%m-%d %H:%M')} UTC)")
 
         if not data or "items" not in data:
             return []
 
         # Process articles
-        # Note: API-level filtering via 'ot' parameter should already exclude old articles
-        # Python-side filter is kept as a safety net but should rarely trigger
+        # API 'ot' parameter should filter by published timestamp
+        # Python filter is a safety net for articles with missing/wrong dates
         articles = []
+        skipped_count = 0
         for item in data["items"]:
             article = self._parse_article(item)
 
             if not article:
                 continue
 
-            # Safety net: Double-check publication date (API should have filtered this)
+            # Safety net: Double-check publication date
+            # Should rarely trigger since API 'ot' parameter filters by timestamp
             if article.get("published_dt"):
                 if article["published_dt"] < cutoff:
-                    title = article.get("title", "Unknown")[:40]
-                    pub_date = article["published_dt"].strftime("%Y-%m-%d %H:%M")
-                    cutoff_date = cutoff.strftime("%Y-%m-%d %H:%M")
-                    print(f"[FreshRSS] WARNING: Skipping old article (published {pub_date}, cutoff {cutoff_date}): {title}...")
+                    skipped_count += 1
+                    # Only log first 3 skipped articles to avoid spam
+                    if skipped_count <= 3:
+                        title = article.get("title", "Unknown")[:40]
+                        pub_date = article["published_dt"].strftime("%Y-%m-%d %H:%M")
+                        cutoff_date = cutoff.strftime("%Y-%m-%d %H:%M")
+                        print(f"[FreshRSS] Skipping old article (pub {pub_date}, cutoff {cutoff_date}): {title}...")
                     continue
 
             articles.append(article)
 
-        print(f"[FreshRSS] Fetched {len(articles)} articles from API")
+        # Summary log
+        if skipped_count > 0:
+            print(f"[FreshRSS] Fetched {len(articles)} articles, skipped {skipped_count} old articles")
+        else:
+            print(f"[FreshRSS] Fetched {len(articles)} articles (API filter working - no old articles)")
         return articles
 
     def _parse_article(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
