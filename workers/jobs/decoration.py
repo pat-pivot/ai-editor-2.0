@@ -18,12 +18,25 @@ Updated Jan 1, 2026:
 """
 
 import os
+import json
+import traceback
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
 from utils.airtable import AirtableClient
 from utils.gemini import GeminiClient
 from utils.claude import ClaudeClient
+
+
+def _log(msg: str, data: Any = None):
+    """Enhanced logging with timestamp and optional data dump"""
+    timestamp = datetime.utcnow().strftime('%H:%M:%S.%f')[:-3]
+    print(f"[Step 3][{timestamp}] {msg}")
+    if data is not None:
+        if isinstance(data, (dict, list)):
+            print(f"[Step 3][{timestamp}]   └─ {json.dumps(data, indent=2, default=str)[:2000]}")
+        else:
+            print(f"[Step 3][{timestamp}]   └─ {str(data)[:500]}")
 
 
 def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
@@ -47,19 +60,25 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
     Returns:
         {decorated: int, issue_id: str, decoration_ids: list, errors: list}
     """
-    print(f"[Step 3] Starting decoration at {datetime.utcnow().isoformat()}")
-    print(f"[Step 3] Using newsletter style: {newsletter}")
+    _log("=" * 60)
+    _log(f"DECORATION JOB STARTED")
+    _log(f"Newsletter style: {newsletter}")
+    _log("=" * 60)
 
     # Validate newsletter style
     valid_newsletters = ['pivot_ai', 'pivot_build', 'pivot_invest']
     if newsletter not in valid_newsletters:
-        print(f"[Step 3] WARNING: Unknown newsletter '{newsletter}', defaulting to 'pivot_ai'")
+        _log(f"WARNING: Unknown newsletter '{newsletter}', defaulting to 'pivot_ai'")
         newsletter = 'pivot_ai'
 
     # Initialize clients
+    _log("Initializing clients...")
     airtable = AirtableClient()
+    _log(f"  ✓ AirtableClient initialized (base: {airtable.ai_editor_base_id})")
     gemini = GeminiClient()
+    _log("  ✓ GeminiClient initialized")
     claude = ClaudeClient()
+    _log("  ✓ ClaudeClient initialized")
 
     # Track results
     results = {
@@ -71,22 +90,29 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
 
     try:
         # 1. Get pending issue from Selected Slots
-        print("[Step 3] Fetching pending issue...")
+        _log("-" * 40)
+        _log("STEP 1: Fetching pending issue from Selected Slots...")
+        _log(f"  Table ID: {airtable.selected_slots_table_id}")
         pending_issue = airtable.get_pending_issue()
 
         if not pending_issue:
-            print("[Step 3] No pending issue found")
+            _log("❌ No pending issue found - exiting")
             return results
 
         issue_record_id = pending_issue.get('id', '')
         issue_fields = pending_issue.get('fields', {})
         results["issue_id"] = issue_record_id
 
-        print(f"[Step 3] Processing issue: {issue_fields.get('issue_date', 'unknown')}")
+        _log(f"✓ Found pending issue:")
+        _log(f"  Record ID: {issue_record_id}")
+        _log(f"  Issue Date: {issue_fields.get('issue_date', 'unknown')}")
+        _log(f"  Status: {issue_fields.get('status', 'unknown')}")
+        _log(f"  All fields:", list(issue_fields.keys()))
 
         # 2. Process each slot
         for slot in range(1, 6):
-            print(f"[Step 3] Decorating Slot {slot}...")
+            _log("-" * 40)
+            _log(f"SLOT {slot}: Starting decoration...")
 
             try:
                 # Extract slot data from issue
@@ -95,15 +121,24 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                 headline = issue_fields.get(f'slot_{slot}_headline', '')
                 source_id = issue_fields.get(f'slot_{slot}_source', '')
 
+                _log(f"SLOT {slot}: Extracted slot data:")
+                _log(f"  pivot_id: {pivot_id or '(empty)'}")
+                _log(f"  story_id: {story_id or '(empty)'}")
+                _log(f"  headline: {headline[:80] if headline else '(empty)'}...")
+                _log(f"  source_id: {source_id or '(empty)'}")
+
                 if not pivot_id:
-                    print(f"[Step 3] Slot {slot}: No pivotId, skipping")
+                    _log(f"SLOT {slot}: ⚠️ No pivotId, skipping this slot")
                     continue
 
                 # 2a. Lookup article markdown
-                print(f"[Step 3] Slot {slot}: Fetching article {pivot_id}...")
+                _log(f"SLOT {slot}: Fetching article from Newsletter Selects...")
+                _log(f"  Table: {airtable.newsletter_selects_table_id}")
+                _log(f"  Filter: pivot_id='{pivot_id}'")
                 article = airtable.get_article_by_pivot_id(pivot_id)
 
                 if not article:
+                    _log(f"SLOT {slot}: ❌ Article not found in Newsletter Selects")
                     results["errors"].append({
                         "slot": slot,
                         "error": f"Article not found: {pivot_id}"
@@ -111,10 +146,17 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                     continue
 
                 article_fields = article.get('fields', {})
-                markdown = article_fields.get('markdown', '')
-                original_url = article_fields.get('original_url', '')
+                markdown = article_fields.get('markdown', '') or article_fields.get('raw', '')
+                original_url = article_fields.get('original_url', '') or article_fields.get('core_url', '')
+
+                _log(f"SLOT {slot}: ✓ Article found:")
+                _log(f"  Record ID: {article.get('id', 'unknown')}")
+                _log(f"  Fields available: {list(article_fields.keys())}")
+                _log(f"  Markdown length: {len(markdown)} chars")
+                _log(f"  Original URL: {original_url or '(empty)'}")
 
                 if not markdown:
+                    _log(f"SLOT {slot}: ❌ No markdown/raw content found")
                     results["errors"].append({
                         "slot": slot,
                         "error": f"No markdown content for {pivot_id}"
@@ -122,15 +164,21 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                     continue
 
                 # 2b. Clean content using Gemini
-                print(f"[Step 3] Slot {slot}: Cleaning content...")
+                _log(f"SLOT {slot}: Cleaning content with Gemini...")
+                _log(f"  Input length: {len(markdown)} chars")
                 try:
                     cleaned_content = gemini.clean_content(markdown)
+                    _log(f"SLOT {slot}: ✓ Gemini cleaning complete")
+                    _log(f"  Output length: {len(cleaned_content)} chars")
+                    _log(f"  Preview: {cleaned_content[:200]}...")
                 except Exception as e:
-                    print(f"[Step 3] Slot {slot}: Gemini cleaning failed, using raw: {e}")
+                    _log(f"SLOT {slot}: ⚠️ Gemini cleaning failed: {e}")
+                    _log(f"  Using raw markdown (first 8000 chars)")
                     cleaned_content = markdown[:8000]
 
                 # 2c. Generate decoration using Claude MASTER PROMPT
-                print(f"[Step 3] Slot {slot}: Generating decoration with {newsletter} style...")
+                _log(f"SLOT {slot}: Generating decoration with Claude...")
+                _log(f"  Newsletter style: {newsletter}")
                 story_data = {
                     "headline": headline,
                     "source_id": source_id,
@@ -138,19 +186,30 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                     "date_published": issue_fields.get('issue_date', ''),
                     "newsletter": newsletter
                 }
+                _log(f"  Story data:", story_data)
 
                 # Pass newsletter style variant to Claude
                 decoration = claude.decorate_story(story_data, cleaned_content, newsletter=newsletter)
 
                 if "error" in decoration:
+                    _log(f"SLOT {slot}: ❌ Claude decoration failed")
+                    _log(f"  Error: {decoration.get('error')}")
                     results["errors"].append({
                         "slot": slot,
                         "error": decoration.get("error")
                     })
                     continue
 
+                _log(f"SLOT {slot}: ✓ Claude decoration complete")
+                _log(f"  ai_headline: {decoration.get('ai_headline', '')[:80]}...")
+                _log(f"  ai_dek: {decoration.get('ai_dek', '')[:80]}...")
+                _log(f"  ai_bullet_1: {decoration.get('ai_bullet_1', '')[:80]}...")
+                _log(f"  ai_bullet_2: {decoration.get('ai_bullet_2', '')[:80]}...")
+                _log(f"  ai_bullet_3: {decoration.get('ai_bullet_3', '')[:80]}...")
+                _log(f"  label: {decoration.get('label', '')}")
+
                 # 2d. Apply HTML <b> bolding to bullets
-                print(f"[Step 3] Slot {slot}: Applying HTML bolding...")
+                _log(f"SLOT {slot}: Applying HTML <b> bolding...")
                 try:
                     # apply_bolding now takes full decoration dict and returns dict with bolded bullets
                     bolded_decoration = claude.apply_bolding(decoration)
@@ -158,15 +217,22 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                     decoration["ai_bullet_1"] = bolded_decoration.get("ai_bullet_1", decoration.get("ai_bullet_1", ""))
                     decoration["ai_bullet_2"] = bolded_decoration.get("ai_bullet_2", decoration.get("ai_bullet_2", ""))
                     decoration["ai_bullet_3"] = bolded_decoration.get("ai_bullet_3", decoration.get("ai_bullet_3", ""))
+                    _log(f"SLOT {slot}: ✓ Bolding complete")
+                    _log(f"  b1 has <b>: {'<b>' in decoration['ai_bullet_1']}")
+                    _log(f"  b2 has <b>: {'<b>' in decoration['ai_bullet_2']}")
+                    _log(f"  b3 has <b>: {'<b>' in decoration['ai_bullet_3']}")
                 except Exception as e:
-                    print(f"[Step 3] Slot {slot}: Bolding failed, using original: {e}")
+                    _log(f"SLOT {slot}: ⚠️ Bolding failed: {e}")
+                    _log(f"  Using unbolded bullets")
 
                 # 2e. Write to Newsletter Issue Stories table
                 # Field names from Airtable API query (table tbla16LJCf5Z6cRn3)
-                print(f"[Step 3] Slot {slot}: Writing decoration record...")
+                _log(f"SLOT {slot}: Writing to Newsletter Issue Stories...")
+                _log(f"  Table: {airtable.decoration_table_id}")
 
                 # Build issue_id from issue date (format: "Pivot 5 - Jan 02")
                 issue_date_raw = issue_fields.get('issue_date', '')
+                _log(f"  Building issue_id from date: {issue_date_raw}")
                 # Convert "2026-01-02" to "Jan 02" format
                 if issue_date_raw and '-' in issue_date_raw:
                     try:
@@ -178,6 +244,7 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                 else:
                     issue_date_fmt = issue_date_raw  # Already formatted or empty
                 issue_id_text = f"Pivot 5 - {issue_date_fmt}" if issue_date_fmt else "Pivot 5"
+                _log(f"  Formatted issue_id: {issue_id_text}")
 
                 decoration_data = {
                     # Record identifiers (verified via Airtable API)
@@ -197,22 +264,39 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                     "image_status": "needs_image",  # singleSelect
                 }
 
+                _log(f"SLOT {slot}: Decoration data to write:")
+                _log(f"  story_id: {decoration_data['story_id']}")
+                _log(f"  issue_id: {decoration_data['issue_id']}")
+                _log(f"  slot_order: {decoration_data['slot_order']}")
+                _log(f"  headline: {decoration_data['headline'][:60]}...")
+                _log(f"  ai_dek: {decoration_data['ai_dek'][:60]}...")
+                _log(f"  b1 length: {len(decoration_data['b1'])} chars")
+                _log(f"  b2 length: {len(decoration_data['b2'])} chars")
+                _log(f"  b3 length: {len(decoration_data['b3'])} chars")
+                _log(f"  label: {decoration_data['label']}")
+                _log(f"  raw length: {len(decoration_data['raw'])} chars")
+                _log(f"  image_status: {decoration_data['image_status']}")
+
                 record_id = airtable.write_decoration(decoration_data)
                 results["decoration_ids"].append(record_id)
                 results["decorated"] += 1
 
-                print(f"[Step 3] Slot {slot}: Created decoration {record_id}")
+                _log(f"SLOT {slot}: ✓ Created decoration record: {record_id}")
 
             except Exception as e:
-                print(f"[Step 3] Error decorating Slot {slot}: {e}")
+                _log(f"SLOT {slot}: ❌ EXCEPTION: {e}")
+                _log(f"  Traceback: {traceback.format_exc()}")
                 results["errors"].append({
                     "slot": slot,
                     "error": str(e)
                 })
 
         # 3. Update issue status to 'decorated' if any slots were processed
+        _log("=" * 60)
+        _log("STEP 3: Updating issue status...")
         if results["decorated"] > 0:
-            print("[Step 3] Updating issue status to 'decorated'...")
+            _log(f"  Decorated {results['decorated']} slots successfully")
+            _log(f"  Updating status to 'decorated'...")
             try:
                 # Use the existing airtable client from line 56
                 table = airtable._get_table(
@@ -220,19 +304,32 @@ def decorate_stories(newsletter: str = 'pivot_ai') -> dict:
                     airtable.selected_slots_table_id
                 )
                 table.update(issue_record_id, {"status": "decorated"})
-                print("[Step 3] Issue status updated")
+                _log(f"  ✓ Issue status updated to 'decorated'")
             except Exception as e:
-                print(f"[Step 3] Error updating issue status: {e}")
+                _log(f"  ❌ Failed to update issue status: {e}")
+                _log(f"  Traceback: {traceback.format_exc()}")
                 results["errors"].append({
                     "step": "update_status",
                     "error": str(e)
                 })
+        else:
+            _log(f"  ⚠️ No slots were decorated, skipping status update")
 
-        print(f"[Step 3] Decoration complete: {results}")
+        _log("=" * 60)
+        _log("DECORATION JOB COMPLETE")
+        _log(f"  Decorated: {results['decorated']}")
+        _log(f"  Decoration IDs: {results['decoration_ids']}")
+        _log(f"  Errors: {len(results['errors'])}")
+        if results['errors']:
+            _log(f"  Error details:", results['errors'])
+        _log("=" * 60)
         return results
 
     except Exception as e:
-        print(f"[Step 3] Fatal error: {e}")
+        _log("=" * 60)
+        _log(f"❌ FATAL ERROR: {e}")
+        _log(f"Traceback: {traceback.format_exc()}")
+        _log("=" * 60)
         results["errors"].append({"fatal": str(e)})
         raise
 

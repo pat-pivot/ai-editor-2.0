@@ -306,7 +306,7 @@ ARTICLE:
         # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
         # Increased to 25 articles per chunk (1/1/26) - 5 was too conservative
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=25)
+        chunks = self._chunk_articles(articles, chunk_size=200)
         print(f"[Gemini slot_1] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -380,7 +380,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
         # Increased to 25 articles per chunk (1/1/26) - 5 was too conservative
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=25)
+        chunks = self._chunk_articles(articles, chunk_size=200)
         print(f"[Gemini slot_2] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -454,7 +454,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
         # Increased to 25 articles per chunk (1/1/26) - 5 was too conservative
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=25)
+        chunks = self._chunk_articles(articles, chunk_size=200)
         print(f"[Gemini slot_3] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -536,7 +536,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
         # Increased to 25 articles per chunk (1/1/26) - 5 was too conservative
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=25)
+        chunks = self._chunk_articles(articles, chunk_size=200)
         print(f"[Gemini slot_4] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -613,7 +613,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
         # Increased to 25 articles per chunk (1/1/26) - 5 was too conservative
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=25)
+        chunks = self._chunk_articles(articles, chunk_size=200)
         print(f"[Gemini slot_5] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
