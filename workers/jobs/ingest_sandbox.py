@@ -87,6 +87,7 @@ DOMAIN_TO_SOURCE = {
 BLOCKED_DOMAINS = [
     "yahoo.com",
     "finance.yahoo.com",
+    "barrons.com",
 ]
 
 
