@@ -121,42 +121,49 @@ Colors: Vibrant but corporate-appropriate."""
         Generate image using Gemini Imagen 3
 
         Primary image generator for AI Editor 2.0
+        Matches n8n workflow configuration exactly.
         """
         if not self.gemini_api_key:
             return None
 
-        # Gemini image generation endpoint
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
+        # Gemini image generation endpoint (matches n8n workflow)
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
 
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": self.gemini_api_key
         }
 
-        enhanced_prompt = f"Generate a professional, abstract newsletter image for: {prompt}. Style: clean, modern, suitable for business newsletter. No text or logos. 636px width, landscape orientation."
-
+        # Use prompt directly - it's already formatted by _build_image_prompt()
+        # Don't add extra wrapper text like before
         payload = {
             "contents": [{
                 "parts": [{
-                    "text": enhanced_prompt
+                    "text": prompt
                 }]
             }],
             "generationConfig": {
                 "responseModalities": ["image"],
-                "imageDimensions": {
-                    "width": 636,
-                    "height": 358
+                # Use aspectRatio like n8n workflow instead of imageDimensions
+                "imageConfig": {
+                    "aspectRatio": "16:9"
                 }
             }
         }
 
         try:
+            print(f"[ImageClient] Calling Gemini Imagen API...")
+            print(f"[ImageClient]   URL: {url}")
+            print(f"[ImageClient]   Prompt length: {len(prompt)} chars")
+
             response = requests.post(
                 url,
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=90  # Increased timeout for image generation
             )
+
+            print(f"[ImageClient]   Response status: {response.status_code}")
 
             if response.status_code == 200:
                 data = response.json()
@@ -167,9 +174,22 @@ Colors: Vibrant but corporate-appropriate."""
                     if parts and "inlineData" in parts[0]:
                         image_data = parts[0]["inlineData"].get("data")
                         if image_data:
+                            print(f"[ImageClient]   ✓ Image data received ({len(image_data)} chars base64)")
                             return base64.b64decode(image_data)
+                    else:
+                        print(f"[ImageClient]   ⚠️ No inlineData in response parts")
+                        print(f"[ImageClient]   Parts: {parts[:500] if parts else 'empty'}")
+                else:
+                    print(f"[ImageClient]   ⚠️ No candidates in response")
+                    print(f"[ImageClient]   Response keys: {list(data.keys())}")
+            else:
+                print(f"[ImageClient]   ❌ API error: {response.status_code}")
+                print(f"[ImageClient]   Response: {response.text[:500]}")
+
         except Exception as e:
             print(f"[ImageClient] Gemini Imagen error: {e}")
+            import traceback
+            print(f"[ImageClient] Traceback: {traceback.format_exc()}")
 
         return None
 

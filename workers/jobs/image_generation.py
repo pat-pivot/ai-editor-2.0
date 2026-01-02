@@ -28,6 +28,57 @@ def _log(msg: str, data: Any = None):
             print(f"[Step 3b][{timestamp}]   └─ {str(data)[:500]}")
 
 
+def _build_image_prompt(headline: str, b1: str, b2: str, b3: str) -> str:
+    """
+    Build image generation prompt from story content.
+    Matches n8n workflow format exactly.
+
+    Args:
+        headline: Story headline
+        b1, b2, b3: Bullet points (may contain HTML <b> tags)
+
+    Returns:
+        Formatted image prompt for Gemini Imagen 3
+    """
+    # Strip HTML tags from bullets for cleaner prompt
+    import re
+    def strip_html(text: str) -> str:
+        return re.sub(r'<[^>]+>', '', text) if text else ''
+
+    clean_b1 = strip_html(b1)
+    clean_b2 = strip_html(b2)
+    clean_b3 = strip_html(b3)
+
+    # Build key points section only if bullets exist
+    key_points = ""
+    if clean_b1 or clean_b2 or clean_b3:
+        key_points = "\nKey Points (if available):"
+        if clean_b1:
+            key_points += f"\n- {clean_b1}"
+        if clean_b2:
+            key_points += f"\n- {clean_b2}"
+        if clean_b3:
+            key_points += f"\n- {clean_b3}"
+
+    # Match n8n workflow prompt format exactly
+    prompt = f"""Create a clean, minimal, informative landscape infographic based on this AI news story.
+
+DESIGN REQUIREMENTS:
+- Aspect ratio: 16:9
+- MINIMAL TEXT - prioritize icons and visuals over words
+- Orange accent color: #ff6f00 for accents and highlights
+- White or light gray background
+- Plenty of white space
+- Modern, premium aesthetic
+
+Story Context:
+Headline: {headline}{key_points}
+
+Style: Soft watercolor aesthetic with orange (#ff6f00) accents. Clean typography. NO clutter."""
+
+    return prompt
+
+
 def generate_images() -> dict:
     """
     Step 3b: Image Generation Cron Job - Main entry point
@@ -93,16 +144,21 @@ def generate_images() -> dict:
             _log(f"  Fields:", list(fields.keys()))
 
             try:
-                # Get image prompt
-                image_prompt = fields.get('image_prompt', '')
-                _log(f"  image_prompt from Airtable: {image_prompt[:100] if image_prompt else '(empty)'}...")
+                # Build image prompt from headline + bullets (matching n8n workflow)
+                headline = fields.get('headline', '')
+                b1 = fields.get('b1', '')
+                b2 = fields.get('b2', '')
+                b3 = fields.get('b3', '')
+                label = fields.get('label', 'AI NEWS')
 
-                if not image_prompt:
-                    # Generate fallback prompt from headline
-                    headline = fields.get('headline', '')
-                    image_prompt = f"Abstract editorial illustration representing: {headline}"
-                    _log(f"  ⚠️ No image_prompt, using headline fallback")
-                    _log(f"  Fallback prompt: {image_prompt[:100]}...")
+                _log(f"  Building image prompt from story data:")
+                _log(f"    headline: {headline[:80] if headline else '(empty)'}...")
+                _log(f"    label: {label}")
+                _log(f"    b1: {b1[:60] if b1 else '(empty)'}...")
+
+                # Build prompt exactly like n8n workflow
+                image_prompt = _build_image_prompt(headline, b1, b2, b3)
+                _log(f"  Generated image prompt: {image_prompt[:150]}...")
 
                 # 2a-c. Generate, optimize, and upload image
                 _log(f"  Calling image_client.process_image()...")
@@ -200,8 +256,8 @@ def _get_pending_decorations(airtable: AirtableClient) -> List[dict]:
     records = table.all(
         formula=filter_formula,
         fields=[
-            'story_id', 'headline', 'image_prompt',
-            'image_status', 'slot_order'
+            'story_id', 'headline', 'b1', 'b2', 'b3',
+            'image_status', 'slot_order', 'label'
         ]
     )
 
@@ -249,17 +305,21 @@ def regenerate_image(record_id: str) -> dict:
 
         fields = record.get('fields', {})
         story_id = fields.get('story_id', 'unknown')
-        image_prompt = fields.get('image_prompt', '')
+
+        # Build image prompt from headline + bullets (matching n8n workflow)
+        headline = fields.get('headline', '')
+        b1 = fields.get('b1', '')
+        b2 = fields.get('b2', '')
+        b3 = fields.get('b3', '')
 
         _log(f"  ✓ Record found:")
         _log(f"    story_id: {story_id}")
-        _log(f"    image_prompt: {image_prompt[:100] if image_prompt else '(empty)'}...")
+        _log(f"    headline: {headline[:80] if headline else '(empty)'}...")
+        _log(f"    b1: {b1[:60] if b1 else '(empty)'}...")
 
-        if not image_prompt:
-            headline = fields.get('headline', '')
-            image_prompt = f"Abstract editorial illustration representing: {headline}"
-            _log(f"  ⚠️ Using headline fallback prompt")
-            _log(f"    Fallback: {image_prompt[:100]}...")
+        # Build prompt exactly like n8n workflow
+        image_prompt = _build_image_prompt(headline, b1, b2, b3)
+        _log(f"  Generated image prompt: {image_prompt[:150]}...")
 
         # Generate image
         _log("  Generating image...")
