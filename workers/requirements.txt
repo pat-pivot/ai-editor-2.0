@@ -15,6 +15,7 @@ psycopg2-binary==2.9.10
 
 # Utilities
 python-dotenv==1.0.1
+pytz==2024.2
 httpx==0.28.1
 pydantic==2.10.4
 pillow==11.1.0
