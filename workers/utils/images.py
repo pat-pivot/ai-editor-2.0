@@ -11,11 +11,10 @@ Uses:
 import os
 import base64
 import requests
+import time
 from typing import Optional, Tuple
 from io import BytesIO
 
-import cloudinary
-import cloudinary.uploader
 from PIL import Image
 
 
@@ -25,11 +24,6 @@ class ImageClient:
     def __init__(self):
         # OpenAI for GPT Image 1.5
         self.openai_api_key = os.environ.get('OPENAI_API_KEY')
-
-        # Cloudinary config
-        self.cloudinary_url = os.environ.get('CLOUDINARY_URL')
-        if self.cloudinary_url:
-            cloudinary.config(cloudinary_url=self.cloudinary_url)
 
         # Cloudflare Images config
         self.cloudflare_account_id = os.environ.get('CLOUDFLARE_ACCOUNT_ID')
@@ -195,7 +189,12 @@ Colors: Vibrant but corporate-appropriate."""
 
     def optimize_image(self, image_bytes: bytes, width: int = 636) -> bytes:
         """
-        Optimize image using Cloudinary
+        Optimize image using Cloudinary HTTP API with upload preset.
+
+        Matches n8n workflow HCbd2g852rkQgSqr exactly:
+        1. POST to Cloudinary with upload_preset "MakeImage"
+        2. Transform URL: /upload/ → /upload/c_scale,w_636,q_auto:eco,f_webp/
+        3. Fetch optimized image
 
         Args:
             image_bytes: Raw image bytes
@@ -204,32 +203,64 @@ Colors: Vibrant but corporate-appropriate."""
         Returns:
             Optimized image bytes
         """
-        if not self.cloudinary_url:
-            # Fallback: local resize with Pillow
-            return self._local_optimize(image_bytes, width)
+        # Cloudinary cloud name from n8n workflow
+        cloud_name = "dzocuy47k"
+        upload_preset = "MakeImage"
+        upload_url = f"https://api.cloudinary.com/v1_1/{cloud_name}/image/upload"
 
         try:
-            # Upload to Cloudinary with transformations
-            result = cloudinary.uploader.upload(
-                image_bytes,
-                transformation=[
-                    {"width": width, "crop": "scale"},
-                    {"quality": "auto:good"},
-                    {"fetch_format": "auto"}
-                ]
-            )
+            print(f"[ImageClient] Uploading to Cloudinary with preset '{upload_preset}' ({len(image_bytes)} bytes)...")
+            print(f"[ImageClient]   URL: {upload_url}")
 
-            # Download optimized version
-            optimized_url = result.get("secure_url")
-            if optimized_url:
-                response = requests.get(optimized_url, timeout=30)
-                if response.status_code == 200:
-                    return response.content
+            # POST to Cloudinary with upload preset (matches n8n workflow exactly)
+            files = {
+                "file": ("image.jpg", BytesIO(image_bytes), "image/jpeg")
+            }
+            data = {
+                "upload_preset": upload_preset
+            }
+
+            response = requests.post(upload_url, files=files, data=data, timeout=60)
+
+            print(f"[ImageClient]   Response status: {response.status_code}")
+
+            if response.status_code == 200:
+                result = response.json()
+                raw_url = result.get("secure_url") or result.get("url")
+
+                if raw_url:
+                    print(f"[ImageClient] ✓ Cloudinary upload success: {raw_url}")
+
+                    # Transform URL exactly like n8n workflow:
+                    # Replace /upload/ with /upload/c_scale,w_636,q_auto:eco,f_webp/
+                    optimized_url = raw_url.replace(
+                        "http://res.cloudinary.com",
+                        "https://res.cloudinary.com"
+                    ).replace(
+                        "/upload/",
+                        f"/upload/c_scale,w_{width},q_auto:eco,f_webp/"
+                    )
+
+                    print(f"[ImageClient]   Optimized URL: {optimized_url}")
+
+                    # Fetch the optimized image
+                    opt_response = requests.get(optimized_url, timeout=30)
+                    if opt_response.status_code == 200:
+                        print(f"[ImageClient] ✓ Optimized image downloaded ({len(opt_response.content)} bytes)")
+                        return opt_response.content
+                    else:
+                        print(f"[ImageClient] ⚠️ Failed to fetch optimized: {opt_response.status_code}")
+            else:
+                print(f"[ImageClient] ❌ Cloudinary upload failed: {response.status_code}")
+                print(f"[ImageClient]   Response: {response.text[:500]}")
 
         except Exception as e:
-            print(f"[ImageClient] Cloudinary optimization failed: {e}")
+            print(f"[ImageClient] ❌ Cloudinary optimization failed: {type(e).__name__}: {e}")
+            import traceback
+            print(f"[ImageClient]   Traceback: {traceback.format_exc()}")
 
         # Fallback to local optimization
+        print("[ImageClient] Using local Pillow optimization as fallback")
         return self._local_optimize(image_bytes, width)
 
     def _local_optimize(self, image_bytes: bytes, width: int = 636) -> bytes:
@@ -276,15 +307,20 @@ Colors: Vibrant but corporate-appropriate."""
             "Authorization": f"Bearer {self.cloudflare_api_key}"
         }
 
+        # Add timestamp to ID to avoid 409 conflicts on re-runs
+        timestamp = int(time.time())
+        unique_id = f"{filename.replace('.', '-')}-{timestamp}"
+
         files = {
             "file": (filename, BytesIO(image_bytes), "image/jpeg")
         }
 
         data = {
-            "id": filename.replace('.', '-')  # Cloudflare-friendly ID
+            "id": unique_id  # Cloudflare-friendly unique ID with timestamp
         }
 
         try:
+            print(f"[ImageClient] Uploading to Cloudflare with ID: {unique_id}")
             response = requests.post(
                 self.cloudflare_images_url,
                 headers=headers,
@@ -299,7 +335,33 @@ Colors: Vibrant but corporate-appropriate."""
                     # Return the public URL variant
                     variants = result.get("result", {}).get("variants", [])
                     if variants:
+                        print(f"[ImageClient] ✓ Cloudflare upload success: {variants[0]}")
                         return variants[0]
+
+            # Handle 409 conflict - resource already exists
+            if response.status_code == 409:
+                print(f"[ImageClient] ⚠️ Cloudflare 409 conflict - ID already exists, trying with new timestamp")
+                # Try again with a different timestamp
+                new_timestamp = int(time.time() * 1000)  # Use milliseconds for uniqueness
+                new_unique_id = f"{filename.replace('.', '-')}-{new_timestamp}"
+                data = {"id": new_unique_id}
+                files = {"file": (filename, BytesIO(image_bytes), "image/jpeg")}
+
+                retry_response = requests.post(
+                    self.cloudflare_images_url,
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=30
+                )
+
+                if retry_response.status_code == 200:
+                    result = retry_response.json()
+                    if result.get("success"):
+                        variants = result.get("result", {}).get("variants", [])
+                        if variants:
+                            print(f"[ImageClient] ✓ Cloudflare retry success: {variants[0]}")
+                            return variants[0]
 
             print(f"[ImageClient] Cloudflare upload error: {response.status_code} - {response.text[:200]}")
 
@@ -336,13 +398,5 @@ Colors: Vibrant but corporate-appropriate."""
 
         if image_url:
             return image_url, source
-
-        # If Cloudflare upload fails, try Cloudinary URL directly
-        if self.cloudinary_url:
-            try:
-                result = cloudinary.uploader.upload(optimized_bytes)
-                return result.get("secure_url"), source
-            except Exception as e:
-                print(f"[ImageClient] Cloudinary fallback failed: {e}")
 
         return None, source

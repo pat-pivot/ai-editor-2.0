@@ -281,21 +281,15 @@ class FreshRSSClient:
             if not article:
                 continue
 
-            # Filter by BOTH crawl time AND publication time:
-            # 1. crawl_dt: Must be within since_hours (default 24h) - prevents reprocessing
-            # 2. published_dt: Must be within 72h - prevents week-old articles from flooding
+            # Filter by crawl time only (when FreshRSS discovered the article)
+            # This prevents re-processing articles we've already seen
             #
-            # Why 72h for published? Articles can be crawled days after publication
-            # (e.g., Google News, editorial delays). 72h allows 2-3 day old articles
-            # that were just discovered, but blocks 7+ day old stale news.
+            # Note: We removed the published_dt filter because:
+            #   - Many articles are crawled days after publication (e.g., via Google News)
+            #   - The pipeline's pivot_id deduplication handles actual duplicates
+            #   - Editorial relevance (how old the news is) is handled by AI scoring
             if article.get("crawl_dt"):
                 if article["crawl_dt"] < cutoff:
-                    continue
-
-            # Published filter uses 72h window (3 days) regardless of since_hours param
-            published_cutoff = datetime.now(timezone.utc) - timedelta(hours=72)
-            if article.get("published_dt"):
-                if article["published_dt"] < published_cutoff:
                     continue
 
             articles.append(article)

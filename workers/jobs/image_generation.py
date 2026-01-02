@@ -188,11 +188,10 @@ def generate_images() -> dict:
                 else:
                     _log(f"  ❌ Image generation returned no URL")
                     _log(f"    Source returned: {source}")
-                    # Mark as failed (image_error field doesn't exist, just log it)
-                    _log(f"  Error: Generation failed - no URL returned")
-                    airtable.update_decoration(record_id, {
-                        "image_status": "failed"
-                    })
+                    # NOTE: "failed" is NOT a valid image_status option
+                    # Valid options: needs_image, generated
+                    # Leave status as needs_image so it can be retried
+                    _log(f"  Leaving image_status as 'needs_image' for retry")
 
                     results["failed"] += 1
                     results["errors"].append({
@@ -208,15 +207,10 @@ def generate_images() -> dict:
                     "storyId": story_id,
                     "error": str(e)
                 })
-
-                # Mark as failed in Airtable (image_error field doesn't exist)
-                try:
-                    airtable.update_decoration(record_id, {
-                        "image_status": "failed"
-                    })
-                    _log(f"  Marked as failed in Airtable")
-                except Exception as update_err:
-                    _log(f"  ⚠️ Failed to update Airtable: {update_err}")
+                # NOTE: "failed" is NOT a valid image_status option
+                # Valid options: needs_image, generated
+                # Leave status as needs_image so it can be retried
+                _log(f"  Leaving image_status as 'needs_image' for retry")
 
         _log("=" * 60)
         _log("IMAGE GENERATION JOB COMPLETE")

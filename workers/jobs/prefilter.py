@@ -87,14 +87,8 @@ def prefilter_stories() -> dict:
         all_stories = _merge_stories(fresh_stories, queued_stories)
         print(f"[Step 1] Total stories to process: {len(all_stories)}", flush=True)
 
-        # 4. Get source credibility lookup - optional, may not have API access
-        print("[Step 1] Building source credibility lookup...", flush=True)
-        try:
-            source_lookup = airtable.build_source_lookup()
-            print(f"[Step 1] Loaded {len(source_lookup)} source scores", flush=True)
-        except Exception as e:
-            print(f"[Step 1] Warning: Could not load source scores (API access issue): {e}", flush=True)
-            source_lookup = {}  # Default: no source filtering
+        # 4. Source credibility lookup - disabled (method removed)
+        source_lookup = {}
 
         # 5. Get yesterday's issue for diversity rules + exclusion - optional
         print("[Step 1] Fetching yesterday's issue...", flush=True)
@@ -561,14 +555,8 @@ def _gather_prefilter_data() -> dict:
     all_stories = _merge_stories(fresh_stories, queued_stories)
     print(f"[Prefilter] Total stories to process: {len(all_stories)}", flush=True)
 
-    # 4. Get source credibility lookup
-    print("[Prefilter] Building source credibility lookup...", flush=True)
-    try:
-        source_lookup = airtable.build_source_lookup()
-        print(f"[Prefilter] Loaded {len(source_lookup)} source scores", flush=True)
-    except Exception as e:
-        print(f"[Prefilter] Warning: Could not load source scores: {e}", flush=True)
-        source_lookup = {}
+    # 4. Source credibility lookup - disabled (method removed)
+    source_lookup = {}
 
     # 5. Get yesterday's issue
     print("[Prefilter] Fetching yesterday's issue...", flush=True)
