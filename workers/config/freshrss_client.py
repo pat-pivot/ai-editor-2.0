@@ -409,7 +409,9 @@ class FreshRSSClient:
                 "published": published_dt.isoformat() if published_dt else None,
                 "published_dt": published_dt,
                 "crawl_dt": crawl_dt,  # When FreshRSS discovered the article
-                "summary": summary[:500] if summary else None,  # Truncate summary
+                # For newsletters (feed/17), keep full content for link extraction
+                # For regular articles, truncate to 500 chars for efficiency
+                "summary": summary if stream_id == "feed/17" else (summary[:500] if summary else None),
                 "stream_id": stream_id,
             }
 
