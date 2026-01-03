@@ -23,6 +23,45 @@ from zoneinfo import ZoneInfo
 # EST timezone for all timestamps
 EST = ZoneInfo("America/New_York")
 
+
+def format_date_friendly(date_str: str) -> str:
+    """
+    Convert ISO date string to friendly format: "January 2, 2026 at 7:50am ET"
+
+    Args:
+        date_str: ISO format date string (e.g., "2026-01-02T07:50:00-05:00")
+
+    Returns:
+        Friendly formatted date string
+    """
+    try:
+        # Parse the date string
+        if isinstance(date_str, str):
+            # Handle ISO format with timezone
+            if "T" in date_str:
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            else:
+                # Just a date, no time
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+                dt = dt.replace(tzinfo=EST)
+        else:
+            dt = date_str
+
+        # Convert to EST if not already
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=EST)
+        else:
+            dt = dt.astimezone(EST)
+
+        # Format: "January 2, 2026 at 7:50am ET"
+        # %I = hour (12-hour), %M = minute, %p = AM/PM
+        time_part = dt.strftime("%I:%M%p").lower().lstrip("0")
+        date_part = dt.strftime("%B %-d, %Y")  # %-d for non-zero-padded day
+        return f"{date_part} at {time_part} ET"
+    except Exception as e:
+        # Fallback to original string if parsing fails
+        return date_str
+
 from pyairtable import Api
 from anthropic import Anthropic
 
@@ -249,6 +288,13 @@ Parse the HTML and find <a href="..."> tags linking to news articles.
 WHAT TO INCLUDE (only if URL exists in HTML):
 - Links to news sites: Reuters, Bloomberg, TechCrunch, The Verge, CNBC, WSJ, NYT, etc.
 - News articles about AI, technology, business, funding, product launches
+- Any link that points to a NEWS STORY - use your reasoning to identify news articles even if the section headers differ from what you expect
+
+BACKUP REASONING:
+If no explicit section headers match, use your general understanding to identify news story links:
+- News stories typically report on events, announcements, product launches, funding rounds, company news, research breakthroughs, regulatory developments
+- They are hosted on known news domains OR third-party publication sites (not the newsletter's own domain)
+- The anchor text often reads like a headline or describes a newsworthy event
 
 WHAT TO SKIP:
 - Newsletter's own website links
@@ -347,6 +393,7 @@ async def process_newsletter_article(
 
     newsletter_name = config['name']
     newsletter_date = article.get('published', datetime.now(EST).strftime('%Y-%m-%d'))
+    newsletter_email_url = article.get('url', '')  # Kill The Newsletter email link
 
     print(f"[Newsletter Extract] Processing {newsletter_name} ({newsletter_domain})")
 
@@ -392,8 +439,14 @@ async def process_newsletter_article(
         if pivot_id in existing_pivot_ids:
             continue
 
+        # Format date in friendly format: "January 2, 2026 at 7:50am ET"
         date_str = newsletter_date if isinstance(newsletter_date, str) else newsletter_date.strftime('%Y-%m-%d')
-        notes = f"Link derived from {newsletter_name} on {date_str}"
+        friendly_date = format_date_friendly(date_str)
+
+        # Build notes with friendly date and clickable email link
+        notes = f"Link derived from {newsletter_name} on {friendly_date}"
+        if newsletter_email_url:
+            notes += f"\nOriginal email: {newsletter_email_url}"
 
         record = {
             "pivot_id": pivot_id,

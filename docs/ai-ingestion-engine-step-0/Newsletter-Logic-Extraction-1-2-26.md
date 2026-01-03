@@ -191,7 +191,13 @@ If you cannot find any valid news URLs in the HTML, return: []
 | `date_og_published` | Newsletter publish date |
 | `needs_ai` | `true` |
 | `fit_status` | `"pending"` |
-| `notes` | `"Link derived from {newsletter} on {date}"` |
+| `notes` | Provenance with friendly date + clickable email link |
+
+**Notes field format:**
+```
+Link derived from TLDR AI on January 2, 2026 at 7:50am ET
+Original email: https://kill-the-newsletter.com/alternates/abc123.html
+```
 
 ---
 
@@ -254,6 +260,12 @@ POST /api/jobs
 ---
 
 ## Changelog
+
+**2026-01-02 (update 2):**
+- Added backup reasoning to Claude prompt - uses general news detection if section headers differ
+- Improved date formatting: "January 2, 2026 at 7:50am ET" instead of ISO format
+- Added clickable email link to notes field (links to Kill The Newsletter archive)
+- Set Superhuman to extract_all: True (matching other newsletters)
 
 **2026-01-02:**
 - Initial implementation
