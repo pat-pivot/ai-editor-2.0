@@ -232,46 +232,45 @@ async def extract_newsletter_links(
 
     content_truncated = html_content[:15000]
 
-    prompt = f"""You are extracting external news article links from an AI newsletter.
+    prompt = f"""You are parsing HTML to find URLs that link to external news articles.
 
 Newsletter: {newsletter_name}
+
+CRITICAL RULE - DO NOT HALLUCINATE:
+You must ONLY return URLs that LITERALLY APPEAR in the HTML content below as href attributes.
+DO NOT make up URLs. DO NOT generate plausible-looking URLs.
+ONLY extract actual URLs from <a href="..."> tags in the HTML.
 
 TASK:
 {section_instructions}{ignore_instructions}
 
-RULES - WHAT TO EXTRACT:
-1. Only extract links to REAL NEWS STORIES about AI, technology, or business
-2. News stories are typically from: Reuters, Bloomberg, TechCrunch, The Verge, CNBC, WSJ, NYT, etc.
-3. Include: News articles, press releases about AI announcements, funding news, product launches
+Parse the HTML and find <a href="..."> tags linking to news articles.
 
-RULES - WHAT TO SKIP:
-1. Links to the newsletter's own website or previous issues
-2. Social media profiles (twitter.com, linkedin.com/in/, etc.)
-3. Unsubscribe, manage preferences, or email settings links
-4. Sponsor ads and promotional links
-5. AI model pages (huggingface.co/models, github.com repos)
-6. Product/tool signup pages, pricing pages, documentation
-7. Job postings and career pages
-8. Links to AI tools or products (we want NEWS about them, not product pages)
+WHAT TO INCLUDE (only if URL exists in HTML):
+- Links to news sites: Reuters, Bloomberg, TechCrunch, The Verge, CNBC, WSJ, NYT, etc.
+- News articles about AI, technology, business, funding, product launches
 
-RETURN FORMAT:
-Return a JSON array of objects. Each object should have:
-- "url": The full URL of the news article
-- "headline": The headline or anchor text if visible (or null)
-- "source_hint": The publication name if you can detect it from the URL (or null)
+WHAT TO SKIP:
+- Newsletter's own website links
+- Social media (twitter.com, linkedin.com/in/)
+- Unsubscribe/preferences links
+- Sponsor ads
+- huggingface.co, github.com repos
+- Product signup pages, docs, pricing
+- Job postings
 
-Example output:
+RETURN FORMAT (JSON array only):
 [
-  {{"url": "https://techcrunch.com/2026/01/02/...", "headline": "OpenAI launches new model", "source_hint": "TechCrunch"}},
-  {{"url": "https://reuters.com/...", "headline": null, "source_hint": "Reuters"}}
+  {{"url": "EXACT_URL_FROM_HTML", "headline": "anchor text or null", "source_hint": "publication name or null"}}
 ]
 
-If no valid news links are found, return an empty array: []
+IMPORTANT: Every URL you return MUST be copy-pasted from an href attribute in the HTML below.
+If you cannot find any valid news URLs in the HTML, return: []
 
 HTML CONTENT:
 {content_truncated}
 
-Return ONLY the JSON array, no explanation or markdown formatting."""
+Return ONLY the JSON array, nothing else."""
 
     try:
         response = client.messages.create(
