@@ -16,12 +16,51 @@ import json
 import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 # EST timezone for all timestamps
 EST = ZoneInfo("America/New_York")
+
+
+def build_gmail_search_url(subject: str, date_str: str) -> str:
+    """
+    Build a Gmail search URL to find the newsletter email.
+
+    Args:
+        subject: Email subject line
+        date_str: Date string (ISO format or YYYY-MM-DD)
+
+    Returns:
+        Gmail search URL that will find the email
+    """
+    try:
+        # Parse the date
+        if "T" in date_str:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        else:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+
+        # Format date for Gmail search: YYYY/MM/DD
+        date_formatted = dt.strftime("%Y/%m/%d")
+
+        # Build search query: subject:"exact subject" after:date before:date+1
+        # Using exact subject match with quotes
+        next_day = dt + timedelta(days=1)
+        next_day_formatted = next_day.strftime("%Y/%m/%d")
+
+        # Gmail search query
+        search_query = f'subject:"{subject}" after:{date_formatted} before:{next_day_formatted}'
+
+        # Encode for URL
+        encoded_query = quote(search_query, safe='')
+
+        return f"https://mail.google.com/mail/u/0/#search/{encoded_query}"
+    except Exception as e:
+        # Fallback to simple subject search
+        encoded_subject = quote(f'subject:"{subject}"', safe='')
+        return f"https://mail.google.com/mail/u/0/#search/{encoded_subject}"
 
 
 def format_date_friendly(date_str: str) -> str:
@@ -393,7 +432,7 @@ async def process_newsletter_article(
 
     newsletter_name = config['name']
     newsletter_date = article.get('published', datetime.now(EST).strftime('%Y-%m-%d'))
-    newsletter_email_url = article.get('url', '')  # Kill The Newsletter email link
+    newsletter_subject = article.get('title', '')  # Email subject line for Gmail search
 
     print(f"[Newsletter Extract] Processing {newsletter_name} ({newsletter_domain})")
 
@@ -443,10 +482,11 @@ async def process_newsletter_article(
         date_str = newsletter_date if isinstance(newsletter_date, str) else newsletter_date.strftime('%Y-%m-%d')
         friendly_date = format_date_friendly(date_str)
 
-        # Build notes with friendly date and clickable email link
+        # Build notes with friendly date and Gmail search link
         notes = f"Link derived from {newsletter_name} on {friendly_date}"
-        if newsletter_email_url:
-            notes += f"\nOriginal email: {newsletter_email_url}"
+        if newsletter_subject:
+            gmail_url = build_gmail_search_url(newsletter_subject, date_str)
+            notes += f"\nFind in Gmail: {gmail_url}"
 
         record = {
             "pivot_id": pivot_id,
