@@ -3,11 +3,26 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import {
+  LayoutDashboard,
+  Zap,
+  Filter,
+  CheckSquare,
+  Sparkles,
+  Code,
+  Send,
+  FileText,
+  Rss,
+  Newspaper,
+  BarChart3,
+  Settings,
+  LucideIcon,
+} from "lucide-react";
 
 interface NavItem {
   name: string;
   href: string;
-  icon: string;
+  icon: LucideIcon;
   stepNumber?: number;
 }
 
@@ -20,45 +35,30 @@ const navigation: NavSection[] = [
   {
     title: "PIPELINE",
     items: [
-      { name: "Overview", href: "/", icon: "dashboard" },
-      { name: "Ingest", href: "/step/0", icon: "cloud_download", stepNumber: 0 },
-      { name: "Pre-Filter", href: "/step/1", icon: "filter_alt", stepNumber: 1 },
-      { name: "Slot Selection", href: "/step/2", icon: "checklist", stepNumber: 2 },
-      { name: "Decoration", href: "/step/3", icon: "edit_note", stepNumber: 3 },
-      { name: "HTML Compile", href: "/step/4", icon: "code", stepNumber: 4 },
-      { name: "Send & Social", href: "/step/5", icon: "send", stepNumber: 5 },
+      { name: "Overview", href: "/", icon: LayoutDashboard },
+      { name: "Ingest", href: "/step/0", icon: Zap, stepNumber: 0 },
+      { name: "Pre-Filter", href: "/step/1", icon: Filter, stepNumber: 1 },
+      { name: "Slot Selection", href: "/step/2", icon: CheckSquare, stepNumber: 2 },
+      { name: "Decoration", href: "/step/3", icon: Sparkles, stepNumber: 3 },
+      { name: "HTML Compile", href: "/step/4", icon: Code, stepNumber: 4 },
+      { name: "Send & Social", href: "/step/5", icon: Send, stepNumber: 5 },
     ],
   },
   {
     title: "DATA",
     items: [
-      { name: "Stories", href: "/data/stories", icon: "article" },
-      { name: "Sources", href: "/data/sources", icon: "source" },
-      { name: "Issues", href: "/data/issues", icon: "newspaper" },
+      { name: "Stories", href: "/data/stories", icon: FileText },
+      { name: "Sources", href: "/data/sources", icon: Rss },
+      { name: "Issues", href: "/data/issues", icon: Newspaper },
     ],
   },
   {
     title: "ANALYTICS",
     items: [
-      { name: "Mautic", href: "/analytics", icon: "analytics" },
-    ],
-  },
-  {
-    title: "SANDBOX",
-    items: [
-      { name: "Zeroin Ingest", href: "/sandbox", icon: "bolt" },
-      { name: "Slot Testing", href: "/sandbox/slots", icon: "grid_view" },
+      { name: "Mautic", href: "/analytics", icon: BarChart3 },
     ],
   },
 ];
-
-function MaterialIcon({ name, className }: { name: string; className?: string }) {
-  return (
-    <span className={cn("material-symbols-outlined text-lg", className)}>
-      {name}
-    </span>
-  );
-}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -105,12 +105,14 @@ export function Sidebar() {
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                     )}
                   >
-                    <MaterialIcon
-                      name={item.icon}
-                      className={active ? "text-sidebar-primary" : ""}
+                    <item.icon
+                      className={cn(
+                        "h-[18px] w-[18px]",
+                        active ? "text-sidebar-primary" : ""
+                      )}
                     />
                     <span className="flex items-center gap-2">
-                      {item.stepNumber && (
+                      {item.stepNumber !== undefined && (
                         <span className={cn(
                           "flex h-5 w-5 items-center justify-center rounded text-xs font-medium",
                           active
@@ -136,7 +138,7 @@ export function Sidebar() {
           href="/settings"
           className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
         >
-          <MaterialIcon name="settings" />
+          <Settings className="h-[18px] w-[18px]" />
           Settings
         </Link>
         <div className="flex items-center gap-3 mt-3 px-3">

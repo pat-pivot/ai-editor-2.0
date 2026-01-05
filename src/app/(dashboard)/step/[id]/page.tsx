@@ -12,6 +12,7 @@ import { ExecutionLogs } from "@/components/step/execution-logs";
 import { SystemPrompts } from "@/components/step/system-prompts";
 import { StepData } from "@/components/step/step-data";
 import { Progress } from "@/components/ui/progress";
+import { ZeroinIngestPanel } from "@/components/step/zeroin-ingest-panel";
 
 function MaterialIcon({ name, className }: { name: string; className?: string }) {
   return (
@@ -694,6 +695,15 @@ export default function StepPage({ params }: PageProps) {
   };
 
   const nextRun = "Dec 24, 2025 9:00:00 PM";
+
+  // Step 0 uses the new Zeroin Ingest panel
+  if (stepId === 0) {
+    return (
+      <div className="p-6">
+        <ZeroinIngestPanel />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

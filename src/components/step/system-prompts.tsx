@@ -4,21 +4,20 @@ import { useState, useEffect, Suspense, lazy, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import type { PromptConfig } from "@/lib/step-config";
+import {
+  AlertCircle,
+  ChevronUp,
+  ChevronDown,
+  Pencil,
+  Loader2,
+  Save,
+} from "lucide-react";
 
 // Lazy load Monaco editor to avoid SSR issues
 const PromptEditor = lazy(() =>
   import("@/components/ui/prompt-editor").then((mod) => ({ default: mod.PromptEditor }))
 );
-
-function MaterialIcon({ name, className }: { name: string; className?: string }) {
-  return (
-    <span className={cn("material-symbols-outlined", className)}>
-      {name}
-    </span>
-  );
-}
 
 interface DBPrompt {
   id: string;
@@ -245,7 +244,7 @@ Temperature: ${p.temperature}`;
       {/* Error banner */}
       {error && (
         <div className="rounded-md bg-red-50 border border-red-200 p-4 text-red-800 text-sm flex items-center gap-2">
-          <MaterialIcon name="error" className="text-red-600" />
+          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
           <div>{error}</div>
         </div>
       )}
@@ -263,10 +262,11 @@ Temperature: ${p.temperature}`;
             <CardHeader className="pb-4 cursor-pointer" onClick={() => !isEditing && toggleExpand(prompt.id)}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <MaterialIcon
-                    name={isExpanded ? "expand_less" : "expand_more"}
-                    className="text-muted-foreground"
-                  />
+                  {isExpanded ? (
+                    <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                  )}
                   <div>
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-base">{prompt.name}</CardTitle>
@@ -297,7 +297,7 @@ Temperature: ${p.temperature}`;
                       size="sm"
                       onClick={() => handleEdit(prompt.id)}
                     >
-                      <MaterialIcon name="edit" className="text-base" />
+                      <Pencil className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
@@ -341,12 +341,12 @@ Temperature: ${p.temperature}`;
                         >
                           {saving === prompt.id ? (
                             <>
-                              <MaterialIcon name="sync" className="text-base mr-1 animate-spin" />
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                               Saving...
                             </>
                           ) : (
                             <>
-                              <MaterialIcon name="save" className="text-base mr-1" />
+                              <Save className="h-4 w-4 mr-1" />
                               Save
                             </>
                           )}

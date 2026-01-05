@@ -14,14 +14,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-
-function MaterialIcon({ name, className }: { name: string; className?: string }) {
-  return (
-    <span className={cn("material-symbols-outlined", className)}>
-      {name}
-    </span>
-  );
-}
+import {
+  RefreshCw,
+  ExternalLink,
+  Search,
+  AlertCircle,
+  Inbox,
+  ChevronsUpDown,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Check,
+  Code,
+  CheckCircle,
+  Send,
+  Clock,
+  Image,
+  Hourglass,
+} from "lucide-react";
 
 interface StepDataProps {
   stepId: number;
@@ -215,12 +227,12 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
                 onClick={() => fetchData(true)}
                 disabled={loading}
               >
-                <MaterialIcon name="sync" className={cn("text-base", loading && "animate-spin")} />
+                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
                 {loading ? "Syncing..." : "Sync Now"}
               </Button>
               <Button variant="outline" size="sm" className="gap-2" asChild>
                 <a href={airtableUrl} target="_blank" rel="noopener noreferrer">
-                  <MaterialIcon name="open_in_new" className="text-base" />
+                  <ExternalLink className="h-4 w-4" />
                   Open in Airtable
                 </a>
               </Button>
@@ -232,7 +244,7 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
         {/* Filters */}
         <div className="flex items-center gap-4 mb-4">
           <div className="relative flex-1 max-w-sm">
-            <MaterialIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-lg" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search headlines, story IDs..."
               className="pl-10"
@@ -271,8 +283,8 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
 
         {/* Error State */}
         {error && (
-          <div className="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            <MaterialIcon name="error" className="inline mr-2" />
+          <div className="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
             {error}
           </div>
         )}
@@ -313,7 +325,7 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             >
-              <MaterialIcon name="chevron_left" className="text-lg" />
+              <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm font-medium px-2">
               Page {currentPage} of {Math.max(1, totalPages)}
@@ -324,7 +336,7 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             >
-              <MaterialIcon name="chevron_right" className="text-lg" />
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -385,7 +397,7 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <MaterialIcon name="sync" className="text-4xl text-muted-foreground animate-spin" />
+        <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
       </div>
     );
   }
@@ -393,7 +405,7 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-        <MaterialIcon name="inbox" className="text-4xl mb-2" />
+        <Inbox className="h-10 w-10 mb-2" />
         <p>No pre-filter records found</p>
       </div>
     );
@@ -401,13 +413,12 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
 
   const SortIndicator = ({ field }: { field: "slot" | "date" }) => {
     if (sortField !== field) {
-      return <MaterialIcon name="unfold_more" className="text-sm opacity-50" />;
+      return <ChevronsUpDown className="h-3 w-3 opacity-50" />;
     }
-    return (
-      <MaterialIcon
-        name={sortDirection === "asc" ? "arrow_upward" : "arrow_downward"}
-        className="text-sm"
-      />
+    return sortDirection === "asc" ? (
+      <ArrowUp className="h-3 w-3" />
+    ) : (
+      <ArrowDown className="h-3 w-3" />
     );
   };
 
@@ -521,7 +532,7 @@ function NewsletterStoriesTable({ data, loading, baseId, tableId }: { data: News
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <MaterialIcon name="sync" className="text-4xl text-muted-foreground animate-spin" />
+        <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
       </div>
     );
   }
@@ -529,7 +540,7 @@ function NewsletterStoriesTable({ data, loading, baseId, tableId }: { data: News
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-        <MaterialIcon name="inbox" className="text-4xl mb-2" />
+        <Inbox className="h-10 w-10 mb-2" />
         <p>No newsletter stories found</p>
       </div>
     );
@@ -537,13 +548,12 @@ function NewsletterStoriesTable({ data, loading, baseId, tableId }: { data: News
 
   const SortIndicator = ({ field }: { field: "slots" | "date" }) => {
     if (sortField !== field) {
-      return <MaterialIcon name="unfold_more" className="text-sm opacity-50" />;
+      return <ChevronsUpDown className="h-3 w-3 opacity-50" />;
     }
-    return (
-      <MaterialIcon
-        name={sortDirection === "asc" ? "arrow_upward" : "arrow_downward"}
-        className="text-sm"
-      />
+    return sortDirection === "asc" ? (
+      <ArrowUp className="h-3 w-3" />
+    ) : (
+      <ArrowDown className="h-3 w-3" />
     );
   };
 
@@ -646,7 +656,7 @@ function SelectedSlotsTable() {
             </TableCell>
             <TableCell>
               <Button variant="ghost" size="sm">
-                <MaterialIcon name="visibility" className="text-lg" />
+                <Eye className="h-4 w-4" />
               </Button>
             </TableCell>
           </TableRow>
@@ -679,8 +689,8 @@ function DecorationTable() {
             <TableCell className="font-medium">{row.headline}</TableCell>
             <TableCell>
               {row.decorated ? (
-                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                  <MaterialIcon name="check" className="text-xs mr-1" />
+                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+                  <Check className="h-3 w-3" />
                   Complete
                 </Badge>
               ) : (
@@ -694,7 +704,7 @@ function DecorationTable() {
             </TableCell>
             <TableCell>
               <Button variant="ghost" size="sm">
-                <MaterialIcon name="visibility" className="text-lg" />
+                <Eye className="h-4 w-4" />
               </Button>
             </TableCell>
           </TableRow>
@@ -726,10 +736,10 @@ function IssuesTable() {
             <TableCell>
               <div className="flex gap-1">
                 <Button variant="ghost" size="sm">
-                  <MaterialIcon name="visibility" className="text-lg" />
+                  <Eye className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="sm">
-                  <MaterialIcon name="code" className="text-lg" />
+                  <Code className="h-4 w-4" />
                 </Button>
               </div>
             </TableCell>
@@ -758,15 +768,15 @@ function IssuesArchiveTable() {
             <TableCell className="font-medium">{row.issue_date.replace("Pivot 5 - ", "")}</TableCell>
             <TableCell>{row.subject}</TableCell>
             <TableCell>
-              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                <MaterialIcon name="check" className="text-xs mr-1" />
+              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+                <Check className="h-3 w-3" />
                 Sent
               </Badge>
             </TableCell>
             <TableCell className="font-mono text-muted-foreground">12,847</TableCell>
             <TableCell>
               <Button variant="ghost" size="sm">
-                <MaterialIcon name="visibility" className="text-lg" />
+                <Eye className="h-4 w-4" />
               </Button>
             </TableCell>
           </TableRow>
@@ -778,15 +788,22 @@ function IssuesArchiveTable() {
 
 function StatusBadge({ status }: { status: "decorated" | "sent" | "pending" | "compiled" }) {
   const config = {
-    decorated: { icon: "check_circle", label: "Decorated", className: "bg-blue-100 text-blue-700 border-blue-200" },
-    compiled: { icon: "check_circle", label: "Compiled", className: "bg-blue-100 text-blue-700 border-blue-200" },
-    sent: { icon: "send", label: "Sent", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    pending: { icon: "schedule", label: "Pending", className: "bg-gray-100 text-gray-600 border-gray-200" },
+    decorated: { label: "Decorated", className: "bg-blue-100 text-blue-700 border-blue-200" },
+    compiled: { label: "Compiled", className: "bg-blue-100 text-blue-700 border-blue-200" },
+    sent: { label: "Sent", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    pending: { label: "Pending", className: "bg-gray-100 text-gray-600 border-gray-200" },
+  }[status];
+
+  const IconComponent = {
+    decorated: CheckCircle,
+    compiled: CheckCircle,
+    sent: Send,
+    pending: Clock,
   }[status];
 
   return (
     <Badge variant="outline" className={cn("gap-1", config.className)}>
-      <MaterialIcon name={config.icon} className="text-xs" />
+      <IconComponent className="h-3 w-3" />
       {config.label}
     </Badge>
   );
@@ -794,14 +811,20 @@ function StatusBadge({ status }: { status: "decorated" | "sent" | "pending" | "c
 
 function ImageStatusBadge({ status }: { status: "generated" | "pending" | "error" }) {
   const config = {
-    generated: { icon: "image", label: "Generated", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    pending: { icon: "hourglass_empty", label: "Pending", className: "bg-gray-100 text-gray-600 border-gray-200" },
-    error: { icon: "error", label: "Error", className: "bg-red-100 text-red-700 border-red-200" },
+    generated: { label: "Generated", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    pending: { label: "Pending", className: "bg-gray-100 text-gray-600 border-gray-200" },
+    error: { label: "Error", className: "bg-red-100 text-red-700 border-red-200" },
+  }[status];
+
+  const IconComponent = {
+    generated: Image,
+    pending: Hourglass,
+    error: AlertCircle,
   }[status];
 
   return (
     <Badge variant="outline" className={cn("gap-1", config.className)}>
-      <MaterialIcon name={config.icon} className="text-xs" />
+      <IconComponent className="h-3 w-3" />
       {config.label}
     </Badge>
   );
