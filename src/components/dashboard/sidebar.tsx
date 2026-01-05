@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  Zap,
+  Import,
   Filter,
   CheckSquare,
   Sparkles,
@@ -36,7 +36,7 @@ const navigation: NavSection[] = [
     title: "PIPELINE",
     items: [
       { name: "Overview", href: "/", icon: LayoutDashboard },
-      { name: "Ingest", href: "/step/0", icon: Zap, stepNumber: 0 },
+      { name: "Ingest", href: "/step/0", icon: Import, stepNumber: 0 },
       { name: "Pre-Filter", href: "/step/1", icon: Filter, stepNumber: 1 },
       { name: "Slot Selection", href: "/step/2", icon: CheckSquare, stepNumber: 2 },
       { name: "Decoration", href: "/step/3", icon: Sparkles, stepNumber: 3 },

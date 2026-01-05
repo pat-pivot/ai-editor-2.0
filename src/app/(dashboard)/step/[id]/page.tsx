@@ -13,6 +13,7 @@ import { SystemPrompts } from "@/components/step/system-prompts";
 import { StepData } from "@/components/step/step-data";
 import { Progress } from "@/components/ui/progress";
 import { ZeroinIngestPanel } from "@/components/step/zeroin-ingest-panel";
+import { formatDateET, formatDuration } from "@/lib/date-utils";
 
 function MaterialIcon({ name, className }: { name: string; className?: string }) {
   return (
@@ -112,6 +113,33 @@ export default function StepPage({ params }: PageProps) {
     5: { isRunning: false, jobId: null, jobStatus: null, elapsedTime: 0, result: null },
   });
   const [cancellingSlot, setCancellingSlot] = useState<number | null>(null);
+
+  // Last run tracking
+  interface StepLastRunInfo {
+    timestamp: string;
+    duration_seconds: number;
+    status: "success" | "failed" | "running";
+  }
+  const [stepLastRun, setStepLastRun] = useState<StepLastRunInfo | null>(null);
+
+  // Fetch last run data on mount
+  useEffect(() => {
+    const fetchLastRun = async () => {
+      try {
+        const response = await fetch(`/api/jobs/last-run?step_id=${stepId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.last_run) {
+            setStepLastRun(data.last_run);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching last run data:", error);
+      }
+    };
+
+    fetchLastRun();
+  }, [stepId]);
 
   // Update a specific slot's state
   const updateSlotState = (slotNum: number, updates: Partial<SlotState>) => {
@@ -687,14 +715,32 @@ export default function StepPage({ params }: PageProps) {
     };
   }, [stepId, slotStates[1].jobId, slotStates[2].jobId, slotStates[3].jobId, slotStates[4].jobId, slotStates[5].jobId]);
 
-  // Mock execution data - in production this would come from an API
-  const lastRun = {
-    date: "Dec 23, 2025 9:00:15 PM",
-    duration: "1m 42s",
-    status: "success" as const,
-  };
+  // Next run calculation - only for step 1 which has scheduled automation
+  const getNextRunDisplay = () => {
+    // Step 1 Pre-Filter runs every 4 hours: 6 AM, 10 AM, 2 PM, 6 PM, 10 PM ET
+    const schedule = "0 6,10,14,18,22 * * *";
+    const parts = schedule.split(" ");
+    const hours = parts[1].split(",").map(h => parseInt(h));
 
-  const nextRun = "Dec 24, 2025 9:00:00 PM";
+    const now = new Date();
+    const etNow = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const currentHour = etNow.getHours();
+
+    // Find next scheduled hour
+    for (const hour of hours) {
+      if (hour > currentHour) {
+        const nextRun = new Date(etNow);
+        nextRun.setHours(hour, 0, 0, 0);
+        return formatDateET(nextRun).replace(/:00 /, " ").replace(/:00 /, " ");
+      }
+    }
+
+    // All today's hours passed, use first hour tomorrow
+    const nextRun = new Date(etNow);
+    nextRun.setDate(nextRun.getDate() + 1);
+    nextRun.setHours(hours[0], 0, 0, 0);
+    return formatDateET(nextRun).replace(/:00 /, " ").replace(/:00 /, " ");
+  };
 
   // Step 0 uses the new Zeroin Ingest panel
   if (stepId === 0) {
@@ -712,17 +758,23 @@ export default function StepPage({ params }: PageProps) {
         <CardHeader className="pb-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <MaterialIcon name={stepConfig.icon} className="text-2xl" />
-              </div>
+              {/* Only show icon for step 1 (Pre-Filter) which has scheduled automation */}
+              {stepId === 1 && (
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <MaterialIcon name={stepConfig.icon} className="text-2xl" />
+                </div>
+              )}
               <div>
                 <div className="flex items-center gap-3">
                   <CardTitle className="text-xl">
                     Step {stepConfig.id}: {stepConfig.name}
                   </CardTitle>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    {stepConfig.schedule.split(" ")[0]} {stepConfig.schedule.split(" ")[1]}
-                  </Badge>
+                  {/* Only show schedule badge for step 1 */}
+                  {stepId === 1 && (
+                    <Badge variant="secondary" className="font-mono text-xs">
+                      {stepConfig.schedule.split(" ")[0]} {stepConfig.schedule.split(" ")[1]}
+                    </Badge>
+                  )}
                 </div>
                 <CardDescription className="mt-1">
                   {stepConfig.description}
@@ -835,18 +887,28 @@ export default function StepPage({ params }: PageProps) {
         </CardHeader>
         <CardContent className="pt-0">
           <div className="flex items-center gap-8 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Last Run:</span>
-              <span className="font-medium">{lastRun.date}</span>
-              <span className="text-muted-foreground">|</span>
-              <span className="font-mono text-muted-foreground">{lastRun.duration}</span>
-              <span className="text-muted-foreground">|</span>
-              <StatusBadge status={lastRun.status} />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Next Run:</span>
-              <span className="font-medium">{nextRun}</span>
-            </div>
+            {stepLastRun ? (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Last Run:</span>
+                <span className="font-medium">{formatDateET(stepLastRun.timestamp)}</span>
+                <span className="text-muted-foreground">|</span>
+                <span className="font-mono text-muted-foreground">{formatDuration(stepLastRun.duration_seconds)}</span>
+                <span className="text-muted-foreground">|</span>
+                <StatusBadge status={stepLastRun.status === "failed" ? "error" : stepLastRun.status} />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Last Run:</span>
+                <span className="text-muted-foreground italic">No recent runs</span>
+              </div>
+            )}
+            {/* Only show Next Run for steps with automation (step 1 Pre-Filter) */}
+            {stepId === 1 && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Next Run:</span>
+                <span className="font-medium">{getNextRunDisplay()}</span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

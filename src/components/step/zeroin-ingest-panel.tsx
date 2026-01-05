@@ -7,16 +7,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Zap,
+  Import,
   Download,
   Brain,
   Link2,
-  CheckCircle,
   Loader2,
   Square,
   Info,
-  Timer
+  Timer,
+  Clock,
+  CheckCircle,
+  XCircle
 } from "lucide-react";
+import { formatDateET, formatDuration } from "@/lib/date-utils";
 
 // Zeroin job definitions
 const ZEROIN_JOBS = {
@@ -60,6 +63,46 @@ export function ZeroinIngestPanel() {
   const [newsletterResult, setNewsletterResult] = useState<{ processed: number; elapsed: number } | null>(null);
 
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Last run tracking
+  interface LastRunInfo {
+    timestamp: string;
+    duration_seconds: number;
+    status: "success" | "failed" | "running";
+  }
+  const [lastRunIngest, setLastRunIngest] = useState<LastRunInfo | null>(null);
+  const [lastRunScoring, setLastRunScoring] = useState<LastRunInfo | null>(null);
+  const [lastRunNewsletter, setLastRunNewsletter] = useState<LastRunInfo | null>(null);
+
+  // Fetch last run data on mount
+  useEffect(() => {
+    const fetchLastRuns = async () => {
+      try {
+        const [ingestRes, scoringRes, newsletterRes] = await Promise.all([
+          fetch("/api/jobs/last-run?step=ingest_sandbox"),
+          fetch("/api/jobs/last-run?step=ai_scoring_sandbox"),
+          fetch("/api/jobs/last-run?step=newsletter_extract_sandbox"),
+        ]);
+
+        if (ingestRes.ok) {
+          const data = await ingestRes.json();
+          if (data.last_run) setLastRunIngest(data.last_run);
+        }
+        if (scoringRes.ok) {
+          const data = await scoringRes.json();
+          if (data.last_run) setLastRunScoring(data.last_run);
+        }
+        if (newsletterRes.ok) {
+          const data = await newsletterRes.json();
+          if (data.last_run) setLastRunNewsletter(data.last_run);
+        }
+      } catch (error) {
+        console.error("Error fetching last run data:", error);
+      }
+    };
+
+    fetchLastRuns();
+  }, []);
 
   // Cancel running job
   const cancelJob = async (jobType: "ingest" | "scoring" | "newsletter") => {
@@ -327,15 +370,33 @@ export function ZeroinIngestPanel() {
     return `${mins}:${String(secs).padStart(2, "0")}`;
   };
 
+  // Render last run info for a job
+  const renderLastRun = (lastRun: LastRunInfo | null) => {
+    if (!lastRun) return null;
+
+    const StatusIcon = lastRun.status === "success" ? CheckCircle : lastRun.status === "failed" ? XCircle : Clock;
+    const statusColor = lastRun.status === "success" ? "text-green-600" : lastRun.status === "failed" ? "text-red-500" : "text-orange-500";
+
+    return (
+      <div className="flex items-center gap-2 text-xs text-zinc-500 mt-2 pt-2 border-t border-zinc-100">
+        <Clock className="h-3 w-3 flex-shrink-0" />
+        <span className="truncate">{formatDateET(lastRun.timestamp)}</span>
+        <span className="text-zinc-300">|</span>
+        <span className="font-mono">{formatDuration(lastRun.duration_seconds)}</span>
+        <StatusIcon className={`h-3 w-3 ${statusColor} flex-shrink-0`} />
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center gap-4">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500 text-white shadow-lg shadow-orange-500/25">
-          <Zap className="h-6 w-6" />
+          <Import className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900">Zeroin Ingest</h1>
+          <h1 className="text-2xl font-semibold text-zinc-900">AI Ingest Engine</h1>
           <p className="text-sm text-zinc-500">
             Ingest → Score → Extract newsletter links
           </p>
@@ -397,8 +458,7 @@ export function ZeroinIngestPanel() {
             ) : (
               <div className="space-y-3">
                 {ingestResult && (
-                  <div className="flex items-center gap-2 text-xs text-zinc-600 bg-zinc-50 rounded-lg px-3 py-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  <div className="text-xs text-zinc-600 bg-zinc-50 rounded-lg px-3 py-2">
                     <span>{ingestResult.processed} articles in {ingestResult.elapsed}s</span>
                   </div>
                 )}
@@ -410,6 +470,7 @@ export function ZeroinIngestPanel() {
                   <Download className="h-4 w-4 mr-2" />
                   Run Ingest
                 </Button>
+                {renderLastRun(lastRunIngest)}
               </div>
             )}
           </CardContent>
@@ -468,8 +529,7 @@ export function ZeroinIngestPanel() {
             ) : (
               <div className="space-y-3">
                 {scoringResult && (
-                  <div className="flex items-center gap-2 text-xs text-zinc-600 bg-zinc-50 rounded-lg px-3 py-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  <div className="text-xs text-zinc-600 bg-zinc-50 rounded-lg px-3 py-2">
                     <span>{scoringResult.scored} scored, {scoringResult.selects} selects</span>
                   </div>
                 )}
@@ -482,6 +542,7 @@ export function ZeroinIngestPanel() {
                   <Brain className="h-4 w-4 mr-2" />
                   Run Scoring
                 </Button>
+                {renderLastRun(lastRunScoring)}
               </div>
             )}
           </CardContent>
@@ -540,8 +601,7 @@ export function ZeroinIngestPanel() {
             ) : (
               <div className="space-y-3">
                 {newsletterResult && (
-                  <div className="flex items-center gap-2 text-xs text-zinc-600 bg-zinc-50 rounded-lg px-3 py-2">
-                    <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  <div className="text-xs text-zinc-600 bg-zinc-50 rounded-lg px-3 py-2">
                     <span>{newsletterResult.processed} links in {newsletterResult.elapsed}s</span>
                   </div>
                 )}
@@ -554,6 +614,7 @@ export function ZeroinIngestPanel() {
                   <Link2 className="h-4 w-4 mr-2" />
                   Extract Links
                 </Button>
+                {renderLastRun(lastRunNewsletter)}
               </div>
             )}
           </CardContent>
