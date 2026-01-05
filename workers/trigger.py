@@ -69,10 +69,7 @@ def get_job_function(step_name: str):
         return JOB_FUNCTIONS[step_name]
 
     try:
-        if step_name == 'ingest':
-            from jobs.ingest import ingest_articles
-            JOB_FUNCTIONS[step_name] = ingest_articles
-        elif step_name == 'ai_scoring':
+        if step_name == 'ai_scoring':
             from jobs.ai_scoring import run_ai_scoring
             JOB_FUNCTIONS[step_name] = run_ai_scoring
         elif step_name == 'prefilter':
@@ -139,7 +136,6 @@ def get_job_function(step_name: str):
 
 # Queue name mapping (matches worker.py priority)
 QUEUE_MAPPING = {
-    'ingest': 'default',
     'ai_scoring': 'default',
     'prefilter': 'default',
     'slot_selection': 'high',
@@ -161,6 +157,14 @@ QUEUE_MAPPING = {
     'prefilter_slot_3': 'default',
     'prefilter_slot_4': 'default',
     'prefilter_slot_5': 'default',
+}
+
+# Timeout mapping for manual job triggers
+# Note: Cron jobs (via pipeline.py) have their own timeouts
+TIMEOUT_MAPPING = {
+    'ai_scoring_sandbox': '60m',  # 60 minutes for AI scoring
+    'ingest_sandbox': '2h',       # 2 hours for ingest (Google News decoding)
+    # All other jobs default to 2h
 }
 
 
@@ -245,9 +249,9 @@ def trigger_job(step_name: str):
         queue_name = QUEUE_MAPPING[step_name]
         queue = Queue(queue_name, connection=conn)
 
-        # Enqueue the job with optional parameters
-        # Use 2 hour timeout for prefilter jobs, 30 min for others
-        timeout = '2h' if step_name.startswith('prefilter') else '30m'
+        # Enqueue the job with job-specific timeout
+        # Default 2h for most jobs, but ai_scoring_sandbox gets 60m for manual runs
+        timeout = TIMEOUT_MAPPING.get(step_name, '2h')
         job = queue.enqueue(
             job_func,
             job_timeout=timeout,

@@ -248,18 +248,26 @@ services:
     healthCheckPath: /health
 
   # =============================================================================
-  # CRON JOBS - AI INGEST ENGINE (STEP 0)
-  # Runs 3x daily: 6 AM, 2 PM, 10 PM ET (11:00, 19:00, 3:00 UTC)
+  # CHAINED PIPELINE CRONS - 3 Daily Cycles
+  # Each cycle runs: Ingest → AI Scoring → Pre-Filter (all 5 slots sequential)
+  # Manual slot buttons (1-5) on dashboard remain separate and functional.
+  #
+  # Schedule (all times ET):
+  #   Cycle 1 (Night):   2:00 AM  → Complete ~5:30 AM
+  #   Cycle 2 (Morning): 9:30 AM  → Complete ~1:00 PM
+  #   Cycle 3 (EOD):     5:00 PM  → Complete ~8:30 PM (before 8 PM deadline)
   # =============================================================================
+
+  # Cycle 1: Night - Process overnight/international articles
   - type: cron
-    name: ai-editor-ingest-cron
+    name: ai-editor-pipeline-night
     runtime: python
     region: oregon
     plan: starter
-    schedule: "0 11,19,3 * * *"
+    schedule: "0 7 * * *"  # 2:00 AM ET = 7:00 UTC
     rootDir: ai-editor-2.0-full-stack-application/app/workers
     buildCommand: pip install -r requirements.txt
-    startCommand: python -c "from jobs.ingest_sandbox import run_all_ingest_jobs; run_all_ingest_jobs()"
+    startCommand: python -c "from jobs.pipeline import run_full_pipeline; run_full_pipeline()"
     envVars:
       - key: REDIS_URL
         fromService:
@@ -276,24 +284,25 @@ services:
         value: appwSozYTkrsQWUXB
       - key: AI_EDITOR_BASE_ID
         value: appglKSJZxmA9iHpl
+      - key: AI_EDITOR_PREFILTER_LOG_TABLE
+        value: tbl72YMsm9iRHj3sp
+      - key: AI_EDITOR_SELECTED_SLOTS_TABLE
+        value: tblzt2z7r512Kto3O
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GEMINI_API_KEY
         sync: false
 
-  # =============================================================================
-  # CRON JOBS - PRE-FILTER (STEP 1) - STAGGERED SLOTS
-  # Runs 1 hour after ingest, 30 min apart per slot
-  # =============================================================================
+  # Cycle 2: Morning - Process morning publications (WSJ, NYT, etc.)
   - type: cron
-    name: ai-editor-prefilter-slot-1
+    name: ai-editor-pipeline-morning
     runtime: python
     region: oregon
     plan: starter
-    schedule: "0 12,20,4 * * *"
+    schedule: "30 14 * * *"  # 9:30 AM ET = 14:30 UTC
     rootDir: ai-editor-2.0-full-stack-application/app/workers
     buildCommand: pip install -r requirements.txt
-    startCommand: python -c "from jobs.pre_filter import run_slot; run_slot(1)"
+    startCommand: python -c "from jobs.pipeline import run_full_pipeline; run_full_pipeline()"
     envVars:
       - key: REDIS_URL
         fromService:
@@ -306,20 +315,29 @@ services:
           property: connectionString
       - key: AIRTABLE_API_KEY
         sync: false
+      - key: AIRTABLE_BASE_ID
+        value: appwSozYTkrsQWUXB
       - key: AI_EDITOR_BASE_ID
         value: appglKSJZxmA9iHpl
+      - key: AI_EDITOR_PREFILTER_LOG_TABLE
+        value: tbl72YMsm9iRHj3sp
+      - key: AI_EDITOR_SELECTED_SLOTS_TABLE
+        value: tblzt2z7r512Kto3O
+      - key: ANTHROPIC_API_KEY
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
 
+  # Cycle 3: EOD - Process end-of-day stories (must complete by ~8:30 PM)
   - type: cron
-    name: ai-editor-prefilter-slot-2
+    name: ai-editor-pipeline-eod
     runtime: python
     region: oregon
     plan: starter
-    schedule: "30 12,20,4 * * *"
+    schedule: "0 22 * * *"  # 5:00 PM ET = 22:00 UTC
     rootDir: ai-editor-2.0-full-stack-application/app/workers
     buildCommand: pip install -r requirements.txt
-    startCommand: python -c "from jobs.pre_filter import run_slot; run_slot(2)"
+    startCommand: python -c "from jobs.pipeline import run_full_pipeline; run_full_pipeline()"
     envVars:
       - key: REDIS_URL
         fromService:
@@ -332,86 +350,16 @@ services:
           property: connectionString
       - key: AIRTABLE_API_KEY
         sync: false
+      - key: AIRTABLE_BASE_ID
+        value: appwSozYTkrsQWUXB
       - key: AI_EDITOR_BASE_ID
         value: appglKSJZxmA9iHpl
-      - key: GEMINI_API_KEY
+      - key: AI_EDITOR_PREFILTER_LOG_TABLE
+        value: tbl72YMsm9iRHj3sp
+      - key: AI_EDITOR_SELECTED_SLOTS_TABLE
+        value: tblzt2z7r512Kto3O
+      - key: ANTHROPIC_API_KEY
         sync: false
-
-  - type: cron
-    name: ai-editor-prefilter-slot-3
-    runtime: python
-    region: oregon
-    plan: starter
-    schedule: "0 13,21,5 * * *"
-    rootDir: ai-editor-2.0-full-stack-application/app/workers
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -c "from jobs.pre_filter import run_slot; run_slot(3)"
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          name: ai-editor-redis
-          type: redis
-          property: connectionString
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ai-editor-db
-          property: connectionString
-      - key: AIRTABLE_API_KEY
-        sync: false
-      - key: AI_EDITOR_BASE_ID
-        value: appglKSJZxmA9iHpl
-      - key: GEMINI_API_KEY
-        sync: false
-
-  - type: cron
-    name: ai-editor-prefilter-slot-4
-    runtime: python
-    region: oregon
-    plan: starter
-    schedule: "30 13,21,5 * * *"
-    rootDir: ai-editor-2.0-full-stack-application/app/workers
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -c "from jobs.pre_filter import run_slot; run_slot(4)"
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          name: ai-editor-redis
-          type: redis
-          property: connectionString
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ai-editor-db
-          property: connectionString
-      - key: AIRTABLE_API_KEY
-        sync: false
-      - key: AI_EDITOR_BASE_ID
-        value: appglKSJZxmA9iHpl
-      - key: GEMINI_API_KEY
-        sync: false
-
-  - type: cron
-    name: ai-editor-prefilter-slot-5
-    runtime: python
-    region: oregon
-    plan: starter
-    schedule: "0 14,22,6 * * *"
-    rootDir: ai-editor-2.0-full-stack-application/app/workers
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -c "from jobs.pre_filter import run_slot; run_slot(5)"
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          name: ai-editor-redis
-          type: redis
-          property: connectionString
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ai-editor-db
-          property: connectionString
-      - key: AIRTABLE_API_KEY
-        sync: false
-      - key: AI_EDITOR_BASE_ID
-        value: appglKSJZxmA9iHpl
       - key: GEMINI_API_KEY
         sync: false
 

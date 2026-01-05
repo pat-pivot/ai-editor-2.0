@@ -11,15 +11,37 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, RefreshCw, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDateET } from "@/lib/date-utils";
+
+const ITEMS_PER_PAGE = 25;
 
 interface Article {
   id: string;
+  pivotId: string;
   headline: string;
   sourceName: string;
   originalUrl: string;
   dateIngested: string;
+  fitStatus: string;
+  interestScore: number | null;
+}
+
+// Fit status badge styling
+function getFitStatusBadge(status: string) {
+  switch (status) {
+    case "selected":
+      return <Badge className="bg-green-100 text-green-800 text-xs">Selected</Badge>;
+    case "approved":
+      return <Badge className="bg-blue-100 text-blue-800 text-xs">Approved</Badge>;
+    case "skipped_low_score":
+      return <Badge className="bg-yellow-100 text-yellow-800 text-xs">Low Score</Badge>;
+    case "rejected":
+      return <Badge className="bg-red-100 text-red-800 text-xs">Rejected</Badge>;
+    default:
+      return status ? <Badge variant="outline" className="text-xs">{status}</Badge> : null;
+  }
 }
 
 export function ArticlesTable() {
@@ -27,6 +49,7 @@ export function ArticlesTable() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchArticles = async (skipCache = false) => {
     try {
@@ -34,7 +57,7 @@ export function ArticlesTable() {
       else setLoading(true);
       setError(null);
 
-      const url = `/api/airtable/articles?limit=50${skipCache ? "&refresh=true" : ""}`;
+      const url = `/api/airtable/articles?limit=100${skipCache ? "&refresh=true" : ""}`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -42,6 +65,7 @@ export function ArticlesTable() {
         setError(data.error);
       } else {
         setArticles(data.articles || []);
+        setCurrentPage(1); // Reset to first page on refresh
       }
     } catch (err) {
       console.error("Error fetching articles:", err);
@@ -51,6 +75,12 @@ export function ArticlesTable() {
       setRefreshing(false);
     }
   };
+
+  // Pagination calculations
+  const totalPages = Math.ceil(articles.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedArticles = articles.slice(startIndex, endIndex);
 
   useEffect(() => {
     fetchArticles();
@@ -93,7 +123,7 @@ export function ArticlesTable() {
       <CardContent className="pt-6">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-zinc-500">
-            Showing {articles.length} most recent articles
+            Showing {startIndex + 1}-{Math.min(endIndex, articles.length)} of {articles.length} articles
           </p>
           <Button
             variant="outline"
@@ -110,27 +140,41 @@ export function ArticlesTable() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[45%]">Headline</TableHead>
-                <TableHead className="w-[15%]">Source</TableHead>
-                <TableHead className="w-[10%]">Link</TableHead>
-                <TableHead className="w-[30%]">Date Ingested</TableHead>
+                <TableHead className="w-[10%]">Pivot ID</TableHead>
+                <TableHead className="w-[35%]">Headline</TableHead>
+                <TableHead className="w-[12%]">Source</TableHead>
+                <TableHead className="w-[10%]">Status</TableHead>
+                <TableHead className="w-[8%]">Score</TableHead>
+                <TableHead className="w-[5%]">Link</TableHead>
+                <TableHead className="w-[20%]">Date Ingested</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {articles.length === 0 ? (
+              {paginatedArticles.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-zinc-500 py-8">
+                  <TableCell colSpan={7} className="text-center text-zinc-500 py-8">
                     No articles found
                   </TableCell>
                 </TableRow>
               ) : (
-                articles.map((article) => (
+                paginatedArticles.map((article) => (
                   <TableRow key={article.id}>
-                    <TableCell className="max-w-[400px]">
+                    <TableCell>
+                      <span className="text-xs font-mono text-zinc-500">{article.pivotId}</span>
+                    </TableCell>
+                    <TableCell className="max-w-[300px]">
                       <span className="line-clamp-2 text-sm">{article.headline}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-zinc-600">{article.sourceName}</span>
+                    </TableCell>
+                    <TableCell>
+                      {getFitStatusBadge(article.fitStatus)}
+                    </TableCell>
+                    <TableCell>
+                      {article.interestScore !== null && (
+                        <span className="text-sm text-zinc-600">{article.interestScore}</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {article.originalUrl && (
@@ -156,10 +200,39 @@ export function ArticlesTable() {
           </Table>
         </div>
 
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-sm text-zinc-500">
+              Page {currentPage} of {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Link to full Airtable */}
         <div className="mt-4 text-center">
           <a
-            href="https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+            href="https://airtable.com/appglKSJZxmA9iHpl/tblMfRgSNSyoRIhx1"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-zinc-400 hover:text-zinc-600 transition-colors"

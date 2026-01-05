@@ -197,28 +197,46 @@ async def resolve_google_news_url(url: str, retry_count: int = 0) -> tuple[str, 
             return decoded_url, source_name
         else:
             error_msg = result.get("message", "Unknown error")
-            # Check for rate limiting
-            if "429" in str(error_msg) or "rate" in str(error_msg).lower():
-                if retry_count < max_retries:
-                    backoff = 30 * (2 ** retry_count)  # 30s, 60s, 120s (more conservative)
-                    print(f"[GNEWS DECODE] ⚠️ RATE LIMITED - waiting {backoff}s before retry {retry_count + 1}/{max_retries}...")
-                    await asyncio.sleep(backoff)
-                    return await resolve_google_news_url(url, retry_count + 1)
+            error_str = str(error_msg).lower()
+
+            # Check for retryable errors (rate limiting, timeouts, connection issues)
+            is_retryable = any(x in error_str for x in [
+                "429", "rate", "timeout", "connection", "network",
+                "temporary", "unavailable", "overloaded", "503", "502"
+            ])
+
+            if is_retryable and retry_count < max_retries:
+                backoff = 30 * (2 ** retry_count)  # 30s, 60s, 120s
+                print(f"[GNEWS DECODE] ⚠️ RETRYABLE ERROR - waiting {backoff}s before retry {retry_count + 1}/{max_retries}...")
+                print(f"[GNEWS DECODE]    → Error was: {error_msg}")
+                await asyncio.sleep(backoff)
+                return await resolve_google_news_url(url, retry_count + 1)
+
             print(f"[GNEWS DECODE] ❌ FAILED: {url[:60]}...")
             print(f"[GNEWS DECODE]    → Error: {error_msg}")
+            print(f"[GNEWS DECODE]    → Retries exhausted: {retry_count >= max_retries}")
             return url, "Google News"
 
     except Exception as e:
-        error_str = str(e)
-        # Check for rate limiting in exception
-        if "429" in error_str or "rate" in error_str.lower():
-            if retry_count < max_retries:
-                backoff = 30 * (2 ** retry_count)  # 30s, 60s, 120s (more conservative)
-                print(f"[GNEWS DECODE] ⚠️ RATE LIMITED (exception) - waiting {backoff}s before retry {retry_count + 1}/{max_retries}...")
-                await asyncio.sleep(backoff)
-                return await resolve_google_news_url(url, retry_count + 1)
+        error_str = str(e).lower()
+
+        # Check for retryable exceptions (rate limiting, timeouts, connection issues)
+        is_retryable = any(x in error_str for x in [
+            "429", "rate", "timeout", "connection", "network",
+            "temporary", "unavailable", "overloaded", "503", "502",
+            "reset", "refused", "eof", "ssl"
+        ])
+
+        if is_retryable and retry_count < max_retries:
+            backoff = 30 * (2 ** retry_count)  # 30s, 60s, 120s
+            print(f"[GNEWS DECODE] ⚠️ RETRYABLE EXCEPTION - waiting {backoff}s before retry {retry_count + 1}/{max_retries}...")
+            print(f"[GNEWS DECODE]    → Exception was: {e}")
+            await asyncio.sleep(backoff)
+            return await resolve_google_news_url(url, retry_count + 1)
+
         print(f"[GNEWS DECODE] ❌ EXCEPTION: {url[:60]}...")
         print(f"[GNEWS DECODE]    → Error: {e}")
+        print(f"[GNEWS DECODE]    → Retries exhausted: {retry_count >= max_retries}")
         return url, "Google News"
 
 
@@ -267,6 +285,11 @@ async def resolve_article_urls(articles: List[Dict[str, Any]]) -> tuple[List[Dic
         # Process URLs SEQUENTIALLY within batch to avoid hammering Google
         for idx, article in batch:
             url = articles[idx]["url"]
+
+            # CRITICAL: Store original Google News URL for deduplication
+            # This prevents duplicates when resolution fails inconsistently
+            articles[idx]["gnews_url"] = url
+
             try:
                 resolved_url, source_name = await resolve_google_news_url(url)
 
@@ -457,19 +480,27 @@ def ingest_articles_sandbox(
             print(f"[Ingest Sandbox] Warning: URL resolution failed: {e}")
             # Continue with unresolved URLs rather than failing entirely
 
-        # Get existing pivot_ids from Airtable for deduplication
+        # Get existing pivot_ids AND gnews_urls from Airtable for deduplication
+        # CRITICAL: We check BOTH to prevent duplicates when Google News decoding fails inconsistently
         print("[Ingest Sandbox] Fetching existing records for deduplication...")
         try:
-            existing_records = table.all(fields=["pivot_id"])
+            existing_records = table.all(fields=["pivot_id", "gnews_url"])
             existing_pivot_ids = {
                 r["fields"].get("pivot_id")
                 for r in existing_records
                 if r["fields"].get("pivot_id")
             }
-            print(f"[Ingest Sandbox] Found {len(existing_pivot_ids)} existing records")
+            # Also track existing Google News URLs for deduplication
+            existing_gnews_urls = {
+                r["fields"].get("gnews_url")
+                for r in existing_records
+                if r["fields"].get("gnews_url")
+            }
+            print(f"[Ingest Sandbox] Found {len(existing_pivot_ids)} existing records, {len(existing_gnews_urls)} Google News URLs")
         except Exception as e:
             print(f"[Ingest Sandbox] Warning: Could not fetch existing records: {e}")
             existing_pivot_ids = set()
+            existing_gnews_urls = set()
 
         # Process and create new records
         # Track sources of successfully ingested articles
@@ -495,8 +526,19 @@ def ingest_articles_sandbox(
                 results["articles_skipped_invalid"] += 1
                 continue
 
-            # Check for duplicates
+            # Check for duplicates - BOTH pivot_id AND gnews_url
+            # This prevents duplicates when Google News decoding fails inconsistently
+            # (same article gets different pivot_ids when resolution fails vs succeeds)
+            gnews_url = article.get("gnews_url")  # Original Google News URL if present
+
             if pivot_id in existing_pivot_ids:
+                results["articles_skipped_duplicate"] += 1
+                continue
+
+            # Also check if this Google News URL was already ingested
+            # This catches cases where decoding failed previously but succeeds now
+            if gnews_url and gnews_url in existing_gnews_urls:
+                print(f"[Ingest Sandbox] Skipping duplicate (gnews_url match): {gnews_url[:80]}...")
                 results["articles_skipped_duplicate"] += 1
                 continue
 
@@ -506,13 +548,17 @@ def ingest_articles_sandbox(
             # in the decoration step from the AI-generated headline
             record = {
                 "pivot_id": pivot_id,                    # Primary deduplication key (hash)
-                "original_url": url,                     # Source URL
+                "original_url": url,                     # Source URL (resolved if Google News)
                 "source_name": article.get("source_id", "Unknown"),  # Publication name
                 "headline": title,                       # Original article title
                 "date_ingested": datetime.now(EST).isoformat(),  # When we ingested (EST)
                 "needs_ai": True,                        # Flag for AI Scoring job
                 "fit_status": "pending",                 # Single select status
             }
+
+            # Store Google News URL for deduplication (only if this came from Google News)
+            if gnews_url:
+                record["gnews_url"] = gnews_url
 
             # Add optional fields if present
             if article.get("published"):
@@ -524,6 +570,8 @@ def ingest_articles_sandbox(
             try:
                 table.create(record)
                 existing_pivot_ids.add(pivot_id)  # Prevent duplicates within batch
+                if gnews_url:
+                    existing_gnews_urls.add(gnews_url)  # Also track gnews_url for batch dedup
                 results["articles_ingested"] += 1
 
                 # Track source for ingested articles summary

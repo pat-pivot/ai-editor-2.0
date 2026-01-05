@@ -13,11 +13,12 @@ const TABLES = {
   newsletterIssueStories: process.env.AIRTABLE_NEWSLETTER_ISSUE_STORIES_TABLE,
   newsletterIssues: process.env.AIRTABLE_NEWSLETTER_ISSUES_TABLE,
   newsletterIssuesArchive: process.env.AIRTABLE_NEWSLETTER_ISSUES_ARCHIVE_TABLE,
-  // AI Editor 2.0 Base
-  prefilterLog: process.env.AI_EDITOR_PREFILTER_LOG_TABLE,
-  selectedSlots: process.env.AI_EDITOR_SELECTED_SLOTS_TABLE,
-  decoration: process.env.AI_EDITOR_DECORATION_TABLE,
-  sourceScores: process.env.AI_EDITOR_SOURCE_SCORES_TABLE,
+  // AI Editor 2.0 Base (table IDs hardcoded since not all are in env)
+  prefilterLog: process.env.AI_EDITOR_PREFILTER_LOG_TABLE || "tbl72YMsm9iRHj3sp",
+  selectedSlots: process.env.AI_EDITOR_SELECTED_SLOTS_TABLE || "tblzt2z7r512Kto3O",
+  decoration: process.env.AI_EDITOR_DECORATION_TABLE || "tbla16LJCf5Z6cRn3",
+  sourceScores: process.env.AI_EDITOR_SOURCE_SCORES_TABLE || "tbl3Zkdl1No2edDLK",
+  articlesAllIngested: "tblMfRgSNSyoRIhx1",
 };
 
 interface AirtableRecord {
@@ -570,37 +571,44 @@ export async function getDecorations(): Promise<DecorationEntry[]> {
 }
 
 // Articles - All Ingested
-// Documentation: Table tblGumae8KDpsrWvh in Pivot Media Master Base
-// Fields: headline, source_name, original_url, date_ingested
+// Documentation: Table tblMfRgSNSyoRIhx1 in AI Editor 2.0 Base
+// Fields: pivot_id, headline, source_name, original_url, date_ingested,
+//         date_og_published, date_scored, fit_status, interest_score
 export interface Article {
   id: string;
+  pivotId: string;
   headline: string;
   sourceName: string;
   originalUrl: string;
   dateIngested: string;
+  fitStatus: string;
+  interestScore: number | null;
 }
 
 export async function getArticles(
   limit: number = 50,
   skipCache: boolean = false
 ): Promise<Article[]> {
-  if (!PIVOT_MEDIA_BASE_ID || !TABLES.articles) {
-    throw new Error("Pivot Media base ID or articles table not configured");
+  if (!AI_EDITOR_BASE_ID) {
+    throw new Error("AI Editor base ID not configured");
   }
 
-  const records = await fetchAirtable(PIVOT_MEDIA_BASE_ID, TABLES.articles, {
+  const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.articlesAllIngested, {
     maxRecords: limit,
     sort: [{ field: "date_ingested", direction: "desc" }],
-    fields: ["headline", "source_name", "original_url", "date_ingested"],
+    fields: ["pivot_id", "headline", "source_name", "original_url", "date_ingested", "fit_status", "interest_score"],
     skipCache,
   });
 
   return records.map((record) => ({
     id: record.id,
+    pivotId: (record.fields.pivot_id as string) || "",
     headline: (record.fields.headline as string) || "Untitled",
     sourceName: (record.fields.source_name as string) || "Unknown",
     originalUrl: (record.fields.original_url as string) || "",
     dateIngested: (record.fields.date_ingested as string) || record.createdTime,
+    fitStatus: (record.fields.fit_status as string) || "",
+    interestScore: (record.fields.interest_score as number) || null,
   }));
 }
 

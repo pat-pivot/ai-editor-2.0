@@ -913,218 +913,216 @@ export default function StepPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* Step 1: Slot Pre-Filter Cards */}
-      {stepId === 1 && (
-        <div className="grid grid-cols-5 gap-3">
-          {PREFILTER_SLOTS.map(slotNum => {
-            const state = slotStates[slotNum];
-            return (
-              <Card key={slotNum} className={state.isRunning ? "border-orange-300 bg-orange-50/30" : ""}>
-                <CardContent className="p-4">
-                  <div className="text-center mb-3">
-                    <span className="font-semibold text-sm">
-                      Slot {slotNum} Pre-Filter Agent
-                    </span>
-                  </div>
-
-                  {state.isRunning ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-center gap-2">
-                        <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-200 text-xs">
-                          {state.jobStatus === "queued" ? "Queued" : "Running"}
-                        </Badge>
-                        <span className="font-mono text-sm font-bold text-orange-700">
-                          {Math.floor(state.elapsedTime / 60)}:{String(state.elapsedTime % 60).padStart(2, "0")}
-                        </span>
-                      </div>
-                      <Progress value={undefined} className="h-1.5 bg-orange-100" />
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => cancelSlotJob(slotNum)}
-                        disabled={cancellingSlot === slotNum}
-                        className="w-full h-8 text-xs"
-                      >
-                        {cancellingSlot === slotNum ? "Stopping..." : "Stop"}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {state.result && (
-                        <div className="text-xs text-center text-emerald-600 bg-emerald-50 rounded px-2 py-1">
-                          {state.result.written} records • {state.result.elapsed}s
-                        </div>
-                      )}
-                      {state.jobStatus === "failed" && (
-                        <div className="text-xs text-center text-red-600 bg-red-50 rounded px-2 py-1">
-                          Failed
-                        </div>
-                      )}
-                      <Button
-                        onClick={() => runSlot(slotNum)}
-                        disabled={anySlotRunning}
-                        className="w-full h-8 text-xs bg-orange-500 hover:bg-orange-600 text-white"
-                      >
-                        Run Slot {slotNum}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Completion Banner */}
-      {showCompletion && lastResult && (
-        <Card className="border-emerald-200 bg-emerald-50/50">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
-                  <MaterialIcon name="check_circle" className="text-xl text-emerald-600" />
-                </div>
-                <div>
-                  <span className="font-semibold text-emerald-900">Job Completed Successfully</span>
-                  <p className="text-sm text-emerald-700">
-                    Processed {lastResult.processed} stories in {lastResult.elapsed}s
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {stepConfig.dataTable && (
-                  <Button
-                    variant="outline"
-                    className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-                    onClick={() => {
-                      setActiveTab("data");
-                      setShowCompletion(false);
-                    }}
-                  >
-                    <MaterialIcon name="table_chart" className="text-base" />
-                    View {stepConfig.dataTable.name}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-emerald-600 hover:bg-emerald-100"
-                  onClick={() => setShowCompletion(false)}
-                >
-                  <MaterialIcon name="close" className="text-base" />
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Running Status Banner */}
-      {(isRunning || isAiScoringRunning || isMauticSendRunning || isGmailSendRunning) && (
-        <Card className="border-blue-200 bg-blue-50/50">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
-                <MaterialIcon name="sync" className="text-xl text-blue-600 animate-spin" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <span className="font-semibold text-blue-900">
-                      {currentJobType === "ai_scoring"
-                        ? (aiScoringJobStatus === "queued" ? "AI Scoring Queued" : "AI Scoring Running")
-                        : currentJobType === "ingest"
-                        ? (jobStatus === "queued" ? "Ingest Queued" : "Ingest Running")
-                        : currentJobType === "html_compile"
-                        ? (jobStatus === "queued" ? "Compile Queued" : "Compiling HTML")
-                        : currentJobType === "mautic_send"
-                        ? (mauticSendJobStatus === "queued" ? "Mautic Send Queued" : "Sending via Mautic")
-                        : currentJobType === "gmail_send"
-                        ? (gmailSendJobStatus === "queued" ? "Gmail Send Queued" : "Sending Test via Gmail")
-                        : (jobStatus === "queued" ? "Job Queued" : "Job Running")}
-                    </span>
-                    <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
-                      {(currentJobType === "ai_scoring" ? aiScoringJobStatus
-                        : currentJobType === "mautic_send" ? mauticSendJobStatus
-                        : currentJobType === "gmail_send" ? gmailSendJobStatus
-                        : jobStatus) === "queued"
-                        ? "Waiting for worker..."
-                        : "Processing..."}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-lg font-bold text-blue-700">
-                      {Math.floor((currentJobType === "ai_scoring" ? aiScoringElapsedTime
-                        : currentJobType === "mautic_send" ? mauticSendElapsedTime
-                        : currentJobType === "gmail_send" ? gmailSendElapsedTime
-                        : elapsedTime) / 60)}:
-                      {String((currentJobType === "ai_scoring" ? aiScoringElapsedTime
-                        : currentJobType === "mautic_send" ? mauticSendElapsedTime
-                        : currentJobType === "gmail_send" ? gmailSendElapsedTime
-                        : elapsedTime) % 60).padStart(2, "0")}
-                    </span>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={cancelJob}
-                      disabled={isCancelling}
-                      className="bg-red-600 hover:bg-red-700 h-8 px-3"
-                    >
-                      {isCancelling ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Stopping
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-                          </svg>
-                          Stop
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-                <Progress value={undefined} className="h-2 bg-blue-100" />
-                <div className="mt-2 text-sm text-blue-600">
-                  <span>Job ID: {(currentJobType === "ai_scoring" ? aiScoringJobId
-                    : currentJobType === "mautic_send" ? mauticSendJobId
-                    : currentJobType === "gmail_send" ? gmailSendJobId
-                    : jobId)?.slice(0, 8)}...</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Tabs Section */}
+      {/* Tabs Section - Directly after header */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="logs" className="gap-2">
-            <MaterialIcon name="description" className="text-base" />
+        <TabsList className="bg-zinc-100">
+          <TabsTrigger value="logs" className="data-[state=active]:bg-white">
             Execution Logs
           </TabsTrigger>
           {stepConfig.prompts.length > 0 && (
-            <TabsTrigger value="prompts" className="gap-2">
-              <MaterialIcon name="psychology" className="text-base" />
+            <TabsTrigger value="prompts" className="data-[state=active]:bg-white">
               System Prompts
             </TabsTrigger>
           )}
           {stepConfig.dataTable && (
-            <TabsTrigger value="data" className="gap-2">
-              <MaterialIcon name="table_chart" className="text-base" />
+            <TabsTrigger value="data" className="data-[state=active]:bg-white">
               {stepConfig.dataTable.name}
             </TabsTrigger>
           )}
         </TabsList>
 
-        <TabsContent value="logs">
+        <TabsContent value="logs" className="space-y-4">
+          {/* Step 1: Slot Pre-Filter Cards */}
+          {stepId === 1 && (
+            <div className="grid grid-cols-5 gap-3">
+              {PREFILTER_SLOTS.map(slotNum => {
+                const state = slotStates[slotNum];
+                return (
+                  <Card key={slotNum} className={state.isRunning ? "border-orange-300 bg-orange-50/30" : ""}>
+                    <CardContent className="p-4">
+                      <div className="text-center mb-3">
+                        <span className="font-semibold text-sm">
+                          Slot {slotNum} Pre-Filter Agent
+                        </span>
+                      </div>
+
+                      {state.isRunning ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-center gap-2">
+                            <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-200 text-xs">
+                              {state.jobStatus === "queued" ? "Queued" : "Running"}
+                            </Badge>
+                            <span className="font-mono text-sm font-bold text-orange-700">
+                              {Math.floor(state.elapsedTime / 60)}:{String(state.elapsedTime % 60).padStart(2, "0")}
+                            </span>
+                          </div>
+                          <Progress value={undefined} className="h-1.5 bg-orange-100" />
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => cancelSlotJob(slotNum)}
+                            disabled={cancellingSlot === slotNum}
+                            className="w-full h-8 text-xs"
+                          >
+                            {cancellingSlot === slotNum ? "Stopping..." : "Stop"}
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {state.result && (
+                            <div className="text-xs text-center text-emerald-600 bg-emerald-50 rounded px-2 py-1">
+                              {state.result.written} records • {state.result.elapsed}s
+                            </div>
+                          )}
+                          {state.jobStatus === "failed" && (
+                            <div className="text-xs text-center text-red-600 bg-red-50 rounded px-2 py-1">
+                              Failed
+                            </div>
+                          )}
+                          <Button
+                            onClick={() => runSlot(slotNum)}
+                            disabled={anySlotRunning}
+                            className="w-full h-8 text-xs bg-orange-500 hover:bg-orange-600 text-white"
+                          >
+                            Run Slot {slotNum}
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Completion Banner */}
+          {showCompletion && lastResult && (
+            <Card className="border-emerald-200 bg-emerald-50/50">
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
+                      <MaterialIcon name="check_circle" className="text-xl text-emerald-600" />
+                    </div>
+                    <div>
+                      <span className="font-semibold text-emerald-900">Job Completed Successfully</span>
+                      <p className="text-sm text-emerald-700">
+                        Processed {lastResult.processed} stories in {lastResult.elapsed}s
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {stepConfig.dataTable && (
+                      <Button
+                        variant="outline"
+                        className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                        onClick={() => {
+                          setActiveTab("data");
+                          setShowCompletion(false);
+                        }}
+                      >
+                        <MaterialIcon name="table_chart" className="text-base" />
+                        View {stepConfig.dataTable.name}
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-emerald-600 hover:bg-emerald-100"
+                      onClick={() => setShowCompletion(false)}
+                    >
+                      <MaterialIcon name="close" className="text-base" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Running Status Banner */}
+          {(isRunning || isAiScoringRunning || isMauticSendRunning || isGmailSendRunning) && (
+            <Card className="border-blue-200 bg-blue-50/50">
+              <CardContent className="py-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+                    <MaterialIcon name="sync" className="text-xl text-blue-600 animate-spin" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-blue-900">
+                          {currentJobType === "ai_scoring"
+                            ? (aiScoringJobStatus === "queued" ? "AI Scoring Queued" : "AI Scoring Running")
+                            : currentJobType === "ingest"
+                            ? (jobStatus === "queued" ? "Ingest Queued" : "Ingest Running")
+                            : currentJobType === "html_compile"
+                            ? (jobStatus === "queued" ? "Compile Queued" : "Compiling HTML")
+                            : currentJobType === "mautic_send"
+                            ? (mauticSendJobStatus === "queued" ? "Mautic Send Queued" : "Sending via Mautic")
+                            : currentJobType === "gmail_send"
+                            ? (gmailSendJobStatus === "queued" ? "Gmail Send Queued" : "Sending Test via Gmail")
+                            : (jobStatus === "queued" ? "Job Queued" : "Job Running")}
+                        </span>
+                        <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">
+                          {(currentJobType === "ai_scoring" ? aiScoringJobStatus
+                            : currentJobType === "mautic_send" ? mauticSendJobStatus
+                            : currentJobType === "gmail_send" ? gmailSendJobStatus
+                            : jobStatus) === "queued"
+                            ? "Waiting for worker..."
+                            : "Processing..."}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-lg font-bold text-blue-700">
+                          {Math.floor((currentJobType === "ai_scoring" ? aiScoringElapsedTime
+                            : currentJobType === "mautic_send" ? mauticSendElapsedTime
+                            : currentJobType === "gmail_send" ? gmailSendElapsedTime
+                            : elapsedTime) / 60)}:
+                          {String((currentJobType === "ai_scoring" ? aiScoringElapsedTime
+                            : currentJobType === "mautic_send" ? mauticSendElapsedTime
+                            : currentJobType === "gmail_send" ? gmailSendElapsedTime
+                            : elapsedTime) % 60).padStart(2, "0")}
+                        </span>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={cancelJob}
+                          disabled={isCancelling}
+                          className="bg-red-600 hover:bg-red-700 h-8 px-3"
+                        >
+                          {isCancelling ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Stopping
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                              </svg>
+                              Stop
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    <Progress value={undefined} className="h-2 bg-blue-100" />
+                    <div className="mt-2 text-sm text-blue-600">
+                      <span>Job ID: {(currentJobType === "ai_scoring" ? aiScoringJobId
+                        : currentJobType === "mautic_send" ? mauticSendJobId
+                        : currentJobType === "gmail_send" ? gmailSendJobId
+                        : jobId)?.slice(0, 8)}...</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Execution Logs */}
           <ExecutionLogs stepId={stepId} stepName={stepConfig.name} />
         </TabsContent>
 

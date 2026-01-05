@@ -326,6 +326,28 @@ def run_ai_scoring_sandbox(batch_size: int = None) -> Dict[str, Any]:
         newsletter_selects_table = airtable.table(AIRTABLE_AI_EDITOR_BASE_ID, NEWSLETTER_SELECTS_TABLE)
         claude = Anthropic(api_key=ANTHROPIC_API_KEY)
 
+        # =================================================================
+        # DEDUPLICATION: Fetch existing pivot_ids AND gnews_urls from Newsletter Selects
+        # This prevents creating duplicate Newsletter Selects if AI scoring runs twice
+        # for the same article (edge case: concurrent runs, mid-job failures, etc.)
+        # =================================================================
+        print("[AI Scoring Sandbox] Fetching existing Newsletter Selects for deduplication...")
+        existing_selects = newsletter_selects_table.all(fields=["pivot_id", "gnews_url"])
+        existing_pivot_ids = {
+            r["fields"].get("pivot_id")
+            for r in existing_selects
+            if r["fields"].get("pivot_id")
+        }
+        existing_gnews_urls = {
+            r["fields"].get("gnews_url")
+            for r in existing_selects
+            if r["fields"].get("gnews_url")
+        }
+        print(f"[AI Scoring Sandbox] Found {len(existing_pivot_ids)} existing Newsletter Selects")
+
+        # Track duplicates skipped
+        results["newsletter_selects_skipped_duplicate"] = 0
+
         # Query articles needing AI scoring (no limit - process all)
         print("[AI Scoring Sandbox] Querying articles with needs_ai = true...")
         formula = "{needs_ai} = 1"
@@ -393,6 +415,23 @@ def run_ai_scoring_sandbox(batch_size: int = None) -> Dict[str, Any]:
             if interest_score >= INTEREST_SCORE_THRESHOLD:
                 results["high_interest_count"] += 1
 
+                # =================================================================
+                # DEDUPLICATION CHECK: Skip if this article already has a Newsletter Select
+                # Check both pivot_id AND gnews_url to catch Google News decode inconsistencies
+                # =================================================================
+                pivot_id = fields.get("pivot_id")
+                gnews_url = fields.get("gnews_url")  # Original Google News URL if present
+
+                if pivot_id in existing_pivot_ids:
+                    print(f"[AI Scoring Sandbox] Skipping duplicate Newsletter Select (pivot_id): {pivot_id[:50]}...")
+                    results["newsletter_selects_skipped_duplicate"] += 1
+                    continue
+
+                if gnews_url and gnews_url in existing_gnews_urls:
+                    print(f"[AI Scoring Sandbox] Skipping duplicate Newsletter Select (gnews_url): {gnews_url[:50]}...")
+                    results["newsletter_selects_skipped_duplicate"] += 1
+                    continue
+
                 try:
                     # Extract article content using Firecrawl
                     article_url = fields.get("original_url")
@@ -409,7 +448,8 @@ def run_ai_scoring_sandbox(batch_size: int = None) -> Dict[str, Any]:
                     # NOTE: storyId is NOT set here - it will be generated later
                     # in the decoration step from the AI-generated headline
                     newsletter_select = {
-                        "pivot_id": fields.get("pivot_id"),
+                        "pivot_id": pivot_id,
+                        "gnews_url": gnews_url,  # Store for deduplication tracking
                         "headline": fields.get("headline"),  # Original headline from Articles
                         "core_url": article_url,
                         "source_name": fields.get("source_name", "Unknown"),
@@ -427,6 +467,12 @@ def run_ai_scoring_sandbox(batch_size: int = None) -> Dict[str, Any]:
 
                     newsletter_selects_table.create(newsletter_select)
                     results["newsletter_selects_created"] += 1
+
+                    # Track for batch deduplication (same job, multiple articles)
+                    existing_pivot_ids.add(pivot_id)
+                    if gnews_url:
+                        existing_gnews_urls.add(gnews_url)
+
                     extracted_msg = f" (extracted {len(raw_content)} chars)" if raw_content else " (no extraction)"
                     print(f"[AI Scoring Sandbox] Created Newsletter Select: interest={interest_score}{extracted_msg}")
 
@@ -439,6 +485,7 @@ def run_ai_scoring_sandbox(batch_size: int = None) -> Dict[str, Any]:
         print(f"  - Articles scored: {results['articles_scored']}")
         print(f"  - High-interest: {results['high_interest_count']}")
         print(f"  - Newsletter Selects created: {results['newsletter_selects_created']}")
+        print(f"  - Newsletter Selects skipped (duplicate): {results['newsletter_selects_skipped_duplicate']}")
         print(f"  - Articles extracted: {results['articles_extracted']}")
         print(f"  - Extraction failures: {results['extraction_failures']}")
         print(f"  - Failed: {results['articles_failed']}")

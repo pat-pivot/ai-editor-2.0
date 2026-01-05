@@ -12,8 +12,10 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDateET } from "@/lib/date-utils";
+
+const ITEMS_PER_PAGE = 25;
 
 interface NewsletterSelect {
   id: string;
@@ -46,6 +48,7 @@ export function NewsletterSelectsTable() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchSelects = async (skipCache = false) => {
     try {
@@ -53,7 +56,7 @@ export function NewsletterSelectsTable() {
       else setLoading(true);
       setError(null);
 
-      const url = `/api/airtable/newsletter-selects?limit=50${skipCache ? "&refresh=true" : ""}`;
+      const url = `/api/airtable/newsletter-selects?limit=100${skipCache ? "&refresh=true" : ""}`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -61,6 +64,7 @@ export function NewsletterSelectsTable() {
         setError(data.error);
       } else {
         setSelects(data.selects || []);
+        setCurrentPage(1); // Reset to first page on refresh
       }
     } catch (err) {
       console.error("Error fetching newsletter selects:", err);
@@ -70,6 +74,12 @@ export function NewsletterSelectsTable() {
       setRefreshing(false);
     }
   };
+
+  // Pagination calculations
+  const totalPages = Math.ceil(selects.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedSelects = selects.slice(startIndex, endIndex);
 
   useEffect(() => {
     fetchSelects();
@@ -112,7 +122,7 @@ export function NewsletterSelectsTable() {
       <CardContent className="pt-6">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-zinc-500">
-            Showing {selects.length} recent newsletter selects
+            Showing {startIndex + 1}-{Math.min(endIndex, selects.length)} of {selects.length} selects
           </p>
           <Button
             variant="outline"
@@ -136,14 +146,14 @@ export function NewsletterSelectsTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {selects.length === 0 ? (
+              {paginatedSelects.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-zinc-500 py-8">
                     No newsletter selects found
                   </TableCell>
                 </TableRow>
               ) : (
-                selects.map((select) => (
+                paginatedSelects.map((select) => (
                   <TableRow key={select.id}>
                     <TableCell>
                       <span className="text-sm text-zinc-600">
@@ -169,6 +179,35 @@ export function NewsletterSelectsTable() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-sm text-zinc-500">
+              Page {currentPage} of {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Link to full Airtable */}
         <div className="mt-4 text-center">

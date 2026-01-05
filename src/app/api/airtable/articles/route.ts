@@ -2,7 +2,8 @@
  * AI Editor 2.0 - Airtable Articles API
  *
  * GET /api/airtable/articles
- *   Returns recently ingested articles from the Airtable Articles table.
+ *   Returns recently ingested articles from the AI Editor 2.0 "Articles - All Ingested" table.
+ *   Table ID: tblMfRgSNSyoRIhx1 in base appglKSJZxmA9iHpl
  *
  * Query Parameters:
  *   - limit: Maximum number of records (default: 50)
@@ -13,10 +14,13 @@
  *   "articles": [
  *     {
  *       "id": "recXXX",
+ *       "pivotId": "p_abc123",
  *       "headline": "Article title...",
  *       "sourceName": "Reuters",
  *       "originalUrl": "https://...",
- *       "dateIngested": "2025-01-05T14:30:00Z"
+ *       "dateIngested": "2025-01-05T14:30:00Z",
+ *       "fitStatus": "selected|approved|skipped_low_score|rejected",
+ *       "interestScore": 75
  *     }
  *   ]
  * }
@@ -45,7 +49,7 @@ export async function GET(request: NextRequest) {
     if (errorMessage.includes("not configured")) {
       return NextResponse.json({
         articles: [],
-        message: "Airtable not configured. Set AIRTABLE_API_KEY and AIRTABLE_ARTICLES_TABLE.",
+        message: "Airtable not configured. Set AIRTABLE_API_KEY and AI_EDITOR_BASE_ID.",
       });
     }
 

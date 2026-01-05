@@ -14,15 +14,32 @@ import {
   Link2,
   Loader2,
   Square,
-  Info,
   Timer,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  AlertCircle
 } from "lucide-react";
 import { formatDateET, formatDuration } from "@/lib/date-utils";
 import { ArticlesTable } from "./articles-table";
 import { NewsletterSelectsTable } from "./newsletter-selects-table";
+import { ExecutionLogs } from "./execution-logs";
+
+// Status badge component for last run status
+function StatusBadge({ status }: { status: "success" | "failed" | "running" }) {
+  const config = {
+    success: { Icon: CheckCircle, label: "OK", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    failed: { Icon: XCircle, label: "ERROR", className: "bg-red-100 text-red-700 border-red-200" },
+    running: { Icon: Loader2, label: "Running", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  }[status];
+
+  return (
+    <Badge variant="outline" className={`gap-1 ${config.className}`}>
+      <config.Icon className={`h-3 w-3 ${status === "running" ? "animate-spin" : ""}`} />
+      {config.label}
+    </Badge>
+  );
+}
 
 // Zeroin job definitions
 const ZEROIN_JOBS = {
@@ -376,6 +393,58 @@ export function ZeroinIngestPanel() {
     return `${mins}:${String(secs).padStart(2, "0")}`;
   };
 
+  // Calculate the most recent last run across all jobs for the header
+  const getMostRecentLastRun = () => {
+    const runs = [lastRunIngest, lastRunScoring, lastRunNewsletter].filter(Boolean) as LastRunInfo[];
+    if (runs.length === 0) return null;
+
+    return runs.reduce((mostRecent, current) => {
+      const currentTime = new Date(current.timestamp).getTime();
+      const mostRecentTime = new Date(mostRecent.timestamp).getTime();
+      return currentTime > mostRecentTime ? current : mostRecent;
+    });
+  };
+
+  // Next run calculation - Step 0 Ingest runs at 8:00 PM ET Monday-Friday
+  const getNextRunDisplay = () => {
+    const scheduledHour = 20; // 8:00 PM
+
+    const now = new Date();
+    const etNow = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const currentHour = etNow.getHours();
+    const currentDay = etNow.getDay(); // 0 = Sunday, 6 = Saturday
+
+    // Check if we should run today (Mon-Fri and before 8 PM)
+    const isWeekday = currentDay >= 1 && currentDay <= 5;
+
+    if (isWeekday && currentHour < scheduledHour) {
+      const nextRun = new Date(etNow);
+      nextRun.setHours(scheduledHour, 0, 0, 0);
+      return formatDateET(nextRun);
+    }
+
+    // Find next weekday
+    const nextRun = new Date(etNow);
+    let daysToAdd = 1;
+
+    if (currentDay === 5) {
+      // Friday after 8 PM -> Monday
+      daysToAdd = 3;
+    } else if (currentDay === 6) {
+      // Saturday -> Monday
+      daysToAdd = 2;
+    } else if (currentDay === 0) {
+      // Sunday -> Monday
+      daysToAdd = 1;
+    }
+
+    nextRun.setDate(nextRun.getDate() + daysToAdd);
+    nextRun.setHours(scheduledHour, 0, 0, 0);
+    return formatDateET(nextRun);
+  };
+
+  const mostRecentRun = getMostRecentLastRun();
+
   // Render last run info for a job
   const renderLastRun = (lastRun: LastRunInfo | null) => {
     if (!lastRun) return null;
@@ -396,18 +465,54 @@ export function ZeroinIngestPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center gap-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500 text-white shadow-lg shadow-orange-500/25">
-          <Import className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-900">AI Ingest Engine</h1>
-          <p className="text-sm text-zinc-500">
-            Ingest → Score → Extract newsletter links
-          </p>
-        </div>
-      </div>
+      {/* Step Header Card - matching Step 1 Pre-filter design */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100 text-orange-600">
+                <Import className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <CardTitle className="text-xl">
+                    Step 0: Ingest
+                  </CardTitle>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    8:00 PM ET
+                  </Badge>
+                </div>
+                <CardDescription className="mt-1">
+                  Fetch articles from RSS feeds, score with AI, extract newsletter links
+                </CardDescription>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex items-center gap-8 text-sm">
+            {mostRecentRun ? (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Last Run:</span>
+                <span className="font-medium">{formatDateET(mostRecentRun.timestamp)}</span>
+                <span className="text-muted-foreground">|</span>
+                <span className="font-mono text-muted-foreground">{formatDuration(mostRecentRun.duration_seconds)}</span>
+                <span className="text-muted-foreground">|</span>
+                <StatusBadge status={mostRecentRun.status === "failed" ? "failed" : mostRecentRun.status} />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Last Run:</span>
+                <span className="text-muted-foreground italic">No recent runs</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Next Run:</span>
+              <span className="font-medium">{getNextRunDisplay()}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tabs for Jobs, Articles, and Newsletter Selects */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -643,31 +748,6 @@ export function ZeroinIngestPanel() {
         </Card>
           </div>
 
-          {/* Info Card */}
-          <Card className="bg-zinc-50 border-zinc-200">
-            <CardContent className="py-4">
-              <div className="flex items-start gap-3">
-                <Info className="h-5 w-5 text-zinc-400 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-zinc-600">
-                  <p className="font-medium text-zinc-700 mb-2">Pipeline Flow</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                    <div className="flex items-start gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">1</span>
-                      <span><strong>Ingest</strong> — FreshRSS → Articles table</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">2</span>
-                      <span><strong>Score</strong> — Claude + Firecrawl → Newsletter Selects</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">3</span>
-                      <span><strong>Extract</strong> — Newsletter links with provenance</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* Articles All Ingested Tab Content */}
@@ -680,6 +760,9 @@ export function ZeroinIngestPanel() {
           <NewsletterSelectsTable />
         </TabsContent>
       </Tabs>
+
+      {/* Execution Logs Section */}
+      <ExecutionLogs stepId={0} stepName="Ingest" />
     </div>
   );
 }
