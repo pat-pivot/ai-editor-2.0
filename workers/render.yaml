@@ -292,6 +292,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
 
   # Cycle 2: Morning - Process morning publications (WSJ, NYT, etc.)
   - type: cron
@@ -327,6 +329,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
 
   # Cycle 3: EOD - Process end-of-day stories (must complete by ~8:30 PM)
   - type: cron
@@ -361,6 +365,8 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
         sync: false
 
   # =============================================================================
