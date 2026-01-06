@@ -1,0 +1,4025 @@
+{
+  "name": "Ingestion Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        5424
+      ],
+      "id": "0699d698-584c-4799-8a48-3d25afd9c349",
+      "name": "Slice "
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        5424
+      ],
+      "id": "835c439d-cf7e-4f86-9664-ae6427926d6f",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node: \"Normalize link -> url for Firecrawl\"\n\n// Take whatever's in `link` and try to turn it into a clean string\nfunction cleanUrl(u) {\n  if (u == null) return null;\n\n  // If we ever get an array, grab the first element\n  if (Array.isArray(u)) {\n    u = u[0];\n  }\n\n  u = String(u);\n\n  // Strip control characters & NBSP\n  u = u.replace(/[\\u0000-\\u001F\\u00A0]+/g, '');\n  u = u.trim();\n\n  // Strip stray quotes/backticks/commas at edges\n  u = u.replace(/^[\\\"'`]+/, '').replace(/[\\\"'`,]+$/, '');\n\n  return u;\n}\n\n// Simple regex-based HTTP(S) URL checker\nfunction isValidHttpUrl(u) {\n  if (!u) return false;\n  // Very permissive: \"http(s)://<something>.<something>\"\n  const re = /^https?:\\/\\/[^/\\s]+\\.[^\\s]+/i;\n  return re.test(u);\n}\n\nconst inputItems = $input.all();\nconst good = [];\nconst bad = [];\n\nfor (let i = 0; i < inputItems.length; i++) {\n  const json = inputItems[i].json || {};\n  const rawLink = json.link;\n  const cleaned = cleanUrl(rawLink);\n\n  if (isValidHttpUrl(cleaned)) {\n    // Good: pass through to Firecrawl with a clean `url`\n    good.push({\n      json: {\n        ...json,\n        url: cleaned, // <- Firecrawl will use this\n      },\n    });\n  } else {\n    // Bad: keep aside so they don't 400 the run\n    bad.push({\n      json: {\n        ...json,\n        url: cleaned,\n        _firecrawlUrlError: {\n          index: i,\n          rawLink,\n          cleanedUrl: cleaned,\n        },\n      },\n    });\n  }\n}\n\n// Option A: only send good URLs to Firecrawl\nreturn good;\n\n// If you want to debug the bad ones, use:\n// return good.concat(bad);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2432,
+        4544
+      ],
+      "id": "0dcb6969-de76-4623-89ab-65273a06f858",
+      "name": "Create/Clean URL"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d11067aa-a7d8-4654-8f78-6b83af0c202a",
+              "name": "=pivot_Id",
+              "value": "={{ $json.pivot_Id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2480,
+        4752
+      ],
+      "id": "205f021f-2494-4f74-b990-49ae228d7bc0",
+      "name": "Set pivotId"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6d35f927-92bf-4363-beed-290192ea55fe",
+              "name": "pivot_Id",
+              "value": "={{ $json.pivot_Id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3888,
+        4432
+      ],
+      "id": "f84732bd-e1fb-454d-90de-e7bd193f63e6",
+      "name": "Set pivotId1"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/MXiuPVkXDT8HqezK.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        5408
+      ],
+      "id": "3624e7ae-5276-41ba-a5ec-e3997579e929",
+      "name": "Reuters AI"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        5600
+      ],
+      "id": "7ec785e8-42be-416d-86db-9e12f83c95a1",
+      "name": "Slice 1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        5584
+      ],
+      "id": "756edb27-032e-4051-a74c-86dd4a0a0ac7",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/C3YLADfGxE5e57eT.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        5584
+      ],
+      "id": "c7151cfb-1011-477f-93c6-dcee9f58a108",
+      "name": "Reuters Business"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/1iWmVmkwOR9FvPtW.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        4256
+      ],
+      "id": "d0765201-5f20-46c6-87fd-b6f848233c42",
+      "name": "The Neuron1"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/el3M8L2iqw3VrU3A.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        3792
+      ],
+      "id": "3b6a7844-eb93-4750-8d46-548a5b0cff3c",
+      "name": "AI Valley1"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/9SVrxNsg7y419Fke.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        3952
+      ],
+      "id": "dd8d77aa-73eb-4e4b-b191-e38a1398d58f",
+      "name": "There's an AI For That"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "topics",
+              "value": "AI,crypto,Fed,markets"
+            },
+            {
+              "name": "timezone",
+              "value": "America/New_York"
+            },
+            {
+              "name": "placeholderImage",
+              "value": "https://placehold.co/1600x900"
+            }
+          ],
+          "number": [
+            {
+              "name": "windowHours",
+              "value": 12
+            },
+            {
+              "name": "maxChars",
+              "value": 150
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9d1ab244-eea4-4c82-9f59-2e4cf838eda9",
+      "name": "Defaults (fallbacks)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        4672
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 25,
+              "batchInterval": 8000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2816,
+        4432
+      ],
+      "id": "a0210ad2-402f-411f-8cef-26cee8bf2257",
+      "name": "FireCrawl1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 2);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        3792
+      ],
+      "id": "33fb4ccd-cf75-480a-b4fb-e69a543cf04b",
+      "name": "Slice 7"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 2);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        3952
+      ],
+      "id": "a37e749d-fa43-4c21-8560-452a5b5dd905",
+      "name": "Slice 16"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 2);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        4112
+      ],
+      "id": "dcabf2a2-f6f0-4690-ad39-0d1406ffd426",
+      "name": "Slice 17"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 2);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        4256
+      ],
+      "id": "b9d3f437-1f01-47bb-97c0-4c2651eecd44",
+      "name": "Slice 18"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 2);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        4416
+      ],
+      "id": "d9410c4c-afe4-46d2-a063-0753eabae9f9",
+      "name": "Slice 19"
+    },
+    {
+      "parameters": {},
+      "id": "4e07be8f-2628-4299-bc19-fe3d113c0922",
+      "name": "Merge18",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        3856
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "30676361-92cf-467f-a893-1f4b97db1de1",
+      "name": "Merge19",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        4032
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a60364fc-41c7-4108-ae47-a9359c2792b7",
+      "name": "Merge20",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        4208
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        4400
+      ],
+      "id": "c00ce19a-43f1-4d97-bd32-c989fa5fa913",
+      "name": "Merge21"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "pivot_Id": "={{ $json.pivot_Id }}",
+            "original_url": "={{ $json[\"og:url\"] }}",
+            "source_id": "={{ $json.ogSiteName }}",
+            "date_published": "={{ $json.isoDate }}",
+            "date_ingested": "={{ $now.toISO() }}",
+            "markdown": "={{ $json.markdown }}"
+          },
+          "matchingColumns": [
+            "pivot_Id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "pivot_Id",
+              "displayName": "pivot_Id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_ingested",
+              "displayName": "date_ingested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_scored",
+              "displayName": "date_scored",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "markdown",
+              "displayName": "markdown",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Reason for Fit Score",
+              "displayName": "Reason for Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_ai",
+              "displayName": "needs_ai",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "decoration_status",
+              "displayName": "decoration_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "completed",
+                  "value": "completed"
+                },
+                {
+                  "name": "skipped_low_score",
+                  "value": "skipped_low_score"
+                },
+                {
+                  "name": "error",
+                  "value": "error"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Created By",
+              "displayName": "Created By",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "AI Editor Log",
+              "displayName": "AI Editor Log",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_byline",
+              "displayName": "ai_byline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "summary_raw",
+              "displayName": "summary_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Stories",
+              "displayName": "Newsletter Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "in_newsletter_stories",
+              "displayName": "in_newsletter_stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_decoration",
+              "displayName": "needs_decoration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Issue Stories",
+              "displayName": "Newsletter Issue Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Newsletter Stories 2",
+              "displayName": "Newsletter Stories 2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        5952,
+        4624
+      ],
+      "id": "229f4776-8626-4b0d-8568-d657606fc30c",
+      "name": "Post New Articles1",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/NY8oNua0ZxWUYR3Z.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        4416
+      ],
+      "id": "02ed82ee-1e1a-44c9-a279-2cce6262e793",
+      "name": "The Deep View1"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/kRbnlccEQPpl1f6M.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        4112
+      ],
+      "id": "bbc787bc-1572-48e5-969c-4b4c9d96a639",
+      "name": "The AI Report1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wrap everything so we ALWAYS return an array\ntry {\n  // --- helpers ---\n  function extractMarkdownImages(md) {\n    const images = [];\n    if (typeof md !== 'string' || !md) return images;\n\n    const imgRegex = /!\\[([^\\]]*)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n    let match;\n    while ((match = imgRegex.exec(md)) !== null) {\n      images.push({\n        alt: match[1] || null,\n        url: match[2],\n      });\n    }\n    return images;\n  }\n\n  function extractMarkdownLinks(md) {\n    const links = [];\n    if (typeof md !== 'string' || !md) return links;\n\n    const linkRegex = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n    let match;\n    while ((match = linkRegex.exec(md)) !== null) {\n      links.push({\n        text: match[1],\n        url: match[2],\n      });\n    }\n    return links;\n  }\n\n  function filterUsefulLinks(links) {\n    if (!Array.isArray(links)) return [];\n    const badSubstrings = [\n      'mailto:',\n      'unsubscribe',\n      'utm_source=',\n      'utm_medium=',\n      'utm_campaign=',\n      'utm_term=',\n      'utm_content=',\n      'facebook.com/sharer',\n      'twitter.com/intent',\n      'linkedin.com/shareArticle',\n      'share?text=',\n      'ref=footer',\n      '/sponsor',\n      '/sponsored',\n    ];\n    return links.filter((l) => {\n      if (!l || typeof l.url !== 'string') return false;\n      const u = l.url.toLowerCase();\n      return !badSubstrings.some((bad) => u.includes(bad));\n    });\n  }\n\n  function normalizeUrl(raw) {\n    if (!raw) return null;\n\n    let url = raw;\n\n    // Handle objects: { href: \"...\" } or URL instances\n    if (typeof url === 'object' && url !== null) {\n      if (typeof url.href === 'string') {\n        url = url.href;\n      } else {\n        url = String(url);\n      }\n    }\n\n    if (typeof url !== 'string' || !url.trim()) {\n      return null;\n    }\n\n    url = url.trim();\n\n    try {\n      const u = new URL(url);\n      u.pathname = (u.pathname || '').replace(/\\/+$/, '');\n      return u.toString();\n    } catch (e) {\n      // Fallback: strip trailing slashes if it's still a string\n      if (typeof url.replace === 'function') {\n        return url.replace(/\\/+$/, '');\n      }\n      return url;\n    }\n  }\n\n  // Simple deterministic string hash → short ID\n  function hashString(str) {\n    if (typeof str !== 'string') str = String(str ?? '');\n    let hash = 5381;\n    for (let i = 0; i < str.length; i++) {\n      hash = ((hash << 5) + hash) + str.charCodeAt(i); // hash * 33 + c\n    }\n    return (hash >>> 0).toString(36);\n  }\n\n  // --- pull RSS items for isoDate merge ---\n  let rssItems = [];\n  try {\n    rssItems = $items('Merge21') || [];\n  } catch (e) {\n    rssItems = [];\n  }\n\n  const rssByUrl = {};\n\n  for (const it of rssItems) {\n    const j = (it && it.json) || {};\n    let rawUrl =\n      j['og:url'] ||\n      j.ogUrl ||\n      j.link ||\n      j.url ||\n      j.original_url ||\n      null;\n\n    // Handle RSS node objects like { href: \"...\" }\n    if (rawUrl && typeof rawUrl === 'object' && typeof rawUrl.href === 'string') {\n      rawUrl = rawUrl.href;\n    }\n\n    const key = normalizeUrl(rawUrl);\n    if (key && !rssByUrl[key]) {\n      rssByUrl[key] = j;\n    }\n  }\n\n  // --- normalize Firecrawl items + merge isoDate ---\n  const fireItems = $input.all() || [];\n  const out = [];\n\n  for (const item of fireItems) {\n    const json = item && item.json ? item.json : {};\n    const data = (json.data && typeof json.data === 'object') ? json.data : {};\n    const md = typeof data.markdown === 'string' ? data.markdown : '';\n\n    const rawMeta = data.metadata || data.meta || {};\n    const metadata =\n      rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)\n        ? rawMeta\n        : {};\n\n    const images = extractMarkdownImages(md);\n    const mdLinks = extractMarkdownLinks(md);\n    const usefulLinks = filterUsefulLinks(mdLinks);\n\n    // PRIMARY URL SOURCE: og:url on the input item / metadata\n    let fireUrlRaw =\n      json['og:url'] ||\n      json.ogUrl ||\n      metadata['og:url'] ||\n      metadata.ogUrl ||\n      metadata.url ||\n      metadata.canonical ||\n      null;\n\n    if (fireUrlRaw && typeof fireUrlRaw === 'object' && typeof fireUrlRaw.href === 'string') {\n      fireUrlRaw = fireUrlRaw.href;\n    }\n\n    const mkey = normalizeUrl(fireUrlRaw);\n    const rssMatch = mkey ? rssByUrl[mkey] : null;\n\n    const isoDate =\n      (rssMatch && (rssMatch.isoDate || rssMatch.pubDate)) ||\n      metadata.isoDate ||\n      null;\n\n    // --- compute pivot_Id per item from og:url ---\n    const normalizedUrl =\n      mkey ||\n      normalizeUrl(\n        json['og:url'] ||\n        json.ogUrl ||\n        metadata['og:url'] ||\n        metadata.ogUrl ||\n        ''\n      );\n\n    const title =\n      metadata.ogTitle ||\n      json.original_title ||\n      json.ogTitle ||\n      '';\n\n    const pivotBase = (normalizedUrl || title || '').toString().trim();\n    const pivot_Id = pivotBase ? `p_${hashString(pivotBase)}` : null;\n\n    const normalized = {\n      scrapeId: metadata.scrapeId || null,\n      'og:image:alt': metadata['og:image:alt'] || null,\n      ogTitle: metadata.ogTitle || json.ogTitle || null,\n      'og:url':\n        metadata['og:url'] ||\n        metadata.ogUrl ||\n        json['og:url'] ||\n        json.ogUrl ||\n        null,\n      'og:image': metadata['og:image'] || metadata.ogImage || null,\n      'og:site_name':\n        metadata['og:site_name'] ||\n        metadata.ogSiteName ||\n        null,\n      ogImage: metadata.ogImage || metadata['og:image'] || null,\n      'theme-color': metadata['theme-color'] || metadata.themeColor || null,\n      ogSiteName:\n        metadata.ogSiteName ||\n        metadata['og:site_name'] ||\n        null,\n      'og:image:width': metadata['og:image:width'] || null,\n      'og:image:height': metadata['og:image:height'] || null,\n      ogUrl:\n        metadata.ogUrl ||\n        metadata['og:url'] ||\n        json['og:url'] ||\n        json.ogUrl ||\n        null,\n      cachedAt: metadata.cachedAt || null,\n      isoDate: isoDate || null,\n      pivot_Id: pivot_Id,\n      markdown: md || null,\n      primary_image_url: images.length > 0 ? images[0].url : null,\n      useful_links: usefulLinks,\n    };\n\n    out.push({ json: normalized });\n  }\n\n  return out;\n} catch (err) {\n  // If *anything* unexpected happens, log and still return a valid array\n  console.log('Error in code node:', err && err.message ? err.message : err);\n  return [];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3008,
+        4432
+      ],
+      "id": "8e330e9a-af3a-45aa-9fe1-77ef44428d70",
+      "name": "Create PivotID1"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "filterByFormula": "=",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2272,
+        4752
+      ],
+      "id": "89910de9-753e-4b81-8b0d-66d68e32a6c4",
+      "name": "Get Current Articles1",
+      "executeOnce": true,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "pivot_Id",
+        "joinMode": "keepNonMatches",
+        "outputDataFrom": "input1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4832,
+        4704
+      ],
+      "id": "f374e8f3-412d-43d5-8a02-23e2c17a8219",
+      "name": "Merge22"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/yD81szEq5uTWg5I5.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        4592
+      ],
+      "id": "e34ef430-d515-482d-824b-72c972de47d1",
+      "name": "CNBC Finance1"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/08AqYC4pZsuLfMKv.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        4768
+      ],
+      "id": "bacd0156-d2fd-4dcd-9a2d-1fe8c1269742",
+      "name": "The Verge1"
+    },
+    {
+      "parameters": {
+        "url": "https://news.yahoo.com/rss/finance",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        4912
+      ],
+      "id": "3f27fe89-1cdc-46e5-891e-a61d928d1060",
+      "name": "Yahoo Finance1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        4592
+      ],
+      "id": "405e1e58-686d-42d8-a3ca-43cbea21ab57",
+      "name": "Slice 20"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        4768
+      ],
+      "id": "90f5d22c-0f26-4c1d-ae6d-d95be8fce6fc",
+      "name": "Slice 21"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        4928
+      ],
+      "id": "00ed11c4-2ac5-4bc3-9363-09f079cf8cfb",
+      "name": "Slice 22"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        5088
+      ],
+      "id": "d5459a36-1117-4f81-bbf5-a1914f05b8af",
+      "name": "Slice 23"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/YaCBpvEvBDczG9zT.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        5072
+      ],
+      "id": "f581750c-3384-40fd-af29-77535112df4d",
+      "name": "Tech Crunch1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        4560
+      ],
+      "id": "01ec40a4-c76d-4dae-9707-e7fb117587cc",
+      "name": "Merge23"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        4752
+      ],
+      "id": "096c7e3d-39fd-43ae-8448-58fe7e10613e",
+      "name": "Merge24"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1968,
+        4928
+      ],
+      "id": "a93d002e-8039-4696-b7f4-84b4ddc4153f",
+      "name": "Merge25"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        5088
+      ],
+      "id": "1f204a08-deb2-48fe-8ef4-e3d7d9216bf7",
+      "name": "Merge26"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/mC6cK6lSVgJjRTgO.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        5248
+      ],
+      "id": "1118f5b1-d036-483e-b8ef-cc33520aa33a",
+      "name": "Tech Republic1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        5248
+      ],
+      "id": "af130a9b-4960-42b5-9263-36650f888307",
+      "name": "Slice 24"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        5248
+      ],
+      "id": "63ce23be-df65-491d-b6aa-27dc1ae83334",
+      "name": "Merge27"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/QymucjzuFkzvxvkg.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        5760
+      ],
+      "id": "5a942480-b1ca-421c-8cbc-2a652b815375",
+      "name": "SuperHuman1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 2);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        5760
+      ],
+      "id": "a937f0dc-62a3-499b-a62c-29f2c6dfc143",
+      "name": "Slice 25"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        5744
+      ],
+      "id": "f262ccc5-25bd-41b2-9c7b-13f6a12d7fae",
+      "name": "Merge28"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pull items FROM the upstream Resolve URLs node\nconst upstream = $items(\"Resolve URLs\");\n\n// Build a quick lookup by resolved link\nconst lookup = {};\nfor (const u of upstream) {\n  const uj = u.json || {};\n  if (uj.link) {\n    lookup[uj.link] = uj;\n  }\n}\n\nfunction makeIso() {\n  const now = new Date();\n  const nyNow = new Date(\n    now.toLocaleString('en-US', { timeZone: 'America/New_York' })\n  );\n  const minus5 = new Date(nyNow.getTime() - 5 * 60 * 60 * 1000);\n  return minus5.toISOString();\n}\n\nconst output = [];\n\nfor (const item of $input.all()) {\n  const j = item.json || {};\n\n  // Look up the match using the resolved link field\n  const match = j.link ? lookup[j.link] : null;\n\n  let iso =\n    j.isodate ||\n    j.isoDate ||\n    j.iso_date ||\n    j.date_iso;\n\n  if (!iso || isNaN(new Date(iso).getTime())) {\n    // No valid isoDate on this item → use upstream date OR fallback\n    if (match && match.date) {\n      iso = new Date(match.date).toISOString();\n    } else {\n      iso = makeIso();\n    }\n  }\n\n  j.isodate = iso;\n  output.push({ json: j });\n}\n\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3424,
+        4432
+      ],
+      "id": "fe3c47bd-c742-4183-9d13-f2112efd5e26",
+      "name": "Append IsoDate1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Helper: pick first URL if the value is an array\nfunction pickFirstUrl(value) {\n  if (Array.isArray(value)) {\n    // Prefer first string that looks like a URL\n    for (const v of value) {\n      if (typeof v === 'string' && v.startsWith('http')) {\n        return v;\n      }\n    }\n    // Fallback: just stringify the first element\n    if (value.length > 0) {\n      return String(value[0]);\n    }\n    return null;\n  }\n  return value;\n}\n\n// Helper: normalize a URL and strip trailing slashes\nfunction normalizeUrl(raw) {\n  if (!raw) return null;\n\n  let url = pickFirstUrl(raw); // also handles arrays\n  if (typeof url !== 'string') {\n    url = String(url);\n  }\n  url = url.trim();\n  if (!url) return null;\n\n  try {\n    const u = new URL(url);\n    u.pathname = (u.pathname || '').replace(/\\/+$/, '');\n    return u.toString();\n  } catch (e) {\n    // Fallback: just strip trailing slashes if possible\n    return typeof url.replace === 'function'\n      ? url.replace(/\\/+$/, '')\n      : url;\n  }\n}\n\n// --- main ---\nconst items = $input.all() || [];\nconst out = [];\n\nfor (const item of items) {\n  const j = item.json || {};\n  const copy = { ...j }; // shallow copy so we don't mutate in-place\n\n  // Clean up og:url\n  if (copy['og:url'] !== undefined) {\n    const cleaned = normalizeUrl(copy['og:url']);\n    copy['og:url'] = cleaned;\n  }\n\n  // Clean up ogUrl (camelCase version)\n  if (copy.ogUrl !== undefined) {\n    const cleaned = normalizeUrl(copy.ogUrl);\n    copy.ogUrl = cleaned;\n  }\n\n  // Optional: if you also store a generic url/original_url, clean those too:\n  if (copy.url !== undefined) {\n    copy.url = normalizeUrl(copy.url);\n  }\n  if (copy.original_url !== undefined) {\n    copy.original_url = normalizeUrl(copy.original_url);\n  }\n\n  out.push({ json: copy });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3648,
+        4432
+      ],
+      "id": "6accc119-0dac-4e72-ac97-8c2d19a1736a",
+      "name": "Strip OG URL1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        5936
+      ],
+      "id": "6daafebd-d06c-4b33-b9f3-0e80e0e270c4",
+      "name": "Slice 2"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        5936
+      ],
+      "id": "1da6c48e-adfc-4d3a-a87b-93a269c8fa8b",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        6128
+      ],
+      "id": "d4b2cbfc-f3f5-493b-9c8b-557d0e06f598",
+      "name": "Slice 3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1952,
+        6128
+      ],
+      "id": "0108eea0-2a4b-4742-a3f0-4e874cf5dfcb",
+      "name": "Merge3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        6944
+      ],
+      "id": "ffd04355-cd9d-4c9f-a037-54500892c7e2",
+      "name": "Slice 26"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2320,
+        7552
+      ],
+      "id": "957e1d9f-b4ed-49f2-bf04-7b887e1de370",
+      "name": "Merge29"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/ZbdBsJTYo3gDOWmI.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        5936
+      ],
+      "id": "2281550a-00c4-4c7b-98a2-4b98357393d4",
+      "name": "Semafor Business"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/6GwMn0gNjbWxUjPN.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        6128
+      ],
+      "id": "62fe2c7c-6afe-456d-b6f8-383495260b7f",
+      "name": "Semafor Technology"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/jSkbNDntFNSdShkz.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1504,
+        6928
+      ],
+      "id": "16ddf0e2-8945-4ea1-8de1-57c7bee6b1c2",
+      "name": "Semafor CEO"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 70);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        6288
+      ],
+      "id": "e53069c8-61d6-423c-9428-1056a1e852ad",
+      "name": "Slice 27"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 10);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        6464
+      ],
+      "id": "5645f854-975e-4fc7-a172-fab77525bd6d",
+      "name": "Slice 28"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1968,
+        6448
+      ],
+      "id": "a3345a09-7893-4ae4-9e16-eb2e7c662937",
+      "name": "Merge4"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1968,
+        6624
+      ],
+      "id": "343e379c-742b-4696-a90d-ce026d01b693",
+      "name": "Merge5"
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=AI+OR+%22artificial+intelligence%22+when:12h&hl=en-US&gl=US&ceid=US:en",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        6288
+      ],
+      "id": "7a6128ef-b2a2-4a87-8ae4-18abb2c15dc7",
+      "name": "Google News AI"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Helper: check if we have a valid ISO-ish date string\nfunction hasValidIso(value) {\n  if (!value || typeof value !== 'string') return false;\n  const d = new Date(value);\n  return !isNaN(d.getTime());\n}\n\n// Helper: get an ISO string for \"now minus 5 hours\" in America/New_York\nfunction getFallbackIso() {\n  const now = new Date();\n\n  // Convert \"now\" to Eastern Time\n  const estNow = new Date(\n    now.toLocaleString('en-US', { timeZone: 'America/New_York' })\n  );\n\n  // Subtract 5 hours\n  const fiveHoursAgoEst = new Date(\n    estNow.getTime() - 5 * 60 * 60 * 1000\n  );\n\n  // Return as ISO string\n  return fiveHoursAgoEst.toISOString();\n}\n\nconst fallbackIso = getFallbackIso();\n\nfor (const item of items) {\n  const j = item.json || item;\n\n  // Try to read any existing ISO-ish field\n  const existingIso =\n    j.isodate ||\n    j.isoDate ||\n    j.iso_date ||\n    j.date_iso ||\n    null;\n\n  if (!hasValidIso(existingIso)) {\n    // No valid ISO date → set isodate\n    j.isodate = fallbackIso;\n  } else {\n    // Normalize onto isodate if it exists under a different key\n    j.isodate = existingIso;\n  }\n\n  item.json = j;\n}\n\nreturn items;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2576,
+        7552
+      ],
+      "id": "e335472a-9608-4c92-a413-d1f3e2865225",
+      "name": "Append isoDate if none"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "168187c7-7490-493b-8885-6b9c25048768",
+              "name": "FT_cookie",
+              "value": "optimizelyEndUserId=oeu1763997654002r0.8142406371914286; spoor-id=cmidanoze00003b8ucuv7k35j; ft-access-decision-policy=DENIED_ZEPHR_FTEDIT_0_0; OriginalReferer=None; FtComEntryPoint=/; _fs_cd_cp_pRdRgnTnF68pCV2F=ASJLI5OacIwLXmGch_1f2S28zmcoi_wb4SRLZJcWKHo2yWNxmjOaeypSLMxokEn-jzKB1xtYn5omitrEQNAVfSbIdpczSLafFVIJ9adouwrkgbfYKtGMyMPnTH98MWbLN9qN5uduWlOguRJIDxuqTbNlzsM=; _csrf=ENLjGoR0Hk9PJYmj97NXn8Wf; FTSession_s=0z0eB7oo20KH07U8idQita8u0wAAAZq7vDhvw8I.MEQCIB-1dpkiLtpW57R-BnDFbwRfnd4UMY0hE8yiFr7mURiAAiACxSLO6xYNlIOGiegP794RYLpgPpgcQWZjN7nXTihrtA; skipPasskeySetup=true; consentUUID=2d24f75c-5e76-49d9-b59e-9d492841a465_27_42_46; usnatUUID=1d4e4176-8624-44d8-b4f1-505cf74c39b6; FTCookieConsentGDPR=true; FTConsent=behaviouraladsOnsite%3Aon%2CcookiesOnsite%3Aon%2CcookiesUseraccept%3Aon%2CdemographicadsOnsite%3Aon%2CpermutiveadsOnsite%3Aon%2CpersonalisedmarketingOnsite%3Aon%2CprogrammaticadsOnsite%3Aon",
+              "type": "string"
+            },
+            {
+              "id": "345cec04-8c34-4a51-82b1-7ddd21676c84",
+              "name": "WSJ_cookie",
+              "value": "AMCVS_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1; s_cc=true; _pcid=%7B%22browserId%22%3A%22mic6obyxfg3eetsv%22%7D; __pat=-18000000; xbc=%7Bkpcd%7DChBtaWM2b2J5eGZnM2VldHN2EgpLS2JncXBCbHB1GjxreW42OGZPdFJpUHNkV2l6Qkg5b1RzRzlEczBsaFpPUm81bHRETnhwalEyMXFNMEtSRmpOdVI5U2VQTG4gAA; cX_P=mic6obyxfg3eetsv; LANG=en_US; connect.sid=s%3ADIwtqoT1L1rmZnhNWw29XQLyOQv0BMzT.xGrDhKcz8Bqg%2F81uR8rvvtddDzPwd%2By6fLO7O9NQ3tY; LANG_CHANGED=en_US; djcs_route=cf1064bc-0f77-4d37-bd6e-204984ef8751; ca_rt=sh1GT04nxppRs0mT12AqlA.mt7tQU_s2SyUPM6B0Gm2bOisEno5VytxFRebgW1aZBTBQLaXtHkKaN_XyQ4TY64OYvRa5bu3GBhLpkJtXpPIZKAzNj37uHY3KlennkcD-k0; ca_id=cad61591-29d6-4011-9f59-dfcfb57f3f0f.eJxNj19vgjAUxb9Ln0VLKf3j0zDgwubUqJsPy0JKW5QJ6KCIbtl3X6cu2eP9nXPPvecLbPKjrpJKlBoMwWNbiQL0QCbKvDj_0fv2YISluhR5YedS1Dttmrvdr7tf2AArtm2urEbdTGHNocM5Jw5GkjtMIuooTpQPKZEpUdZtaiF3lwVEIM3cDLoYu57iUlIBsYe4j1hKPKZ56qaSSgh936MKYaUzTqDnMwJxilJqw-p9oRswfAXjRRQtonsnnobxSxw-BxOrrpcPztNsFE-i2xBMw8UsDpNVMJpEqyu8SfE8CMFbD4jWbBOT_7Z3KcGQEcRIDzSXj5sK15vJfL0_Z-rDrE74fTUj3edxnK0DvNy2WTI_Lqdd-rxZzGVsPJstay2MVokwNpAQhjj0GO2B_AL-XdCnwxX4LruAvLHNwNaYQzMcDLqu63fNe1_uy4Escl0Z8P0DMG2EUA.TfzshJG25NW2MZ0Gv1flkKyyUqp68gxtp-XaPbNDFovbkHxctsvG08YLIEWI67vY7H7XrTrh664W6mtc1celNKrnU7PG_yZ3X_UfjaTsHArjTFXpgernie-f3jADs1kZfUEhFo_-yIRWl8Mm5CllNWMNR-5Trv4g1W9768JcX0xr_uWwAfijkJL33HLMOTtJUwezskV3UsGD_zLwJ1g0FCwcUxsgdemmP5YWkbmbAyhkRM6zzU_woldXFjRph17uG1uetQ9TelzH45MrsdTgsTGQz3Q2XqQwmEIRgYBBlI6fP0ugPEF0_ijSbymFTXG5wClDzjMbXeLoe7qtlFS0qg; TR=V2-2607f1f014413d9cc7a04329528b638e9b1bc7c005537d24def960358604b2b7; ab_uuid=c9672c8a-abb9-446e-805d-e6c6ac45039d; DJSESSION=country%3Dus%7C%7Ccontinent%3Dna%7C%7Cregion%3D; wsjregion=na%2Cus; gdprApplies=false; ccpaApplies=true; vcdpaApplies=true; regulationApplies=gdpr%3Afalse%2Ccpra%3Atrue%2Cvcdpa%3Atrue; ca_r=_; __tac=eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3d3dy5waWFuby5pbyIsImF1ZCI6IktLYmdxcEJscHUiLCJzdWIiOiJ7XCJ1XCI6XCIyNjA3ZjFmMDE0NDEzZDljYzdhMDQzMjk1MjhiNjM4ZTliMWJjN2MwMDU1MzdkMjRkZWY5NjAzNTg2MDRiMmI3XCJ9IiwiZXhwIjoxNzY2Njc4Mjg3LCJpYXQiOjE3NjQwODYyODd9.SG8RyAITAYmlA2E8xHOPpGhonKC9UYbw3GJGwzDL3wc; __tae=1764086287078; _pctx=%7Bu%7DN4IgrgzgpgThIC5QCYBsAGA7AMwIzfVwBYjcBmAEwE4BjGzAQ3SLOSoFZkAOAI1TK5QqPXD3o106duzKYKyIhSjYqGMuy4YiPZD0yJQABxjKAlgA9EIAO4QAViAA0IAC4BPQ1CsA1ABogAXwDnSFgAZRcGF0grEwBzUwgXWCgKJxAIU2SASTSEECpkIrJcTXIuTiJNKklAoA; __pvi=eyJpZCI6InYtbWllc3NkOXFobmUwNmJvaiIsImRvbWFpbiI6Ii53c2ouY29tIiwidGltZSI6MTc2NDA4ODU3MTQzOH0%3D; __tbc=%7Bkpcd%7DChBtaWM2b2J5eGZnM2VldHN2EgpLS2JncXBCbHB1GjxreW42OGZPdFJpUHNkV2l6Qkg5b1RzRzlEczBsaFpPUm81bHRETnhwalEyMXFNMEtSRmpOdVI5U2VQTG4gAA; _pcus=eyJ1c2VyU2VnbWVudHMiOnsiQ09NUE9TRVIxWCI6eyJzZWdtZW50cyI6WyJhOXlqZWVuYWQ3eXEiLCJhOXlqZWVuYWQ4OXUiLCJhYTlvc2tnb2pvYnkiLCJhYTlxNmU0czFuazgiLCJhYTlxNmU0czFua2IiLCJhYXZzcDBmcmxpdWYiLCJhYXZzcDBmcmxqZTUiLCJhYXZ3ZGdycW02d3EiLCJhYXZ3ZGdycW02d3MiLCJDU2NvcmU6Mzk5ODk5NGRiMDcyYWMwMzhlYmI2NWU2YjhjOWRkYWMyNWJkYjU5Mjo5IiwiTFRyZXR1cm46ZTA0Yzk4YmYzYmZjNGMxODY2MGNkODM3NDk1MTNmOWEyYTEwNDAyMDowIiwiQ1Njb3JlOmRkMzg4NTZlOTM5NGYyMTNmNTFhZGRjYzFhZjkzYjQ3MGU4NDc3OTM6OSIsIkxUczo5MWIxOGE3NjAwZjJiOTI2YjY3YjJlNjA2YjBhNzA2NzFlOTRkYjcwOjUiXX19fQ%3D%3D; AMCV_CB68E4BA55144CAA0A4C98A5%40AdobeOrg=1585540135%7CMCIDTS%7C20418%7CMCMID%7C21530747473667981552232765600092330468%7CMCAID%7CNONE%7CMCOPTOUT-1764095792s%7CNONE%7CvVersion%7C4.4.0; usr_prof_v2=eyJwIjp7InBzIjowLjY4LCJxIjowLjc4fSwiY3AiOnsiZWMiOiJTdGFibGUiLCJwYyI6MC4xNTE1LCJwc3IiOjAuNjM5NTYsInRkIjozNzcsImFkIjo3LCJxYyI6ODIsInFvIjo5Nywic2NlbiI6eyJjaGUiOjAuMTY3MjgsImNobiI6MC4xNjQ3OSwiY2hhIjowLjE1MTUsImNocCI6MC4xNTE1fX0sIm9wIjp7ImkiOiI0MTU0ODQwMCIsImoiOnsianQiOiJtc2wiLCJqZiI6InNsIiwiamkiOiJmcyJ9fSwiaWMiOjV9",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3120,
+        3440
+      ],
+      "id": "4621d002-7933-4a1a-812e-385a49876988",
+      "name": "Cookies"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1968,
+        6848
+      ],
+      "id": "72a427a8-214b-4473-a5d2-66df13338120",
+      "name": "Merge6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 15);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        6640
+      ],
+      "id": "62bb4089-215f-4df5-8609-1a79c91c96e9",
+      "name": "Slice 29"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: one item from Firecrawl with `markdown`\n// Output: many items [{ title, url }...]\n\nconst items = $input.all();\nconst out = [];\n\nconst DOMAIN = 'https://www.wsj.com';\n\nfor (const item of items) {\n  let md = $input.first().json.data.markdown || '';\n\n  // Optional: if there's a specific section you care about, trim before parsing\n  // const marker = 'Latest Headlines';\n  // const idx = md.indexOf(marker);\n  // if (idx !== -1) md = md.slice(idx);\n\n  const seen = new Set();\n  const re = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n  let m;\n\n  while ((m = re.exec(md)) !== null) {\n    const title = m[1].trim();\n    let url = m[2].trim();\n\n    // Only WSJ links\n    if (!url.startsWith(DOMAIN)) continue;\n\n    // Strip tracking params\n    url = url.split('?')[0];\n    if (seen.has(url)) continue;\n    seen.add(url);\n\n    // Optional: only keep actual article paths\n    // if (!url.includes('/articles/')) continue;\n\n    out.push({\n      json: {\n        source: 'wsj',\n        title,\n        url\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        4992
+      ],
+      "id": "84d4f266-8ccf-4c41-a158-c63938173f28",
+      "name": "Code in JavaScript3",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst out = [];\n\nfor (const item of items) {\n  const url = (item.json && item.json.url) || '';\n\n  // If for some reason there is no URL, skip it\n  if (!url) continue;\n\n  // 1) Drop market-data quote pages\n  if (url.includes('/market-data/quotes/')) {\n    continue;\n  }\n\n  // 2) Drop author pages\n  if (url.includes('/news/author/')) {\n    continue;\n  }\n\n  // 3) Drop video pages\n  if (url.includes('/video/')) {\n    continue;\n  }\n\n  // 4) Last-segment length filter\n  //\n  //    We want to look at everything after the last \"/\"\n  //    in the *path* part of the URL, ignoring protocol,\n  //    domain, query string, and hash.\n\n  // Strip protocol\n  let s = url;\n  const protoIndex = s.indexOf('://');\n  if (protoIndex !== -1) {\n    s = s.slice(protoIndex + 3); // after \"https://\"\n  }\n\n  // Strip query and hash\n  const qIndex = s.indexOf('?');\n  if (qIndex !== -1) {\n    s = s.slice(0, qIndex);\n  }\n  const hashIndex = s.indexOf('#');\n  if (hashIndex !== -1) {\n    s = s.slice(0, hashIndex);\n  }\n\n  // Remove domain (everything up to first \"/\")\n  const firstSlash = s.indexOf('/');\n  if (firstSlash === -1) {\n    // No path at all, skip\n    continue;\n  }\n  const path = s.slice(firstSlash + 1); // after the first \"/\"\n\n  // Split into segments and grab the last one\n  const parts = path.split('/').filter(p => p.length > 0);\n  if (!parts.length) {\n    continue;\n  }\n  const lastSegment = parts[parts.length - 1];\n\n  // Your rule: if the last segment is under 40 characters, drop it\n  if (lastSegment.length < 40) {\n    continue;\n  }\n\n  // If it passed all filters, keep it\n  out.push(item);\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        4992
+      ],
+      "id": "23e79eff-fce5-4a92-ab79-6e41064fecea",
+      "name": "Code in JavaScript4",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2944,
+        4944
+      ],
+      "id": "e0edbdbc-6ef3-4d60-9385-a9f0d1cb7b27",
+      "name": "Loop Over Items2"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3392,
+        5008
+      ],
+      "id": "5eed6eaf-6d11-4337-b503-88c7697eab15",
+      "name": "Wait2",
+      "webhookId": "cbbf3f97-596a-44af-847e-a7ff2d61a741"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 15,
+              "batchInterval": 5000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3232,
+        5008
+      ],
+      "id": "ecf4a0bf-bf92-4546-a06b-665deed1bcff",
+      "name": "FireCrawl3",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"https://www.wsj.com/tech/ai?mod=nav_top_subsection\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2224,
+        4992
+      ],
+      "id": "7d139c5b-0629-429e-a4e2-8bbeef9bac9e",
+      "name": "FireCrawl WSJ AI1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: one item from Firecrawl with `markdown`\n// Output: many items [{ title, url }...]\n\nconst items = $input.all();\nconst out = [];\n\nconst DOMAIN = 'https://www.wsj.com';\n\nfor (const item of items) {\n  let md = $input.first().json.data.markdown || '';\n\n  // Optional: if there's a specific section you care about, trim before parsing\n  // const marker = 'Latest Headlines';\n  // const idx = md.indexOf(marker);\n  // if (idx !== -1) md = md.slice(idx);\n\n  const seen = new Set();\n  const re = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n  let m;\n\n  while ((m = re.exec(md)) !== null) {\n    const title = m[1].trim();\n    let url = m[2].trim();\n\n    // Only WSJ links\n    if (!url.startsWith(DOMAIN)) continue;\n\n    // Strip tracking params\n    url = url.split('?')[0];\n    if (seen.has(url)) continue;\n    seen.add(url);\n\n    // Optional: only keep actual article paths\n    // if (!url.includes('/articles/')) continue;\n\n    out.push({\n      json: {\n        source: 'wsj',\n        title,\n        url\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        5232
+      ],
+      "id": "2ca321f1-452c-4fc6-9f78-5bf8c051fc70",
+      "name": "Code in JavaScript9",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst out = [];\n\nfor (const item of items) {\n  const url = (item.json && item.json.url) || '';\n\n  // If for some reason there is no URL, skip it\n  if (!url) continue;\n\n  // 1) Drop market-data quote pages\n  if (url.includes('/market-data/quotes/')) {\n    continue;\n  }\n\n  // 2) Drop author pages\n  if (url.includes('/news/author/')) {\n    continue;\n  }\n\n  // 3) Drop video pages\n  if (url.includes('/video/')) {\n    continue;\n  }\n\n  // 4) Last-segment length filter\n  //\n  //    We want to look at everything after the last \"/\"\n  //    in the *path* part of the URL, ignoring protocol,\n  //    domain, query string, and hash.\n\n  // Strip protocol\n  let s = url;\n  const protoIndex = s.indexOf('://');\n  if (protoIndex !== -1) {\n    s = s.slice(protoIndex + 3); // after \"https://\"\n  }\n\n  // Strip query and hash\n  const qIndex = s.indexOf('?');\n  if (qIndex !== -1) {\n    s = s.slice(0, qIndex);\n  }\n  const hashIndex = s.indexOf('#');\n  if (hashIndex !== -1) {\n    s = s.slice(0, hashIndex);\n  }\n\n  // Remove domain (everything up to first \"/\")\n  const firstSlash = s.indexOf('/');\n  if (firstSlash === -1) {\n    // No path at all, skip\n    continue;\n  }\n  const path = s.slice(firstSlash + 1); // after the first \"/\"\n\n  // Split into segments and grab the last one\n  const parts = path.split('/').filter(p => p.length > 0);\n  if (!parts.length) {\n    continue;\n  }\n  const lastSegment = parts[parts.length - 1];\n\n  // Your rule: if the last segment is under 40 characters, drop it\n  if (lastSegment.length < 40) {\n    continue;\n  }\n\n  // If it passed all filters, keep it\n  out.push(item);\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2576,
+        5232
+      ],
+      "id": "d83d2976-9f75-4050-acfe-550b12acb13f",
+      "name": "Code in JavaScript10",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2960,
+        5232
+      ],
+      "id": "fb6636f3-e40e-46ea-b18f-1017a66914bf",
+      "name": "Loop Over Items3"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3392,
+        5248
+      ],
+      "id": "d2999d8e-a639-4a65-8b94-c7b9fdfcc277",
+      "name": "Wait3",
+      "webhookId": "cbbf3f97-596a-44af-847e-a7ff2d61a741"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 15,
+              "batchInterval": 5000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3232,
+        5248
+      ],
+      "id": "0bba034a-19e8-40e1-b3e1-a21eebdc5b1c",
+      "name": "FireCrawl",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"https://www.wsj.com/livecoverage/stock-market-today-dow-sp-500-nasdaq-12-03-2025?mod=lctimeline_finance_viewall\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2224,
+        5232
+      ],
+      "id": "bd37c653-62bc-45f9-9f06-0f2028635ced",
+      "name": "FireCrawl WSJ Latest1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3648,
+        5152
+      ],
+      "id": "51f3d916-9534-4024-9fc4-f2ab0588a695",
+      "name": "Merge7"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: one item from Firecrawl with `markdown`\n// Output: many items [{ title, url }...]\n\nconst items = $input.all();\nconst out = [];\n\nconst DOMAIN = 'https://www.wsj.com';\n\nfor (const item of items) {\n  let md = $input.first().json.data.markdown || '';\n\n  // Optional: if there's a specific section you care about, trim before parsing\n  // const marker = 'Latest Headlines';\n  // const idx = md.indexOf(marker);\n  // if (idx !== -1) md = md.slice(idx);\n\n  const seen = new Set();\n  const re = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n  let m;\n\n  while ((m = re.exec(md)) !== null) {\n    const title = m[1].trim();\n    let url = m[2].trim();\n\n    // Only WSJ links\n    if (!url.startsWith(DOMAIN)) continue;\n\n    // Strip tracking params\n    url = url.split('?')[0];\n    if (seen.has(url)) continue;\n    seen.add(url);\n\n    // Optional: only keep actual article paths\n    // if (!url.includes('/articles/')) continue;\n\n    out.push({\n      json: {\n        source: 'wsj',\n        title,\n        url\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        5456
+      ],
+      "id": "7f0cb90e-d372-400f-8023-912947d23c20",
+      "name": "Code in JavaScript11",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst out = [];\n\nfor (const item of items) {\n  const url = (item.json && item.json.url) || '';\n\n  // If for some reason there is no URL, skip it\n  if (!url) continue;\n\n  // 1) Drop market-data quote pages\n  if (url.includes('/market-data/quotes/')) {\n    continue;\n  }\n\n  // 2) Drop author pages\n  if (url.includes('/news/author/')) {\n    continue;\n  }\n\n  // 3) Drop video pages\n  if (url.includes('/video/')) {\n    continue;\n  }\n\n  // 4) Last-segment length filter\n  //\n  //    We want to look at everything after the last \"/\"\n  //    in the *path* part of the URL, ignoring protocol,\n  //    domain, query string, and hash.\n\n  // Strip protocol\n  let s = url;\n  const protoIndex = s.indexOf('://');\n  if (protoIndex !== -1) {\n    s = s.slice(protoIndex + 3); // after \"https://\"\n  }\n\n  // Strip query and hash\n  const qIndex = s.indexOf('?');\n  if (qIndex !== -1) {\n    s = s.slice(0, qIndex);\n  }\n  const hashIndex = s.indexOf('#');\n  if (hashIndex !== -1) {\n    s = s.slice(0, hashIndex);\n  }\n\n  // Remove domain (everything up to first \"/\")\n  const firstSlash = s.indexOf('/');\n  if (firstSlash === -1) {\n    // No path at all, skip\n    continue;\n  }\n  const path = s.slice(firstSlash + 1); // after the first \"/\"\n\n  // Split into segments and grab the last one\n  const parts = path.split('/').filter(p => p.length > 0);\n  if (!parts.length) {\n    continue;\n  }\n  const lastSegment = parts[parts.length - 1];\n\n  // Your rule: if the last segment is under 40 characters, drop it\n  if (lastSegment.length < 40) {\n    continue;\n  }\n\n  // If it passed all filters, keep it\n  out.push(item);\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        5456
+      ],
+      "id": "77b935d6-0712-49c0-b067-e13413127b14",
+      "name": "Code in JavaScript12",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2992,
+        5440
+      ],
+      "id": "cb98174d-042f-451e-90ec-6d57661dde88",
+      "name": "Loop Over Items4"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3424,
+        5488
+      ],
+      "id": "94ed418c-2e29-4904-a3f8-ee94455bc6c0",
+      "name": "Wait4",
+      "webhookId": "cbbf3f97-596a-44af-847e-a7ff2d61a741"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 15,
+              "batchInterval": 5000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3232,
+        5488
+      ],
+      "id": "010c81bd-4bbc-43fe-b55d-40905ae4eba1",
+      "name": "FireCrawl4",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3648,
+        5344
+      ],
+      "id": "84d1480b-5e5f-4aa5-b3a0-9b9a44359f6e",
+      "name": "Merge8"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"https://www.wsj.com/finance?mod=nav_top_section\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2224,
+        5456
+      ],
+      "id": "db0f58ff-0233-4d85-8cd6-91a00b90b1b6",
+      "name": "FireCrawl WSJ Finance1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        5232,
+        4688
+      ],
+      "id": "bca5fb2a-a25b-478e-bbfe-2d943581bc4b",
+      "name": "Merge9"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wrap everything so we ALWAYS return an array\ntry {\n  // --- helpers ---\n  function extractMarkdownImages(md) {\n    const images = [];\n    if (typeof md !== 'string' || !md) return images;\n\n    const imgRegex = /!\\[([^\\]]*)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n    let match;\n    while ((match = imgRegex.exec(md)) !== null) {\n      images.push({\n        alt: match[1] || null,\n        url: match[2],\n      });\n    }\n    return images;\n  }\n\n  function extractMarkdownLinks(md) {\n    const links = [];\n    if (typeof md !== 'string' || !md) return links;\n\n    const linkRegex = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n    let match;\n    while ((match = linkRegex.exec(md)) !== null) {\n      links.push({\n        text: match[1],\n        url: match[2],\n      });\n    }\n    return links;\n  }\n\n  function filterUsefulLinks(links) {\n    if (!Array.isArray(links)) return [];\n    const badSubstrings = [\n      'mailto:',\n      'unsubscribe',\n      'utm_source=',\n      'utm_medium=',\n      'utm_campaign=',\n      'utm_term=',\n      'utm_content=',\n      'facebook.com/sharer',\n      'twitter.com/intent',\n      'linkedin.com/shareArticle',\n      'share?text=',\n      'ref=footer',\n      '/sponsor',\n      '/sponsored',\n    ];\n    return links.filter((l) => {\n      if (!l || typeof l.url !== 'string') return false;\n      const u = l.url.toLowerCase();\n      return !badSubstrings.some((bad) => u.includes(bad));\n    });\n  }\n\n  function normalizeUrl(raw) {\n    if (!raw) return null;\n\n    let url = raw;\n\n    // Handle objects: { href: \"...\" } or URL instances\n    if (typeof url === 'object' && url !== null) {\n      if (typeof url.href === 'string') {\n        url = url.href;\n      } else {\n        url = String(url);\n      }\n    }\n\n    if (typeof url !== 'string' || !url.trim()) {\n      return null;\n    }\n\n    url = url.trim();\n\n    try {\n      const u = new URL(url);\n      u.pathname = (u.pathname || '').replace(/\\/+$/, '');\n      return u.toString();\n    } catch (e) {\n      // Fallback: strip trailing slashes if it's still a string\n      if (typeof url.replace === 'function') {\n        return url.replace(/\\/+$/, '');\n      }\n      return url;\n    }\n  }\n\n  // Simple deterministic string hash → short ID\n  function hashString(str) {\n    if (typeof str !== 'string') str = String(str ?? '');\n    let hash = 5381;\n    for (let i = 0; i < str.length; i++) {\n      hash = ((hash << 5) + hash) + str.charCodeAt(i); // hash * 33 + c\n    }\n    return (hash >>> 0).toString(36);\n  }\n\n  // --- normalize Firecrawl items ---\n  const fireItems = $input.all() || [];\n  const out = [];\n\n  for (const item of fireItems) {\n    const json = item && item.json ? item.json : {};\n    const data = (json.data && typeof json.data === 'object') ? json.data : {};\n    const md = typeof data.markdown === 'string' ? data.markdown : '';\n\n    const rawMeta = data.metadata || data.meta || {};\n    const metadata =\n      rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)\n        ? rawMeta\n        : {};\n\n    const images = extractMarkdownImages(md);\n    const mdLinks = extractMarkdownLinks(md);\n    const usefulLinks = filterUsefulLinks(mdLinks);\n\n    // PRIMARY URL SOURCE: og:url on the input item / metadata\n    let fireUrlRaw =\n      json['og:url'] ||\n      json.ogUrl ||\n      metadata['og:url'] ||\n      metadata.ogUrl ||\n      metadata.url ||\n      metadata.canonical ||\n      null;\n\n    if (fireUrlRaw && typeof fireUrlRaw === 'object' && typeof fireUrlRaw.href === 'string') {\n      fireUrlRaw = fireUrlRaw.href;\n    }\n\n    const mkey = normalizeUrl(fireUrlRaw);\n\n    // isoDate from nested metadata: $input.first().json.data.metadata.publishedTime\n    const isoDate =\n      metadata.publishedTime ||\n      metadata.isoDate ||\n      null;\n\n    // --- compute pivot_Id per item from og:url ---\n    const normalizedUrl =\n      mkey ||\n      normalizeUrl(\n        json['og:url'] ||\n        json.ogUrl ||\n        metadata['og:url'] ||\n        metadata.ogUrl ||\n        ''\n      );\n\n    const title =\n      metadata.ogTitle ||\n      json.original_title ||\n      json.ogTitle ||\n      '';\n\n    const pivotBase = (normalizedUrl || title || '').toString().trim();\n    const pivot_Id = pivotBase ? `p_${hashString(pivotBase)}` : null;\n\n    const normalized = {\n      scrapeId: metadata.scrapeId || null,\n      'og:image:alt': metadata['og:image:alt'] || null,\n      ogTitle: metadata.ogTitle || json.ogTitle || null,\n      'og:url':\n        metadata['og:url'] ||\n        metadata.ogUrl ||\n        json['og:url'] ||\n        json.ogUrl ||\n        null,\n      'og:image': metadata['og:image'] || metadata.ogImage || null,\n      'og:site_name':\n        metadata['og:site_name'] ||\n        metadata.ogSiteName ||\n        null,\n      ogImage: metadata.ogImage || metadata['og:image'] || null,\n      'theme-color': metadata['theme-color'] || metadata.themeColor || null,\n      ogSiteName:\n        metadata.ogSiteName ||\n        metadata['og:site_name'] ||\n        null,\n      'og:image:width': metadata['og:image:width'] || null,\n      'og:image:height': metadata['og:image:height'] || null,\n      ogUrl:\n        metadata.ogUrl ||\n        metadata['og:url'] ||\n        json['og:url'] ||\n        json.ogUrl ||\n        null,\n      cachedAt: metadata.cachedAt || null,\n      isoDate: isoDate || null,\n      pivot_Id: pivot_Id,\n      markdown: md || null,\n      primary_image_url: images.length > 0 ? images[0].url : null,\n      useful_links: usefulLinks,\n    };\n\n    out.push({ json: normalized });\n  }\n\n  return out;\n} catch (err) {\n  // If *anything* unexpected happens, log and still return a valid array\n  console.log('Error in code node:', err && err.message ? err.message : err);\n  return [];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4256,
+        5344
+      ],
+      "id": "db0ac5da-a287-4b20-a8ca-e25b50ffd440",
+      "name": "Create PivotID"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- helpers ---\nfunction pickFirstUrl(value) {\n  if (Array.isArray(value)) {\n    for (const v of value) {\n      if (typeof v === \"string\" && v.startsWith(\"http\")) return v;\n    }\n    return value.length ? String(value[0]) : null;\n  }\n  return value;\n}\n\nfunction normalizeUrl(raw) {\n  if (!raw) return null;\n  let url = pickFirstUrl(raw);\n  if (!url) return null;\n  if (typeof url !== \"string\") url = String(url);\n  url = url.trim();\n  if (!url) return null;\n\n  try {\n    const u = new URL(url);\n\n    // Normalize hostname: strip leading 'www.'\n    if (u.hostname) {\n      u.hostname = u.hostname.replace(/^www\\./, \"\");\n    }\n\n    // Normalize path: remove trailing slashes\n    u.pathname = (u.pathname || \"\").replace(/\\/+$/, \"\");\n\n    // Drop query + hash so tracking params don't break the join\n    u.search = \"\";\n    u.hash = \"\";\n\n    return u.toString();\n  } catch (e) {\n    return typeof url.replace === \"function\"\n      ? url.replace(/\\/+$/, \"\")\n      : url;\n  }\n}\n\n// --- 1) Build URL -> isoDate map from Merge29 ---\nlet rssItems = [];\ntry {\n  rssItems = $items(\"Merge29\") || [];\n} catch (e) {\n  rssItems = [];\n}\n\nconst dateByUrl = {};\n\nfor (const it of rssItems) {\n  const j = it.json || {};\n\n  let rawUrl =\n    j[\"og:url\"] ||\n    j.ogUrl ||\n    j.link ||\n    j.url ||\n    j.original_url ||\n    null;\n\n  rawUrl = pickFirstUrl(rawUrl);\n  const key = normalizeUrl(rawUrl);\n  if (!key) continue;\n\n  const iso =\n    j.isoDate ||\n    j.isodate ||\n    j.pubDate ||\n    j.pubdate ||\n    j.date ||\n    null;\n\n  if (iso && !dateByUrl[key]) {\n    dateByUrl[key] = iso;\n  }\n}\n\n// --- 2) Walk Firecrawl items (Create PivotID1 input) and attach isoDate ---\nconst fireItems = $input.all() || [];\nconst out = [];\n\nfor (const item of fireItems) {\n  const j = item.json || {};\n  const data = j.data || {};\n  const meta = data.metadata || data.meta || {};\n\n  // URL from Firecrawl output\n  let fireUrlRaw =\n    j[\"og:url\"] ||\n    j.ogUrl ||\n    meta[\"og:url\"] ||\n    meta.ogUrl ||\n    meta.url ||\n    meta.canonical ||\n    j.url ||\n    null;\n\n  fireUrlRaw = pickFirstUrl(fireUrlRaw);\n  const key = normalizeUrl(fireUrlRaw);\n\n  // Prefer Firecrawl isoDate if exists; otherwise take date from Merge29 via URL lookup\n  const isoDate =\n    j.isoDate ||\n    j.isodate ||\n    meta.isoDate ||\n    meta.isodate ||\n    (key ? dateByUrl[key] : null) ||\n    null;\n\n  const copy = { ...j };\n  copy.isoDate = isoDate;\n\n  const newMeta = { ...(meta || {}) };\n  if (isoDate) newMeta.isoDate = isoDate;\n\n  const newData = { ...(data || {}), metadata: newMeta };\n  copy.data = newData;\n\n  out.push({ json: copy });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4448,
+        5344
+      ],
+      "id": "ac52febb-25d2-4543-89e3-e10399bcea99",
+      "name": "Append IsoDate"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Helper: pick first URL if the value is an array\nfunction pickFirstUrl(value) {\n  if (Array.isArray(value)) {\n    // Prefer first string that looks like a URL\n    for (const v of value) {\n      if (typeof v === 'string' && v.startsWith('http')) {\n        return v;\n      }\n    }\n    // Fallback: just stringify the first element\n    if (value.length > 0) {\n      return String(value[0]);\n    }\n    return null;\n  }\n  return value;\n}\n\n// Helper: normalize a URL and strip trailing slashes\nfunction normalizeUrl(raw) {\n  if (!raw) return null;\n\n  let url = pickFirstUrl(raw); // also handles arrays\n  if (typeof url !== 'string') {\n    url = String(url);\n  }\n  url = url.trim();\n  if (!url) return null;\n\n  try {\n    const u = new URL(url);\n    u.pathname = (u.pathname || '').replace(/\\/+$/, '');\n    return u.toString();\n  } catch (e) {\n    // Fallback: just strip trailing slashes if possible\n    return typeof url.replace === 'function'\n      ? url.replace(/\\/+$/, '')\n      : url;\n  }\n}\n\n// --- main ---\nconst items = $input.all() || [];\nconst out = [];\n\nfor (const item of items) {\n  const j = item.json || {};\n  const copy = { ...j }; // shallow copy so we don't mutate in-place\n\n  // Clean up og:url\n  if (copy['og:url'] !== undefined) {\n    const cleaned = normalizeUrl(copy['og:url']);\n    copy['og:url'] = cleaned;\n  }\n\n  // Clean up ogUrl (camelCase version)\n  if (copy.ogUrl !== undefined) {\n    const cleaned = normalizeUrl(copy.ogUrl);\n    copy.ogUrl = cleaned;\n  }\n\n  // Optional: if you also store a generic url/original_url, clean those too:\n  if (copy.url !== undefined) {\n    copy.url = normalizeUrl(copy.url);\n  }\n  if (copy.original_url !== undefined) {\n    copy.original_url = normalizeUrl(copy.original_url);\n  }\n\n  out.push({ json: copy });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4624,
+        5344
+      ],
+      "id": "b0b99716-c213-4653-bf13-f636aad16f03",
+      "name": "Strip OG URL"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6d35f927-92bf-4363-beed-290192ea55fe",
+              "name": "pivot_Id",
+              "value": "={{ $json.pivot_Id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4752,
+        5152
+      ],
+      "id": "a2b61aea-f600-4973-96cf-0d852a012d0d",
+      "name": "Set pivotId2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take all incoming items\nconst items = $input.all().map(item => item.json);\n\n// Sort newest → oldest using isoDate\nitems.sort((a, b) => new Date(b.isoDate) - new Date(a.isoDate));\n\n// Keep the most recent 5\nconst sliced = items.slice(0, 50);\n\n// Return them as individual items again\nreturn sliced.map(i => ({ json: i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4688,
+        4944
+      ],
+      "id": "ab0382ff-3114-488a-98fb-1999dfcbd138",
+      "name": "Slice 33"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: one item from Firecrawl with `markdown`\n// Output: many items [{ title, url }...]\n\nconst items = $input.all();\nconst out = [];\n\nconst DOMAIN = 'https://www.ft.com';\n\nfor (const item of items) {\n  let md = $input.first().json.data.markdown || '';\n\n  // Optional: if there's a specific section you care about, trim before parsing\n  // const marker = 'Latest Headlines';\n  // const idx = md.indexOf(marker);\n  // if (idx !== -1) md = md.slice(idx);\n\n  const seen = new Set();\n  const re = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n  let m;\n\n  while ((m = re.exec(md)) !== null) {\n    const title = m[1].trim();\n    let url = m[2].trim();\n\n    // Only WSJ links\n    if (!url.startsWith(DOMAIN)) continue;\n\n    // Strip tracking params\n    url = url.split('?')[0];\n    if (seen.has(url)) continue;\n    seen.add(url);\n\n    // Optional: only keep actual article paths\n    // if (!url.includes('/articles/')) continue;\n\n    out.push({\n      json: {\n        source: 'FT',\n        title,\n        url\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        5760
+      ],
+      "id": "76ed7a0e-b946-4310-b6c1-d4479e2c3b37",
+      "name": "Code in JavaScript",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst out = [];\n\n// Helper: check if path is like /content/<uuid-ish>\nfunction isFtArticlePath(path) {\n  // Must start with /content/\n  if (!path.startsWith('/content/')) return false;\n\n  // Grab everything after \"/content/\"\n  let rest = path.slice('/content/'.length); // e.g. \"7a42396f-487a-47b0-8121-8d8f2112fa53\"\n\n  // Strip query/hash if any (just in case)\n  const qIndex = rest.indexOf('?');\n  if (qIndex !== -1) rest = rest.slice(0, qIndex);\n  const hashIndex = rest.indexOf('#');\n  if (hashIndex !== -1) rest = rest.slice(0, hashIndex);\n\n  // Basic sanity: must be long enough to be an ID\n  if (rest.length < 30) return false;\n\n  // UUID-ish: hex + dashes only\n  if (!/^[0-9a-f-]+$/i.test(rest)) return false;\n\n  return true;\n}\n\nfor (const item of items) {\n  const url = (item.json && item.json.url) || '';\n  if (!url) continue;\n\n  // Work on a plain string, no URL()\n  let s = url;\n\n  // Drop protocol\n  const protoIndex = s.indexOf('://');\n  if (protoIndex !== -1) {\n    s = s.slice(protoIndex + 3); // after \"https://\"\n  }\n\n  // Strip query/hash\n  const qIndex = s.indexOf('?');\n  if (qIndex !== -1) s = s.slice(0, qIndex);\n  const hashIndex = s.indexOf('#');\n  if (hashIndex !== -1) s = s.slice(0, hashIndex);\n\n  // Remove domain: everything up to first \"/\"\n  const firstSlash = s.indexOf('/');\n  if (firstSlash === -1) continue; // no path\n\n  const path = s.slice(firstSlash); // includes leading \"/\", e.g. \"/content/7a42...\"\n\n  // Hard drop image service outright\n  if (path.startsWith('/__origami/')) continue;\n\n  // Keep ONLY true article content URLs\n  if (!isFtArticlePath(path)) continue;\n\n  // Looks like a real FT article – keep it\n  out.push(item);\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        5760
+      ],
+      "id": "433548b9-9b5e-4575-b8b2-a8b81bed0f8e",
+      "name": "Code in JavaScript13",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3024,
+        5760
+      ],
+      "id": "50055a07-8026-45c6-a6ef-6a0304a9a724",
+      "name": "Loop Over Items5"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3616,
+        5808
+      ],
+      "id": "810642f0-dc06-4777-bf8b-ed23be2f938d",
+      "name": "Wait5",
+      "webhookId": "cbbf3f97-596a-44af-847e-a7ff2d61a741"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 15,
+              "batchInterval": 5000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3392,
+        5760
+      ],
+      "id": "279b645b-4c39-4df0-8eaa-2e43593a5462",
+      "name": "FireCrawl5",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3808,
+        5520
+      ],
+      "id": "3efa0b34-f8de-44cd-9567-3e09d7f0fb89",
+      "name": "Merge10"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cc1e3f61-633f-4716-89ef-cdf1a95bc342",
+              "name": "data.metadata[\"og:site_name\"]",
+              "value": "Financial Times",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3552,
+        5664
+      ],
+      "id": "9314de43-f32a-45ed-af68-e48f9e3dcd8b",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: one item from Firecrawl with `markdown`\n// Output: many items [{ title, url }...]\n\nconst items = $input.all();\nconst out = [];\n\nconst DOMAIN = 'https://www.ft.com';\n\nfor (const item of items) {\n  let md = $input.first().json.data.markdown || '';\n\n  // Optional: if there's a specific section you care about, trim before parsing\n  // const marker = 'Latest Headlines';\n  // const idx = md.indexOf(marker);\n  // if (idx !== -1) md = md.slice(idx);\n\n  const seen = new Set();\n  const re = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n  let m;\n\n  while ((m = re.exec(md)) !== null) {\n    const title = m[1].trim();\n    let url = m[2].trim();\n\n    // Only WSJ links\n    if (!url.startsWith(DOMAIN)) continue;\n\n    // Strip tracking params\n    url = url.split('?')[0];\n    if (seen.has(url)) continue;\n    seen.add(url);\n\n    // Optional: only keep actual article paths\n    // if (!url.includes('/articles/')) continue;\n\n    out.push({\n      json: {\n        source: 'FT',\n        title,\n        url\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2432,
+        5984
+      ],
+      "id": "6603efe3-e7b4-438f-aff1-540c757331d0",
+      "name": "Code in JavaScript1",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst out = [];\n\n// Helper: check if path is like /content/<uuid-ish>\nfunction isFtArticlePath(path) {\n  // Must start with /content/\n  if (!path.startsWith('/content/')) return false;\n\n  // Grab everything after \"/content/\"\n  let rest = path.slice('/content/'.length); // e.g. \"7a42396f-487a-47b0-8121-8d8f2112fa53\"\n\n  // Strip query/hash if any (just in case)\n  const qIndex = rest.indexOf('?');\n  if (qIndex !== -1) rest = rest.slice(0, qIndex);\n  const hashIndex = rest.indexOf('#');\n  if (hashIndex !== -1) rest = rest.slice(0, hashIndex);\n\n  // Basic sanity: must be long enough to be an ID\n  if (rest.length < 30) return false;\n\n  // UUID-ish: hex + dashes only\n  if (!/^[0-9a-f-]+$/i.test(rest)) return false;\n\n  return true;\n}\n\nfor (const item of items) {\n  const url = (item.json && item.json.url) || '';\n  if (!url) continue;\n\n  // Work on a plain string, no URL()\n  let s = url;\n\n  // Drop protocol\n  const protoIndex = s.indexOf('://');\n  if (protoIndex !== -1) {\n    s = s.slice(protoIndex + 3); // after \"https://\"\n  }\n\n  // Strip query/hash\n  const qIndex = s.indexOf('?');\n  if (qIndex !== -1) s = s.slice(0, qIndex);\n  const hashIndex = s.indexOf('#');\n  if (hashIndex !== -1) s = s.slice(0, hashIndex);\n\n  // Remove domain: everything up to first \"/\"\n  const firstSlash = s.indexOf('/');\n  if (firstSlash === -1) continue; // no path\n\n  const path = s.slice(firstSlash); // includes leading \"/\", e.g. \"/content/7a42...\"\n\n  // Hard drop image service outright\n  if (path.startsWith('/__origami/')) continue;\n\n  // Keep ONLY true article content URLs\n  if (!isFtArticlePath(path)) continue;\n\n  // Looks like a real FT article – keep it\n  out.push(item);\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        5984
+      ],
+      "id": "a74a75b9-c06c-42e6-b6f8-75e4aeae5f21",
+      "name": "Code in JavaScript14",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3104,
+        6032
+      ],
+      "id": "6d1358d2-05ba-4a17-aa69-69b5d9e89a4e",
+      "name": "Loop Over Items6"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3648,
+        6064
+      ],
+      "id": "bc7aeb4f-7dd8-4d82-b4c2-b5dd92fc1c59",
+      "name": "Wait6",
+      "webhookId": "cbbf3f97-596a-44af-847e-a7ff2d61a741"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 15,
+              "batchInterval": 5000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3424,
+        6064
+      ],
+      "id": "7a8b2804-88e8-4fd0-8de3-7cb0ae087584",
+      "name": "FireCrawl6",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cc1e3f61-633f-4716-89ef-cdf1a95bc342",
+              "name": "data.metadata[\"og:site_name\"]",
+              "value": "Financial Times",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3552,
+        5968
+      ],
+      "id": "8f4956ec-1361-41fa-b00b-071971eb44e2",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"https://www.ft.com/artificial-intelligence\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2224,
+        5760
+      ],
+      "id": "7d1ab6c0-4f5b-466c-855f-591b241d00c9",
+      "name": "FireCrawl FT AI",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3856,
+        5792
+      ],
+      "id": "2c89564b-f615-4588-be7a-f117f31c1bf9",
+      "name": "Merge11"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: one item from Firecrawl with `markdown`\n// Output: many items [{ title, url }...]\n\nconst items = $input.all();\nconst out = [];\n\nconst DOMAIN = 'https://www.bloomberg.com';\n\nfor (const item of items) {\n  let md = $input.first().json.data.markdown || '';\n\n  // Optional: if there's a specific section you care about, trim before parsing\n  // const marker = 'Latest Headlines';\n  // const idx = md.indexOf(marker);\n  // if (idx !== -1) md = md.slice(idx);\n\n  const seen = new Set();\n  const re = /\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n  let m;\n\n  while ((m = re.exec(md)) !== null) {\n    const title = m[1].trim();\n    let url = m[2].trim();\n\n    // Only WSJ links\n    if (!url.startsWith(DOMAIN)) continue;\n\n    // Strip tracking params\n    url = url.split('?')[0];\n    if (seen.has(url)) continue;\n    seen.add(url);\n\n    // Optional: only keep actual article paths\n    // if (!url.includes('/articles/')) continue;\n\n    out.push({\n      json: {\n        source: 'Bloomberg',\n        title,\n        url\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        6208
+      ],
+      "id": "f2655fff-e99a-49a1-963f-00ba63a14ee1",
+      "name": "Code in JavaScript2",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean Bloomberg scrape: keep only real articles, drop quotes + nav pages\n\nconst items = $input.all();\nif (!items.length) return [];\n\n// Check if URL indicates a real Bloomberg article\nfunction isRealStory(url, title) {\n  if (!url) return false;\n\n  let path;\n  try {\n    const u = new URL(url);\n    path = u.pathname || '';\n  } catch {\n    path = url; // fallback if URL object fails\n  }\n\n  const p = path.toLowerCase();\n\n  // --- REMOVE ANY QUOTE URL ---\n  // This removes *anything* containing /quote/\n  if (p.includes('/quote/')) return false;\n\n  // --- REMOVE NAV / SECTION PAGES ---\n  const rejectExact = [\n    '/technology',\n    '/screentime',\n    '/explainers',\n    '/ai-stocks-to-watch'\n  ];\n  if (rejectExact.includes(p)) return false;\n\n  if (p.startsWith('/technology/')) return false;\n\n  // --- KEEP RULES: REAL STORIES ONLY ---\n  if (p.startsWith('/news/')) return true;\n  if (p.startsWith('/features/')) return true;\n  if (p.startsWith('/graphics/')) return true;\n  if (p.startsWith('/news/videos/')) return true;\n\n  // Fallback: keep long titles (avoids category tiles)\n  const t = (title || '').trim();\n  if (t.length > 25) return true;\n\n  return false;\n}\n\n// Filter list\nconst kept = items.filter(item => {\n  const j = item.json || item;\n  return isRealStory(j.url, j.title);\n});\n\n// n8n output format\nreturn kept.map(i => ({ json: i.json || i }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        6224
+      ],
+      "id": "ec685e20-f044-4803-bf07-95193f52f257",
+      "name": "Code in JavaScript15",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3072,
+        6304
+      ],
+      "id": "375fba05-bd37-4104-82db-b428a5178896",
+      "name": "Loop Over Items7"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3648,
+        6400
+      ],
+      "id": "d66aab8a-7a00-451f-97aa-b800712d270b",
+      "name": "Wait7",
+      "webhookId": "cbbf3f97-596a-44af-847e-a7ff2d61a741"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 15,
+              "batchInterval": 5000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        6400
+      ],
+      "id": "ef7dcfe9-1fe2-4906-a812-278b80141b45",
+      "name": "FireCrawl7",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cc1e3f61-633f-4716-89ef-cdf1a95bc342",
+              "name": "isoDate",
+              "value": "={{ $json.data.metadata[\"iso-8601-publish-date\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "db5b50d1-c7d5-4c51-bf82-677a956cb25e",
+              "name": "",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3504,
+        6288
+      ],
+      "id": "193496c1-74c2-4375-8c79-8f3fb1a973ed",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"https://www.bloomberg.com/ai\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2304,
+        6224
+      ],
+      "id": "d8bc7251-e886-4c7f-a81d-95af8edd1137",
+      "name": "FireCrawl Bloomberg",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer fc-607731fb517842d8bfe3361bde6975d7"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"https://www.ft.com/us-companies\",\n  \"formats\": [\"markdown\"]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        5984
+      ],
+      "id": "287f98d6-f62f-464a-8133-17d877b521dc",
+      "name": "FireCrawl FT US Companies",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4096,
+        6048
+      ],
+      "id": "64238c17-685e-4209-af33-74b74faa19a0",
+      "name": "Merge12"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items.length) return [];\n\n// For each item, copy the publish date into metadata.isoDate\n// and remove the old \"iso-8601-publish-date\" field.\nreturn items.map(item => {\n  const j = item.json || item;\n\n  // Ensure the nested structure exists\n  const meta = (((j.data || {}).metadata) || {});\n\n  // If the field exists, rename it\n  if (meta[\"iso-8601-publish-date\"]) {\n    meta.isoDate = meta[\"iso-8601-publish-date\"];\n    delete meta[\"iso-8601-publish-date\"];\n  }\n\n  return { json: j };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3744,
+        6288
+      ],
+      "id": "52185c7a-6bb0-415d-8516-da82c13cd270",
+      "name": "Add isoDate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = [];\n\n// 24 hours in ms\nconst HOURS_24_MS = 24 * 60 * 60 * 1000;\nconst now = new Date();\nconst cutoffTime = now.getTime() - HOURS_24_MS;\n\nfor (const item of $input.all()) {\n  const j = item.json || {};\n\n  // --- 1) Filter by isoDate: only keep last 24 hours ---\n  const isoDateStr = j.isoDate || j.isodate || j.iso_date;\n  if (!isoDateStr) {\n    // No date, drop it\n    continue;\n  }\n\n  const d = new Date(isoDateStr);\n  if (isNaN(d.getTime())) {\n    // Invalid date, drop it\n    continue;\n  }\n\n  if (d.getTime() < cutoffTime) {\n    // Older than 24 hours, drop it\n    continue;\n  }\n\n  // --- 2) Normalize markdown field ---\n  let md = j.markdown;\n\n  // If it's an array of strings/objects, join them\n  if (Array.isArray(md)) {\n    md = md\n      .map(part => {\n        if (typeof part === \"string\") return part;\n        if (part && typeof part.text === \"string\") return part.text;\n        return \"\";\n      })\n      .filter(Boolean)\n      .join(\"\\n\\n\");\n  } else if (md && typeof md === \"object\") {\n    // If it's an object, try to extract a text field or stringify\n    if (typeof md.text === \"string\") {\n      md = md.text;\n    } else {\n      md = JSON.stringify(md);\n    }\n  } else if (typeof md !== \"string\") {\n    // Coerce everything else to string\n    md = md == null ? \"\" : String(md);\n  }\n\n  // --- 3) Truncate to 10,000 chars for Airtable safety ---\n  const markdown_sanitized = (md || \"\").slice(0, 10000);\n\n  // --- 4) Push cleaned item through ---\n  out.push({\n    json: {\n      ...j,\n      markdown: markdown_sanitized,\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5504,
+        4624
+      ],
+      "id": "c2772eed-9bba-41a8-a5da-449d8c2bbefa",
+      "name": "Slice Markdown, Pull Last 24 hours"
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=markets+OR+%22S%26P+500%22+OR+stocks+OR+earnings+when:12h&hl=en-US&gl=US&ceid=US:en",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        6464
+      ],
+      "id": "3f629929-762f-41c5-bd85-c03183a6c5f8",
+      "name": "Google News Finance"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.app/feeds/L83urFREcjBOcQ5z.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        1568,
+        6640
+      ],
+      "id": "26a81192-eba4-428f-a113-b6b3d5c12858",
+      "name": "The Atlantic Technology"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node (JavaScript)\n// Replaces `link` with the resolved real article URL.\n\nconst items = $input.all();\n\nasync function resolveUrl(ctx, url) {\n  if (!url) return url;\n\n  const res = await ctx.helpers.httpRequest({\n    method: 'GET',\n    url,\n    followRedirect: true,\n    resolveWithFullResponse: true,\n    simple: false,\n  });\n\n  const finalUrl =\n    res.request?.uri?.href ||\n    res.headers?.location ||\n    url;\n\n  return finalUrl;\n}\n\nconst out = [];\n\nfor (const item of items) {\n  const data = item.json || {};\n\n  // Google News RSS uses `link` by default\n  const incomingUrl = data.link || data.url;\n\n  if (!incomingUrl) {\n    out.push({ json: data });\n    continue;\n  }\n\n  const resolvedUrl = await resolveUrl(this, incomingUrl);\n\n  out.push({\n    json: {\n      ...data,\n      link: resolvedUrl,  // overwrite the redirector with real URL\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        6288
+      ],
+      "id": "007ed045-b280-46d7-876a-1f1a10a15e4d",
+      "name": "Resolve URLs"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- helpers ---\nfunction pickFirstUrl(value) {\n  if (Array.isArray(value)) {\n    for (const v of value) {\n      if (typeof v === \"string\" && v.startsWith(\"http\")) return v;\n    }\n    return value.length ? String(value[0]) : null;\n  }\n  return value;\n}\n\nfunction normalizeUrl(raw) {\n  if (!raw) return null;\n  let url = pickFirstUrl(raw);\n  if (!url) return null;\n  if (typeof url !== \"string\") url = String(url);\n  url = url.trim();\n  if (!url) return null;\n\n  try {\n    const u = new URL(url);\n\n    // Normalize hostname: strip leading 'www.'\n    if (u.hostname) {\n      u.hostname = u.hostname.replace(/^www\\./, \"\");\n    }\n\n    // Normalize path: remove trailing slashes\n    u.pathname = (u.pathname || \"\").replace(/\\/+$/, \"\");\n\n    // Drop query + hash so tracking params don't break the join\n    u.search = \"\";\n    u.hash = \"\";\n\n    return u.toString();\n  } catch (e) {\n    return typeof url.replace === \"function\"\n      ? url.replace(/\\/+$/, \"\")\n      : url;\n  }\n}\n\n// --- 1) Build URL -> isoDate map from Merge29 ---\nlet rssItems = [];\ntry {\n  rssItems = $items(\"Merge29\") || [];\n} catch (e) {\n  rssItems = [];\n}\n\nconst dateByUrl = {};\n\nfor (const it of rssItems) {\n  const j = it.json || {};\n\n  let rawUrl =\n    j[\"og:url\"] ||\n    j.ogUrl ||\n    j.link ||\n    j.url ||\n    j.original_url ||\n    null;\n\n  rawUrl = pickFirstUrl(rawUrl);\n  const key = normalizeUrl(rawUrl);\n  if (!key) continue;\n\n  const iso =\n    j.isoDate ||\n    j.isodate ||\n    j.pubDate ||\n    j.pubdate ||\n    j.date ||\n    null;\n\n  if (iso && !dateByUrl[key]) {\n    dateByUrl[key] = iso;\n  }\n}\n\n// --- 2) Walk Firecrawl items (Create PivotID1 input) and attach isoDate ---\nconst fireItems = $input.all() || [];\nconst out = [];\n\nfor (const item of fireItems) {\n  const j = item.json || {};\n  const data = j.data || {};\n  const meta = data.metadata || data.meta || {};\n\n  // URL from Firecrawl output\n  let fireUrlRaw =\n    j[\"og:url\"] ||\n    j.ogUrl ||\n    meta[\"og:url\"] ||\n    meta.ogUrl ||\n    meta.url ||\n    meta.canonical ||\n    j.url ||\n    null;\n\n  fireUrlRaw = pickFirstUrl(fireUrlRaw);\n  const key = normalizeUrl(fireUrlRaw);\n\n  // Prefer Firecrawl isoDate if exists; otherwise take date from Merge29 via URL lookup\n  const isoDate =\n    j.isoDate ||\n    j.isodate ||\n    meta.isoDate ||\n    meta.isodate ||\n    (key ? dateByUrl[key] : null) ||\n    null;\n\n  const copy = { ...j };\n  copy.isoDate = isoDate;\n\n  const newMeta = { ...(meta || {}) };\n  if (isoDate) newMeta.isoDate = isoDate;\n\n  const newData = { ...(data || {}), metadata: newMeta };\n  copy.data = newData;\n\n  out.push({ json: copy });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3232,
+        4432
+      ],
+      "id": "a5268fd5-26ea-4548-885e-b605910388a7",
+      "name": "Append IsoDate2"
+    },
+    {
+      "parameters": {
+        "batchSize": 40,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2608,
+        4432
+      ],
+      "id": "3d064e64-0206-4411-81de-b0ddfccd0347",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4096,
+        4432
+      ],
+      "id": "52106230-835e-43e5-a59f-221f78693b1b",
+      "name": "Wait",
+      "webhookId": "cbbf3f97-596a-44af-847e-a7ff2d61a741"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        976,
+        4768
+      ],
+      "id": "640af77e-331e-45a8-b785-b0e79ea8ed17",
+      "name": "AI Scraping 12hr"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Slice ": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create/Clean URL": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set pivotId": {
+      "main": [
+        [
+          {
+            "node": "Merge22",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Set pivotId1": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reuters AI": {
+      "main": [
+        [
+          {
+            "node": "Slice ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 1": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Merge28",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reuters Business": {
+      "main": [
+        [
+          {
+            "node": "Slice 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The Neuron1": {
+      "main": [
+        [
+          {
+            "node": "Slice 18",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Valley1": {
+      "main": [
+        [
+          {
+            "node": "Slice 7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "There's an AI For That": {
+      "main": [
+        [
+          {
+            "node": "Slice 16",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Defaults (fallbacks)": {
+      "main": [
+        [
+          {
+            "node": "AI Valley1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "There's an AI For That",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "The AI Report1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "The Neuron1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "The Deep View1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "CNBC Finance1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "The Verge1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Tech Crunch1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Tech Republic1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SuperHuman1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Yahoo Finance1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reuters AI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reuters Business",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Semafor Business",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Semafor Technology",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Semafor CEO",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google News AI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google News Finance",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FireCrawl FT US Companies",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FireCrawl Bloomberg",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "The Atlantic Technology",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl1": {
+      "main": [
+        [
+          {
+            "node": "Create PivotID1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 7": {
+      "main": [
+        [
+          {
+            "node": "Merge18",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 16": {
+      "main": [
+        [
+          {
+            "node": "Merge18",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice 17": {
+      "main": [
+        [
+          {
+            "node": "Merge19",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice 18": {
+      "main": [
+        [
+          {
+            "node": "Merge20",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice 19": {
+      "main": [
+        [
+          {
+            "node": "Merge21",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge18": {
+      "main": [
+        [
+          {
+            "node": "Merge19",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge19": {
+      "main": [
+        [
+          {
+            "node": "Merge20",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge20": {
+      "main": [
+        [
+          {
+            "node": "Merge21",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge21": {
+      "main": [
+        [
+          {
+            "node": "Merge23",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The Deep View1": {
+      "main": [
+        [
+          {
+            "node": "Slice 19",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The AI Report1": {
+      "main": [
+        [
+          {
+            "node": "Slice 17",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create PivotID1": {
+      "main": [
+        [
+          {
+            "node": "Append IsoDate2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Articles1": {
+      "main": [
+        [
+          {
+            "node": "Set pivotId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge22": {
+      "main": [
+        [
+          {
+            "node": "Merge9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CNBC Finance1": {
+      "main": [
+        [
+          {
+            "node": "Slice 20",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The Verge1": {
+      "main": [
+        [
+          {
+            "node": "Slice 21",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yahoo Finance1": {
+      "main": [
+        [
+          {
+            "node": "Slice 22",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 20": {
+      "main": [
+        [
+          {
+            "node": "Merge23",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice 21": {
+      "main": [
+        [
+          {
+            "node": "Merge24",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice 22": {
+      "main": [
+        [
+          {
+            "node": "Merge25",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice 23": {
+      "main": [
+        [
+          {
+            "node": "Merge26",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Tech Crunch1": {
+      "main": [
+        [
+          {
+            "node": "Slice 23",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge23": {
+      "main": [
+        [
+          {
+            "node": "Merge24",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge24": {
+      "main": [
+        [
+          {
+            "node": "Merge25",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge25": {
+      "main": [
+        [
+          {
+            "node": "Merge26",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge26": {
+      "main": [
+        [
+          {
+            "node": "Merge27",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tech Republic1": {
+      "main": [
+        [
+          {
+            "node": "Slice 24",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 24": {
+      "main": [
+        [
+          {
+            "node": "Merge27",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge27": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SuperHuman1": {
+      "main": [
+        [
+          {
+            "node": "Slice 25",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 25": {
+      "main": [
+        [
+          {
+            "node": "Merge28",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge28": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append IsoDate1": {
+      "main": [
+        [
+          {
+            "node": "Strip OG URL1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip OG URL1": {
+      "main": [
+        [
+          {
+            "node": "Set pivotId1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 2": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 3": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge3": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 26": {
+      "main": [
+        [
+          {
+            "node": "Merge29",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Semafor Business": {
+      "main": [
+        [
+          {
+            "node": "Slice 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Semafor Technology": {
+      "main": [
+        [
+          {
+            "node": "Slice 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Semafor CEO": {
+      "main": [
+        [
+          {
+            "node": "Slice 26",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge29": {
+      "main": [
+        [
+          {
+            "node": "Append isoDate if none",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post New Articles1": {
+      "main": [
+        []
+      ]
+    },
+    "Merge4": {
+      "main": [
+        [
+          {
+            "node": "Merge5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 28": {
+      "main": [
+        [
+          {
+            "node": "Merge5",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice 27": {
+      "main": [
+        [
+          {
+            "node": "Resolve URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge5": {
+      "main": [
+        [
+          {
+            "node": "Merge6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google News AI": {
+      "main": [
+        [
+          {
+            "node": "Slice 27",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append isoDate if none": {
+      "main": [
+        [
+          {
+            "node": "Create/Clean URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cookies": {
+      "main": [
+        []
+      ]
+    },
+    "Slice 29": {
+      "main": [
+        [
+          {
+            "node": "Merge6",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge6": {
+      "main": [
+        [
+          {
+            "node": "Merge29",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items2": {
+      "main": [
+        [
+          {
+            "node": "Merge7",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FireCrawl3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl3": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl WSJ AI1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript9": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript10": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items3": {
+      "main": [
+        [
+          {
+            "node": "Merge7",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "FireCrawl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl": {
+      "main": [
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl WSJ Latest1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript11": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript12": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items4": {
+      "main": [
+        [
+          {
+            "node": "Merge8",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "FireCrawl4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait4": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl4": {
+      "main": [
+        [
+          {
+            "node": "Wait4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl WSJ Finance1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge7": {
+      "main": [
+        [
+          {
+            "node": "Merge8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create PivotID": {
+      "main": [
+        [
+          {
+            "node": "Append IsoDate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append IsoDate": {
+      "main": [
+        [
+          {
+            "node": "Strip OG URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge8": {
+      "main": [
+        [
+          {
+            "node": "Merge10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip OG URL": {
+      "main": [
+        [
+          {
+            "node": "Set pivotId2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge9": {
+      "main": [
+        [
+          {
+            "node": "Slice Markdown, Pull Last 24 hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set pivotId2": {
+      "main": [
+        [
+          {
+            "node": "Slice 33",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice 33": {
+      "main": [
+        [
+          {
+            "node": "Merge9",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript13",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items5": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FireCrawl5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait5": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl5": {
+      "main": [
+        [
+          {
+            "node": "Wait5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript13": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge10": {
+      "main": [
+        [
+          {
+            "node": "Merge11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge10",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript14",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript14": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items6": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FireCrawl6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait6": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl6": {
+      "main": [
+        [
+          {
+            "node": "Wait6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl FT AI": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Merge11",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge11": {
+      "main": [
+        [
+          {
+            "node": "Merge12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript15",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript15": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items7": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FireCrawl7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait7": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl7": {
+      "main": [
+        [
+          {
+            "node": "Wait7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl Bloomberg": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FireCrawl FT US Companies": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge12": {
+      "main": [
+        [
+          {
+            "node": "Create PivotID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Add isoDate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add isoDate": {
+      "main": [
+        [
+          {
+            "node": "Merge12",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Slice Markdown, Pull Last 24 hours": {
+      "main": [
+        [
+          {
+            "node": "Post New Articles1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google News Finance": {
+      "main": [
+        [
+          {
+            "node": "Slice 28",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "The Atlantic Technology": {
+      "main": [
+        [
+          {
+            "node": "Slice 29",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve URLs": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Append IsoDate2": {
+      "main": [
+        [
+          {
+            "node": "Append IsoDate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "FireCrawl1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge22",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Scraping 12hr": {
+      "main": [
+        [
+          {
+            "node": "Defaults (fallbacks)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Current Articles1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FireCrawl WSJ AI1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FireCrawl WSJ Latest1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FireCrawl WSJ Finance1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FireCrawl FT AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "37cf4eba-facb-4c88-8357-52db1be73c6e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bbbd911fcbd9efe5def160e3f7a7b14baf0691f4a0ba4531005de9dea9d03f69"
+  },
+  "id": "ddobfIOQeOykMUq6",
+  "tags": []
+}

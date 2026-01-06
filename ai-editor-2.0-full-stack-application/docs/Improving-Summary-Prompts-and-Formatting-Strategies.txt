@@ -1,0 +1,6 @@
+Kunal Gupta
+Hey, just on this email, I think the prompt we're using for the summary isn't the right one. Um That's just my sense based on how it's bolding and you know these are one sentence where there's supposed to be two sentences. Uh so in the air table This will load. You'll see the prompt files to use. And maybe it's not the right model, or maybe we're using Claude instead of ChatGPT, so that's why we're seeing the inconsistency. Um, yeah, I mean the stories are getting better. Yeah, the stories are getting better. Um Still not quite there, but I know you're working on the the plumbing first. So the prompt tab here So this is a pretty in-depth thing to create the summary, and then um it gets to a different thing to create the formatting. A subject line we can deal with later. It's not that big of an issue, but I would say give give these two prompts. So these are in NNN right now. These are two different workflows. So trying to do the formatting. And the summarization in the same prompt often failed.
+
+Kunal Gupta
+Um so there's probably some opportunity to improve improve that.
+

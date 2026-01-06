@@ -1,0 +1,1105 @@
+{
+  "name": "STEP 4 AI Editor 2.0 - Compile HTML and Send",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "list",
+          "cachedResultName": "AI Editor 2.0",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbla16LJCf5Z6cRn3",
+          "mode": "list",
+          "cachedResultName": "AI Editor - Decoration",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl/tbla16LJCf5Z6cRn3"
+        },
+        "filterByFormula": "{image_status} = 'generated'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        80,
+        -528
+      ],
+      "id": "8a378970-5007-4960-813f-b874d5f10db0",
+      "name": "List2",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items.length) return [];\n\n// Group stories by issue_id\nconst issueMap = new Map();\n\nfor (const item of items) {\n  const story = item.json;\n  const issueId = story.issue_id;\n  \n  if (!issueMap.has(issueId)) {\n    issueMap.set(issueId, []);\n  }\n  issueMap.get(issueId).push(story);\n}\n\n// Find issues that have all 5 stories ready\nconst completeIssues = [];\n\nfor (const [issueId, stories] of issueMap) {\n  if (stories.length >= 5) {\n    // Sort by slot_order\n    stories.sort((a, b) => (a.slot_order || 0) - (b.slot_order || 0));\n    completeIssues.push({\n      issue_id: issueId,\n      stories: stories\n    });\n  }\n}\n\nif (!completeIssues.length) {\n  return [];\n}\n\n// Take the first complete issue\nconst issue = completeIssues[0];\n\nreturn [{\n  json: {\n    issue_id: issue.issue_id,\n    stories: issue.stories,\n    story_count: issue.stories.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -544
+      ],
+      "id": "c8ba0f68-13a6-4424-9a02-d66eb57d967a",
+      "name": "prepare_issue_and_filter2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input from prepare_issue_and_filter2 via Fetch Subject Line\nconst input = $('prepare_issue_and_filter2').first();\nif (!input || !input.json || !input.json.stories) {\n  return [];\n}\n\nconst issueId = input.json.issue_id;\nconst stories = input.json.stories;\n\n// Get subject_line from Fetch Subject Line node (AI Editor - Selected Slots)\nconst subjectLineRecord = $input.first();\nconst fetchedSubjectLine = subjectLineRecord?.json?.subject_line || '';\nconst subjectLine = fetchedSubjectLine || '5 headlines. 5 minutes. 5 days a week.';\n\n// Stories are already sorted by slot_order in prepare_issue_and_filter2\n// Transform to the format expected by compile_html_email2\nreturn stories.map((story, idx) => ({\n  json: {\n    issue: {\n      issue_id: issueId,\n      newsletter_id: 'pivot_ai',\n      subject_line: subjectLine\n    },\n    storyID: story.story_id,\n    order: idx + 1,\n    story: story\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        -544
+      ],
+      "id": "f7f22af1-ccf8-4504-9ca8-c36309177478",
+      "name": "attach_issue_and_sort2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (!items.length) {\n  return [];\n}\n\n// --- 1) Extract issue metadata from the first item\nconst first = items[0].json || {};\nconst issue = first.issue || {};\n\n// Get the subject_line from issue (now fetched from AI Editor - Selected Slots)\nconst subjectLine = issue.subject_line || '5 headlines. 5 minutes. 5 days a week.';\n\n// Get summaries from Parse Summaries node\nconst summaryData = $('Parse Summaries').first()?.json || {};\nconst summary = summaryData.summary || '';\nconst summary_plus = summaryData.summary_plus || '';\n\n// Issue ID for later use\nconst issueId = issue.issue_id || '';\n\n// 1) SENDER: normalized newsletter name\nconst newsletterId =\n  issue.newsletter_id ||\n  issue.newsletter ||\n  'pivot_ai';\n\nconst newsletterNameMap = {\n  pivot_ai: 'Pivot 5',\n  pivot_invest: 'Pivot Invest',\n  pivot_build: 'Pivot Build',\n};\n\nconst newsletterName = newsletterNameMap[newsletterId] || 'Pivot 5';\nconst sender = newsletterName;\n\n// 2) SUBJECT: Use dynamic subject_line\nconst subject = subjectLine;\n\nconst sendDateRaw = issue.send_date || null;\n\n// --- 2) Convert send date to readable ET string\nlet dateStr = '';\nif (sendDateRaw) {\n  const d = new Date(sendDateRaw);\n  if (!isNaN(d.getTime())) {\n    dateStr = d.toLocaleString('en-US', {\n      month: 'long',\n      day: 'numeric',\n      year: 'numeric',\n      timeZone: 'America/New_York',\n    });\n  }\n}\n\n// --- 3) Normalize stories and keep ordering\n// FIXED: Filter out summary-only items (the 6th item from Merge node)\nconst stories = items\n  .map(i => i.json)\n  .filter(i => i.story || i.storyID || i.order) // Exclude summary-only items\n  .sort((a, b) => (a.order || 9999) - (b.order || 9999))\n  .map(i => i.story || i);\n\n// helpers\nfunction pick(obj, keys, fallback = '') {\n  for (const k of keys) {\n    if (obj[k] != null && obj[k] !== '') return obj[k];\n  }\n  return fallback;\n}\n\n// Turn **bold** into strong w/ black color\nfunction mdInline(str = '') {\n  return str.replace(/\\*\\*(.+?)\\*\\*/g, '<strong style=\"color:#0f172a;\">$1</strong>');\n}\n\n// --- 4) Build story blocks - UPDATED FOR NEW FIELD NAMES\nconst storyBlocks = stories.map((s, idx) => {\n  const indexLabel = idx + 1;\n\n  const title = pick(s, ['headline', 'ai_headline', 'Headline', 'Title'], 'Untitled story');\n  const url = pick(s, ['pivotnews_url', 'decorated_url', 'core_url', 'URL', 'url'], '#');\n  const topic = pick(s, ['label', 'topic', 'Topic', 'section', 'Section'], '') || newsletterName;\n  const imageUrl = pick(s, ['image_url', 'imageUrl'], '');\n\n  const bullet1 = s.b1 || s.bullet_1 || '';\n  const bullet2 = s.b2 || s.bullet_2 || '';\n  const bullet3 = s.b3 || s.bullet_3 || '';\n\n  const bulletsArr = [bullet1, bullet2, bullet3].filter(Boolean);\n  const bulletsHtml = bulletsArr.length\n    ? `<ul style=\"margin:0; padding-left:18px; font-size:14px; line-height:1.5; color:#4b5563;\">\n        ${bulletsArr.map(b => `<li style=\"padding-bottom:6px;\">${mdInline(b)}</li>`).join('\\n')}\n       </ul>`\n    : '';\n\n  const imageBlock = imageUrl\n    ? `\n      <div style=\"padding:10px 0 14px 0;\">\n        <a href=\"${url}\" style=\"text-decoration:none; border:none;\">\n          <img src=\"${imageUrl}\" alt=\"\" style=\"width:100%; display:block;\" />\n        </a>\n      </div>\n    `\n    : '';\n\n  return `\n    <!-- Story ${indexLabel} -->\n    <tr>\n      <td style=\"padding:20px 22px; border-bottom:1px solid #e5e7eb;\">\n        <div style=\"font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:#9ca3af; padding-bottom:6px;\">\n          ${topic}\n        </div>\n        <div style=\"font-size:20px; line-height:1.4; font-weight:600; color:#0f172a; padding-bottom:10px;\">\n          <a href=\"${url}\" style=\"color:#0f172a; text-decoration:none;\">\n            ${title}\n          </a>\n        </div>\n        ${imageBlock}\n        ${bulletsHtml}\n        <div style=\"font-size:13px; color:#4b5563; padding-top:10px;\">\n          Read More <a href=\"${url}\" style=\"color:#f97316; text-decoration:underline;\">Here</a>.\n        </div>\n      </td>\n    </tr>\n  `;\n}).join('\\n');\n\n// 3) PREHEADER - use subject_line\nconst preheader = subjectLine.toString().slice(0, 140);\n\nconst hiddenPreheader = preheader\n  ? `<div style=\"display:none; max-height:0; overflow:hidden; opacity:0; font-size:1px; line-height:1px; color:#f3f4f6;\">\n      ${preheader}\n    </div>`\n  : '';\n\n// --- 5) Full HTML\nconst html = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>${subject}</title>\n  <style>\n    body { margin: 0; padding: 0; background-color: #f3f4f6; }\n    table { border-collapse: collapse; }\n    img { border: 0; max-width: 100%; height: auto; display: block; }\n    .wrapper { width: 640px; max-width: 100%; }\n    @media only screen and (max-width: 640px) {\n      .wrapper { width: 100% !important; }\n      .stack { display: block !important; width: 100% !important; }\n    }\n  </style>\n</head>\n<body style=\"margin:0; padding:0; background-color:#f3f4f6;\">\n  ${hiddenPreheader}\n  <center style=\"width:100%; background-color:#f3f4f6;\">\n    <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">\n      <tr>\n        <td align=\"center\" style=\"padding:24px 12px;\">\n          <table role=\"presentation\" class=\"wrapper\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"background-color:#f3f4f6;\">\n            <tr>\n              <td style=\"padding:0 0 16px 0;\">\n                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">\n                  <tr>\n                    <td align=\"center\" style=\"padding:0 12px;\">\n                      <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background-color:#ffffff;\">\n                        <tr>\n                          <td style=\"padding:18px 22px;\">\n                            <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">\n                              <tr>\n                                <td style=\"width:37%;\"></td>\n                                <td style=\"width:34%; text-align:center; vertical-align:middle;\">\n                                  <img src=\"https://img.pivotnews.com/cdn-cgi/imagedelivery/KXy14RehLGC3ziMxzD_shA/8423e6dd-0804-45f0-d570-e595634da200/logo\" alt=\"Pivot 5\" style=\"display:block; margin:0 auto; max-width:180px; height:auto;\" />\n                                </td>\n                                <td style=\"width:29%;\"></td>\n                              </tr>\n                              <tr>\n                                <td colspan=\"3\" style=\"padding-top:10px;\">\n                                  <div style=\"margin:0 auto; max-width:520px; text-align:center; font-size:15px; line-height:1.5; color:#4b5563;\">The must-read daily AI briefing for over 1 million busy professionals who need signal, not noise.</div>\n                                  <div style=\"margin:4px auto 0 auto; max-width:520px; text-align:center; font-size:15px; line-height:1.5; color:#4b5563; font-style:italic;\">5 headlines. 5 minutes. 5 days a week.</div>\n                                </td>\n                              </tr>\n                            </table>\n                          </td>\n                        </tr>\n                      </table>\n                    </td>\n                  </tr>\n                </table>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:0 12px 24px 12px;\">\n                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background-color:#ffffff; border:1px solid #e5e7eb;\">\n                  ${storyBlocks}\n                </table>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:0 12px 24px 12px;\">\n                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"width:100%; background-color:#f9fafb; border:1px solid #e5e7eb;\">\n                  <tr>\n                    <td style=\"padding:12px 16px; font-size:11px; line-height:1.6; color:#6b7280;\">You're receiving this email because you subscribed to Pivot 5.<br /><a href=\"{{unsubscribe_url}}\" style=\"color:#4b5563; text-decoration:underline;\">Unsubscribe</a> &bull; <a href=\"{{manage_prefs_url}}\" style=\"color:#4b5563; text-decoration:underline;\">Manage preferences</a></td>\n                    <td align=\"right\" style=\"padding:12px 16px; font-size:11px; color:#6b7280; white-space:nowrap;\">&copy; ${new Date().getFullYear()} Pivot 5</td>\n                  </tr>\n                </table>\n              </td>\n            </tr>\n          </table>\n        </td>\n      </tr>\n    </table>\n  </center>\n</body>\n</html>\n`.trim();\n\n// --- 6) Return single compiled email item with summaries included\nreturn [{\n  json: {\n    issue_id: issueId,\n    sender,\n    subject,\n    preheader,\n    send_date: sendDateRaw,\n    html,\n    summary,\n    summary_plus,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -656
+      ],
+      "id": "de0d4e8f-8155-470e-88b6-648452560209",
+      "name": "compile_html_email2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "402c3d14-ffdb-4770-b032-4b774062a6a1",
+              "name": "issue_id",
+              "value": "={{ $json.issue_id }}",
+              "type": "string"
+            },
+            {
+              "id": "b12639b7-4099-4dd3-9b73-b23e3056c9e0",
+              "name": "subject_line",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "2ee04430-1db1-4e58-884c-64b2fe938cc1",
+              "name": "newsletter_id",
+              "value": "pivot_ai",
+              "type": "string"
+            },
+            {
+              "id": "093e9aa9-ea87-4231-9e70-67970e336caf",
+              "name": "status",
+              "value": "compiled",
+              "type": "string"
+            },
+            {
+              "id": "summary-field",
+              "name": "summary",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "summary-plus-field",
+              "name": "summary_plus",
+              "value": "={{ $json.summary_plus }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1296,
+        -640
+      ],
+      "id": "7b703874-9f41-46e3-890e-17e20e5a43c6",
+      "name": "Edit Fields4"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl7mcCCGbjEfli25",
+          "mode": "list",
+          "cachedResultName": "Newsletter Issues"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "issue_id": "={{ $json.issue_id }}",
+            "html": "={{ $json.html }}",
+            "subject_line": "={{ $json.subject_line }}",
+            "newsletter_id": "={{ $json.newsletter_id }}",
+            "preheader": "={{ $json.preheader }}",
+            "status": "={{ $json.status }}",
+            "summary": "={{ $json.summary }}",
+            "summary_plus": "={{ $json.summary_plus }}"
+          },
+          "matchingColumns": [
+            "issue_id"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1504,
+        -640
+      ],
+      "id": "680f9960-6be8-4ca3-b66e-7f4237db2c10",
+      "name": "Update record2",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl7mcCCGbjEfli25",
+          "mode": "list",
+          "cachedResultName": "Newsletter Issues",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tbl7mcCCGbjEfli25"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "issue_id": "={{ $('Edit Fields4').first().json.issue_id }}",
+            "status": "next send"
+          },
+          "matchingColumns": [
+            "issue_id"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1792,
+        -656
+      ],
+      "id": "930378e9-3961-4738-a77c-2c8eddca8865",
+      "name": "Mark as next send2",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * 2-6"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -128,
+        -544
+      ],
+      "id": "a4f91271-efa2-4500-94a6-44235f9eb593",
+      "name": "10pm EST Pivot 5 Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "deleteRecord",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl7mcCCGbjEfli25",
+          "mode": "list",
+          "cachedResultName": "Newsletter Issues",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tbl7mcCCGbjEfli25"
+        },
+        "id": "={{ $('List6').item.json.id }}"
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1328,
+        144
+      ],
+      "id": "ef3adb9c-6dc7-4f2b-ad59-f097b49e37e6",
+      "name": "Delete a record3",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl7mcCCGbjEfli25",
+          "mode": "list",
+          "cachedResultName": "Newsletter Issues",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tbl7mcCCGbjEfli25"
+        },
+        "filterByFormula": "AND(   {newsletter_id} = 'pivot_ai',   {status} = 'next send' )",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        272,
+        144
+      ],
+      "id": "5a5a5739-b2d0-4e04-9ef0-190e8c5aa276",
+      "name": "List6",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://app.pivotnews.com/api/emails/{{ $('Create Email').item.json.email.id }}/send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mauticOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        912,
+        144
+      ],
+      "id": "ca874f44-2acd-41c1-a12f-d44f5d1232a8",
+      "name": "SEND",
+      "credentials": {
+        "mauticOAuth2Api": {
+          "id": "kHPB4nRPWZ2bm39Q",
+          "name": "Mautic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.pivotnews.com/api/emails/new",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mauticOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  name: $json.issue_id,\n  subject: $json.subject_line,\n  customHtml: $json.html,\n  emailType: \"list\",\n  lists: [5],\n  fromAddress: \"pivotnews@daily.pivotnews.com\",\n  fromName: \"Pivot 5\",\n  replyToAddress: \"pivotnews@daily.pivotnews.com\",\n  headers: { \"X-GreenArrow-MailClass\": \"daily.pivotnews.com\" },\n  isPublished: true,\n  template: \"mautic_code_mode\",\n  grapesjsbuilder: {\n    customMjml: `<mjml>...</mjml>`\n  }\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        144
+      ],
+      "id": "69e34e71-f9f0-48a3-a5d5-e6e17f29d5a2",
+      "name": "Create Email",
+      "credentials": {
+        "mauticOAuth2Api": {
+          "id": "kHPB4nRPWZ2bm39Q",
+          "name": "Mautic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblHo0xNj8nbzMHNI",
+          "mode": "list",
+          "cachedResultName": "Newsletter Issues Archive",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblHo0xNj8nbzMHNI"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "send_date": "={{ $('List6').item.json.send_date }}",
+            "issue_id": "={{ $('List6').item.json.issue_id }}",
+            "sent_at": "={{ $now.setZone(\"America/New_York\").toISO() }}",
+            "newsletter_id": "={{ $('List6').item.json.newsletter_id }}",
+            "send_slot": "={{ $('List6').item.json.send_slot }}",
+            "story_ids_json": "={{ $('List6').item.json.story_ids_json }}",
+            "subject_line": "={{ $('List6').item.json.subject_line }}",
+            "status": "={{ $json.sentCount > 0 && $json.failedRecipients === 0 ? 'sent' : ($json.sentCount > 0 ? 'partial_failure' : 'failed') }}",
+            "html": "={{ $('List6').item.json.html }}",
+            "summary": "={{ $('List6').item.json.summary }}",
+            "summary_plus": "={{ $('List6').item.json.summary_plus }}",
+            "mautic_sent_count": "={{ $json.sentCount }}",
+            "mautic_failed_recipients": "={{ $json.failedRecipients }}",
+            "mautic_send_status": "={{ $json.sentCount > 0 && $json.failedRecipients === 0 ? 'success' : ($json.sentCount > 0 ? 'partial_failure' : 'failed') }}",
+            "mautic_response_raw": "={{ JSON.stringify($json) }}"
+          },
+          "matchingColumns": [
+            "issue_id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "issue_id",
+              "displayName": "issue_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "newsletter_id",
+              "displayName": "newsletter_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "sent",
+                  "value": "sent"
+                },
+                {
+                  "name": "failed",
+                  "value": "failed"
+                },
+                {
+                  "name": "won't_send",
+                  "value": "won't_send"
+                },
+                {
+                  "name": "compiled",
+                  "value": "compiled"
+                },
+                {
+                  "name": "next send",
+                  "value": "next send"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "send_date",
+              "displayName": "send_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sent_at",
+              "displayName": "sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "summary_plus",
+              "displayName": "summary_plus",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "story_ids_json",
+              "displayName": "story_ids_json",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "send_slot",
+              "displayName": "send_slot",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "AM",
+                  "value": "AM"
+                },
+                {
+                  "name": "PM",
+                  "value": "PM"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "html",
+              "displayName": "html",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Newsletter Issue Stories",
+              "displayName": "Newsletter Issue Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "preheader",
+              "displayName": "preheader",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "StoryID",
+              "displayName": "StoryID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Stories_linked",
+              "displayName": "Stories_linked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "mautic_sent_count",
+              "displayName": "mautic_sent_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "mautic_failed_recipients",
+              "displayName": "mautic_failed_recipients",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "mautic_send_status",
+              "displayName": "mautic_send_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "success",
+                  "value": "success"
+                },
+                {
+                  "name": "partial_failure",
+                  "value": "partial_failure"
+                },
+                {
+                  "name": "failed",
+                  "value": "failed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "mautic_response_raw",
+              "displayName": "mautic_response_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        144
+      ],
+      "id": "95781142-c796-4919-a8a2-6871fe0ca4b4",
+      "name": "Update Newsletter Issues Archive",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://app.pivotnews.com/api/multipleTransport/transportEmail/{{ $json.email.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mauticOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"transportId\": 3\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        144
+      ],
+      "id": "af8984a3-7e31-4ef6-9957-cc9673b8a948",
+      "name": "Attach Transport",
+      "credentials": {
+        "mauticOAuth2Api": {
+          "id": "kHPB4nRPWZ2bm39Q",
+          "name": "Mautic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        144
+      ],
+      "id": "4abafb14-059c-439c-bd02-4f40835e50d9",
+      "name": "5:00am EST Pivot 5 Trigger1"
+    },
+    {
+      "parameters": {
+        "content": "Compile HTML",
+        "height": 400,
+        "width": 2512
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -608
+      ],
+      "id": "4987bab4-1134-4db8-9876-151693c1d532",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Send via Mautic",
+        "height": 304,
+        "width": 1920
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        112
+      ],
+      "id": "667d785c-1a92-4927-9a32-f02946f058d1",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "list",
+          "cachedResultName": "AI Editor 2.0"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblzt2z7r512Kto3O",
+          "mode": "list",
+          "cachedResultName": "AI Editor - Selected Slots"
+        },
+        "filterByFormula": "={issue_id} = '{{ $json.issue_id }}'",
+        "options": {
+          "fields": [
+            "issue_id",
+            "subject_line"
+          ]
+        }
+      },
+      "id": "fetch-subject-line",
+      "name": "Fetch Subject Line",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        544,
+        -544
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all stories from attach_issue_and_sort2\nconst items = $('attach_issue_and_sort2').all();\nif (!items.length) return [];\n\nconst stories = items.map(item => {\n  const story = item.json.story || item.json;\n  return {\n    headline: story.headline || story.ai_headline || '',\n    label: story.label || story.topic || '',\n    order: item.json.order || 0\n  };\n}).sort((a, b) => a.order - b.order);\n\nconst issueId = items[0]?.json?.issue?.issue_id || '';\n\n// Build prompt for Claude\nconst storiesJson = JSON.stringify(stories.map((s, i) => ({\n  position: i + 1,\n  headline: s.headline,\n  topic: s.label\n})), null, 2);\n\nconst prompt = `You are writing brief summaries for a daily AI newsletter.\n\nHere are today's 5 stories in order:\n${storiesJson}\n\nGenerate two summaries:\n1. \"summary\": Max 15 words summarizing the top 3 stories. Use commas to separate items, not periods.\n2. \"summary_plus\": Max 20 words summarizing stories 4 and 5. Use commas to separate items, not periods.\n\nOutput JSON only, no markdown:\n{\"summary\": \"...\", \"summary_plus\": \"...\"}`;\n\nreturn [{ json: { issue_id: issueId, prompt, stories } }];"
+      },
+      "id": "build-summary-prompt",
+      "name": "Build Summary Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's JSON response\nconst input = $input.first();\nlet summary = '';\nlet summary_plus = '';\n\ntry {\n  // Claude returns content as array: [{type: 'text', text: '...'}]\n  let content = '';\n  \n  if (input.json.content && Array.isArray(input.json.content)) {\n    // Standard Claude API response format\n    content = input.json.content[0]?.text || '';\n  } else if (input.json.text) {\n    content = input.json.text;\n  } else if (input.json.message) {\n    content = input.json.message;\n  } else {\n    content = JSON.stringify(input.json);\n  }\n  \n  // Strip markdown code blocks if present\n  content = content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '');\n  \n  // Try to extract JSON from the response\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    const parsed = JSON.parse(jsonMatch[0]);\n    summary = parsed.summary || '';\n    summary_plus = parsed.summary_plus || '';\n  }\n} catch (e) {\n  console.log('Failed to parse Claude response:', e.message);\n}\n\n// Get issue_id from Build Summary Prompt\nconst issueId = $('Build Summary Prompt').first()?.json?.issue_id || '';\n\nreturn [{ json: { issue_id: issueId, summary, summary_plus } }];"
+      },
+      "id": "parse-summaries",
+      "name": "Parse Summaries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -176
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "merge-stories-summaries",
+      "name": "Merge Stories + Summaries",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1824,
+        -368
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        -128
+      ],
+      "id": "dae6f503-0a92-49e7-a298-bc0db847bbbc",
+      "name": "Message a model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "List2": {
+      "main": [
+        [
+          {
+            "node": "prepare_issue_and_filter2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "attach_issue_and_sort2": {
+      "main": [
+        [
+          {
+            "node": "Build Summary Prompt",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Stories + Summaries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "compile_html_email2": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields4": {
+      "main": [
+        [
+          {
+            "node": "Update record2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update record2": {
+      "main": [
+        [
+          {
+            "node": "Mark as next send2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as next send2": {
+      "main": [
+        []
+      ]
+    },
+    "10pm EST Pivot 5 Trigger": {
+      "main": [
+        [
+          {
+            "node": "List2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List6": {
+      "main": [
+        [
+          {
+            "node": "Create Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SEND": {
+      "main": [
+        [
+          {
+            "node": "Update Newsletter Issues Archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Email": {
+      "main": [
+        [
+          {
+            "node": "Attach Transport",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Newsletter Issues Archive": {
+      "main": [
+        [
+          {
+            "node": "Delete a record3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Transport": {
+      "main": [
+        [
+          {
+            "node": "SEND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5:00am EST Pivot 5 Trigger1": {
+      "main": [
+        [
+          {
+            "node": "List6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare_issue_and_filter2": {
+      "main": [
+        [
+          {
+            "node": "Fetch Subject Line",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Subject Line": {
+      "main": [
+        [
+          {
+            "node": "attach_issue_and_sort2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary Prompt": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Summaries": {
+      "main": [
+        [
+          {
+            "node": "Merge Stories + Summaries",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Stories + Summaries": {
+      "main": [
+        [
+          {
+            "node": "compile_html_email2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse Summaries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "efab560b-917a-4ea3-8fae-05286c1f55b5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bbbd911fcbd9efe5def160e3f7a7b14baf0691f4a0ba4531005de9dea9d03f69"
+  },
+  "id": "NKjC8hb0EDHIXx3U",
+  "tags": []
+}

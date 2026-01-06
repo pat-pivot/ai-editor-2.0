@@ -1,11 +1,16 @@
 # Newsletter Link Extraction Feature
 
 **Date:** January 2, 2026
+**Updated:** January 2, 2026 (Separated into standalone job)
 **Status:** DEPLOYED
-**Files Modified:**
-- `workers/config/newsletter_extraction.py` (NEW)
-- `workers/jobs/ingest_sandbox.py`
-- `workers/config/freshrss_client.py`
+
+**Files:**
+- `workers/jobs/newsletter_extract_sandbox.py` (standalone job)
+- `workers/config/newsletter_extraction.py` (config)
+- `workers/config/freshrss_client.py` (domain mappings)
+- `src/app/(dashboard)/sandbox/page.tsx` (UI - third card)
+- `src/app/api/jobs/route.ts` (API routing)
+- `workers/trigger.py` (job trigger)
 
 ---
 
@@ -13,30 +18,38 @@
 
 This feature extracts external news links from AI newsletters and ingests them into the `Articles - All Ingested` table with provenance tracking. Each newsletter has different sections where "real news" links are found.
 
+**Architecture Change (Jan 2, 2026):** Newsletter extraction is now a **separate button** in the dashboard, not integrated into the ingest job. This allows running newsletter extraction independently.
+
 ---
 
 ## How It Works
 
 ```
-FreshRSS crawls Kill The Newsletter (feed/17)
+Dashboard: Click "Newsletter Link Extraction" button (third card)
     |
-Ingest job detects feed/17 article
+    v
+API: POST /api/jobs with step="newsletter_extract_sandbox"
     |
-Identify newsletter domain from HTML content
+    v
+Trigger Service: Enqueue newsletter_extract_sandbox job
     |
-Look up extraction config for that newsletter
+    v
+Job: Fetch feed/17 articles from FreshRSS (Kill The Newsletter)
     |
-Call Claude Haiku to extract news links from HTML
-    |
-For each extracted link:
-    +-- Resolve URL (decode Google News if needed)
-    +-- Extract source from domain
-    +-- Generate pivot_id
-    +-- Check for duplicates
-    +-- Create record with notes="Link derived from [newsletter] on [date]"
-    |
-Continue with normal ingest for non-newsletter articles
+    v
+For each newsletter article:
+    +-- Identify newsletter domain from HTML content
+    +-- Look up extraction config for that newsletter
+    +-- Call Claude Haiku to extract news links from HTML
+    +-- For each extracted link:
+        +-- Resolve URL (decode Google News if needed)
+        +-- Extract source from domain
+        +-- Generate pivot_id
+        +-- Check for duplicates
+        +-- Create record with notes="Link derived from [newsletter] on [date]"
 ```
+
+**Note:** The regular "Ingest Articles" button no longer processes newsletters - use the dedicated Newsletter Extraction button.
 
 ---
 
@@ -213,7 +226,7 @@ SKIP_NEWSLETTERS = [
 
 ## Testing
 
-1. Run ingest from the dashboard
+1. Click the **"Newsletter Link Extraction"** button (third card) in the Sandbox dashboard
 2. Check logs for:
    - `[NEWSLETTER EXTRACTION] Processing X newsletter articles`
    - `[Newsletter Extract] Extracted Y links from [Newsletter Name]`
@@ -221,6 +234,8 @@ SKIP_NEWSLETTERS = [
 3. Verify articles in Airtable have `notes` field populated
 4. Verify no duplicates (pivot_id deduplication working)
 5. Spot-check extracted URLs to confirm they're real news stories
+
+**Note:** The regular "Ingest Articles" button does NOT process newsletters anymore.
 
 ---
 
@@ -249,9 +264,12 @@ SKIP_NEWSLETTERS = [
 
 | File | Purpose |
 |------|---------|
+| `workers/jobs/newsletter_extract_sandbox.py` | **Standalone newsletter extraction job** |
 | `workers/config/newsletter_extraction.py` | Newsletter configs, blocked domains, patterns |
-| `workers/jobs/ingest_sandbox.py` | LLM extraction, ingest integration |
 | `workers/config/freshrss_client.py` | Domain-to-source mappings |
+| `workers/trigger.py` | Job routing (maps `newsletter_extract_sandbox` to job function) |
+| `src/app/api/jobs/route.ts` | API route (validates `newsletter_extract_sandbox` step) |
+| `src/app/(dashboard)/sandbox/page.tsx` | UI with third card for newsletter extraction |
 | `docs/ai-ingestion-engine-step-0/Old-Article-Fix-1-2-26.md` | FreshRSS date filtering |
 | `docs/ai-ingestion-engine/Google-News-Fix-12-27-25.md` | Google News URL decoding |
 

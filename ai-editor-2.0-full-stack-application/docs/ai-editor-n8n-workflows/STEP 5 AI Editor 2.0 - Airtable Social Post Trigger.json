@@ -1,0 +1,512 @@
+{
+  "name": "STEP 5 AI Editor 2.0 - Airtable Social Post Trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://api.airtable.com/v0/appglKSJZxmA9iHpl/tbla16LJCf5Z6cRn3",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "AND({image_status}='generated', OR({social_status}='', {social_status}='pending'))"
+            },
+            {
+              "name": "maxRecords",
+              "value": "10"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer [REDACTED]"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1719734d-da69-48a3-938f-731622d0ae24",
+      "name": "GET Decorated Stories Ready for Social",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -768,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract records array from Airtable API response\nconst airtableResponse = $input.first().json;\n\nreturn airtableResponse.records.map(record => {\n  // Clean the raw field if it exists\n  if (record.fields?.raw) {\n    let raw = record.fields.raw;\n    \n    // Remove HTML tags\n    raw = raw.replace(/<[^>]*>/g, '');\n    \n    // Decode common HTML entities\n    raw = raw.replace(/&nbsp;/g, ' ')\n             .replace(/&amp;/g, '&')\n             .replace(/&lt;/g, '<')\n             .replace(/&gt;/g, '>')\n             .replace(/&quot;/g, '\"')\n             .replace(/&#39;/g, \"'\");\n    \n    // Normalize whitespace: replace multiple newlines/spaces with single space\n    raw = raw.replace(/\\s+/g, ' ');\n    \n    // Trim\n    raw = raw.trim();\n    \n    // Update the field\n    record.fields.raw = raw;\n  }\n  \n  return {json: record};\n});"
+      },
+      "id": "b8371e59-1270-45a1-8deb-46b4650adf11",
+      "name": "Extract Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "406eacf1-187d-4b43-900b-de444f6abfab",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -320,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.airtable.com/v0/appRUgK44hQnXH1PM/tbllJMN2QBPJoG3jA",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "={{ 'AND({source_record_id}=\"' + $json.id + '\",{source_record_id}!=\"\")' }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer [REDACTED]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "342fed88-5e06-4a9a-8c32-bbc1e047bfbd",
+      "name": "Find Existing in P5 Social Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -112,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const sourceRecord = $input.item.json;\nconst existingRecordsResponse = $('Find Existing in P5 Social Posts').first().json;\n\n// If record already exists, mark it as 'skip' so we continue the loop\nif (existingRecordsResponse.records && existingRecordsResponse.records.length > 0) {\n  return {json: {...sourceRecord, action: 'skip'}};\n}\n\n// Record doesn't exist, pass it through with action='create'\nreturn {json: {...sourceRecord, action: 'create'}};"
+      },
+      "id": "ea3b0b03-8d00-496a-b3b1-0d82ca2a49a9",
+      "name": "Check If Exists",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        96,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appRUgK44hQnXH1PM",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbllJMN2QBPJoG3jA",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "source_record_id": "={{ $('Split In Batches').item.json.id }}",
+            "label": "={{ $('Split In Batches').item.json.fields.label }}",
+            "headline": "={{ $('Split In Batches').item.json.fields.headline }}",
+            "image_raw_url": "={{ $('Split In Batches').item.json.fields.image_url }}",
+            "Raw": "={{ $('Split In Batches').item.json.fields.raw }}",
+            "publish_status": "ready",
+            "Order": "={{ $('Split In Batches').item.json.fields.slot_order }}",
+            "Name": "={{ $('Split In Batches').item.json.fields.headline }}",
+            "b1": "={{ $('Split In Batches').item.json.fields.b1 }}",
+            "b2": "={{ $('Split In Batches').item.json.fields.b2 }}",
+            "b3": "={{ $('Split In Batches').item.json.fields.b3 }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "Order",
+              "displayName": "Order",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false
+            },
+            {
+              "id": "source_record_id",
+              "displayName": "source_record_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "headline",
+              "displayName": "headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "label",
+              "displayName": "label",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "Raw",
+              "displayName": "Raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "b1",
+              "displayName": "b1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "b2",
+              "displayName": "b2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "b3",
+              "displayName": "b3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "image_raw_url",
+              "displayName": "image_raw_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "publish_status",
+              "displayName": "publish_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "ready",
+                  "value": "ready"
+                },
+                {
+                  "name": "processing",
+                  "value": "processing"
+                },
+                {
+                  "name": "published",
+                  "value": "published"
+                }
+              ],
+              "readOnly": false
+            },
+            {
+              "id": "last_updated",
+              "displayName": "last_updated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        528,
+        192
+      ],
+      "id": "bfb7c3aa-36f1-4928-91df-597fcd3835c9",
+      "name": "Create a record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "skip",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0361a445-a621-436d-a63a-f651a3d065e5",
+      "name": "Does Newsletter Post Already Exist?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        320,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 4 * * 1-5"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 5 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1104,
+        -80
+      ],
+      "id": "08bae0c4-dc72-4f47-b967-5e3c9154baf1",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.airtable.com/v0/appglKSJZxmA9iHpl/tbla16LJCf5Z6cRn3/' + $('Split In Batches').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer [REDACTED]"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"fields\": {\"social_status\": \"synced\"}}",
+        "options": {}
+      },
+      "id": "mark-social-synced",
+      "name": "Mark Social Synced",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        752,
+        192
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GET Decorated Stories Ready for Social": {
+      "main": [
+        [
+          {
+            "node": "Extract Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Records": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Find Existing in P5 Social Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing in P5 Social Posts": {
+      "main": [
+        [
+          {
+            "node": "Check If Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Exists": {
+      "main": [
+        [
+          {
+            "node": "Does Newsletter Post Already Exist?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a record": {
+      "main": [
+        [
+          {
+            "node": "Mark Social Synced",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Social Synced": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Does Newsletter Post Already Exist?": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "GET Decorated Stories Ready for Social",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b8a1172e-2ce9-4ddc-b313-3fcb74f4bea4",
+  "meta": {
+    "instanceId": "bbbd911fcbd9efe5def160e3f7a7b14baf0691f4a0ba4531005de9dea9d03f69"
+  },
+  "id": "I8U8LgJVDsO8PeBJ",
+  "tags": []
+}

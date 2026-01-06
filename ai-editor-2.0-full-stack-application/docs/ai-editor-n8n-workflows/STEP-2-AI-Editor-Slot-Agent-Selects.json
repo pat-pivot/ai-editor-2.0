@@ -1,0 +1,1284 @@
+{
+  "name": "STEP 2 - AI Editor Slot Agent Selects",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblzt2z7r512Kto3O",
+          "mode": "id"
+        },
+        "filterByFormula": "=IS_AFTER({issue_date}, DATEADD(TODAY(), -14, 'days'))",
+        "options": {},
+        "sort": {
+          "property": [
+            {
+              "field": "issue_date",
+              "direction": "desc"
+            }
+          ]
+        }
+      },
+      "id": "271ecfe3-250a-4278-9186-9fe3d037fbda",
+      "name": "Pull Recent Issues",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        656,
+        992
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remove Slot 3 Stories - Parse agent output and accumulate tracking\nconst agentOutput = $input.first().json;\nconst prevData = $('Remove Slot 2 Stories').first().json;\n\n// Get candidates to look up pivotId\nconst prepContext = $('Prepare Slot 3 Context').first().json;\nconst candidates = prepContext.candidates || [];\n\n// Parse the agent's response - handle Claude's content array format\nlet selection;\ntry {\n  if (agentOutput.content && Array.isArray(agentOutput.content) && agentOutput.content[0]?.text) {\n    const responseText = agentOutput.content[0].text;\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.selected_id) {\n    selection = agentOutput;\n  }\n  else if (typeof agentOutput.text === 'string') {\n    const jsonMatch = agentOutput.text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.output) {\n    const responseText = typeof agentOutput.output === 'string' ? agentOutput.output : JSON.stringify(agentOutput.output);\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n} catch (e) {\n  console.error('Error parsing Slot 3 agent output:', e);\n  selection = null;\n}\n\nif (!selection || !selection.selected_id) {\n  selection = {\n    selected_id: 'unknown',\n    selected_headline: 'Parsing failed',\n    selected_source: 'Unknown',\n    selected_company: null,\n    credibility_score: 0,\n    reasoning: 'Failed to parse agent response'\n  };\n}\n\n// Look up pivotId from candidates based on selected_id\nconst matchingCandidate = candidates.find(c => c.storyID === selection.selected_id);\nselection.pivotId = matchingCandidate?.pivotId || '';\n\n// Accumulate tracking data\nconst selectedIds = [...(prevData.previouslySelectedIds || []), selection.selected_id];\nconst selectedCompanies = [...(prevData.previouslySelectedCompanies || [])];\nif (selection.selected_company) {\n  selectedCompanies.push(selection.selected_company);\n}\nconst selectedSources = { ...(prevData.previouslySelectedSources || {}) };\nif (selection.selected_source) {\n  selectedSources[selection.selected_source] = (selectedSources[selection.selected_source] || 0) + 1;\n}\n\nreturn [{\n  json: {\n    slotNumber: 3,\n    selection: selection,\n    previouslySelectedIds: selectedIds,\n    previouslySelectedCompanies: selectedCompanies,\n    previouslySelectedSources: selectedSources\n  }\n}];"
+      },
+      "id": "41579f8c-3981-49be-899e-e5732eb7eab2",
+      "name": "Remove Slot 3 Stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remove Slot 4 Stories - Parse agent output and accumulate tracking\nconst agentOutput = $input.first().json;\nconst prevData = $('Remove Slot 3 Stories').first().json;\n\n// Get candidates to look up pivotId\nconst prepContext = $('Prepare Slot 4 Context').first().json;\nconst candidates = prepContext.candidates || [];\n\n// Parse the agent's response - handle Claude's content array format\nlet selection;\ntry {\n  if (agentOutput.content && Array.isArray(agentOutput.content) && agentOutput.content[0]?.text) {\n    const responseText = agentOutput.content[0].text;\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.selected_id) {\n    selection = agentOutput;\n  }\n  else if (typeof agentOutput.text === 'string') {\n    const jsonMatch = agentOutput.text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.output) {\n    const responseText = typeof agentOutput.output === 'string' ? agentOutput.output : JSON.stringify(agentOutput.output);\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n} catch (e) {\n  console.error('Error parsing Slot 4 agent output:', e);\n  selection = null;\n}\n\nif (!selection || !selection.selected_id) {\n  selection = {\n    selected_id: 'unknown',\n    selected_headline: 'Parsing failed',\n    selected_source: 'Unknown',\n    selected_company: null,\n    credibility_score: 0,\n    reasoning: 'Failed to parse agent response'\n  };\n}\n\n// Look up pivotId from candidates based on selected_id\nconst matchingCandidate = candidates.find(c => c.storyID === selection.selected_id);\nselection.pivotId = matchingCandidate?.pivotId || '';\n\n// Accumulate tracking data\nconst selectedIds = [...(prevData.previouslySelectedIds || []), selection.selected_id];\nconst selectedCompanies = [...(prevData.previouslySelectedCompanies || [])];\nif (selection.selected_company) {\n  selectedCompanies.push(selection.selected_company);\n}\nconst selectedSources = { ...(prevData.previouslySelectedSources || {}) };\nif (selection.selected_source) {\n  selectedSources[selection.selected_source] = (selectedSources[selection.selected_source] || 0) + 1;\n}\n\nreturn [{\n  json: {\n    slotNumber: 4,\n    selection: selection,\n    previouslySelectedIds: selectedIds,\n    previouslySelectedCompanies: selectedCompanies,\n    previouslySelectedSources: selectedSources\n  }\n}];"
+      },
+      "id": "e34b7e9f-0d98-4b88-af77-56e37bff157b",
+      "name": "Remove Slot 4 Stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assembly Code - Gather all 5 slot selections for the newsletter\nconst slot1 = $('Remove Slot 1 Stories').first().json;\nconst slot2 = $('Remove Slot 2 Stories').first().json;\nconst slot3 = $('Remove Slot 3 Stories').first().json;\nconst slot4 = $('Remove Slot 4 Stories').first().json;\n\n// Get Slot 5 candidates to look up pivotId\nconst slot5PrepContext = $('Prepare Slot 5 Context').first().json;\nconst slot5Candidates = slot5PrepContext.candidates || [];\n\n// Parse Slot 5 directly from the agent output - handle Claude's content array format\nconst slot5AgentOutput = $input.first().json;\nlet slot5Selection;\ntry {\n  if (slot5AgentOutput.content && Array.isArray(slot5AgentOutput.content) && slot5AgentOutput.content[0]?.text) {\n    const responseText = slot5AgentOutput.content[0].text;\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      slot5Selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (slot5AgentOutput.selected_id) {\n    slot5Selection = slot5AgentOutput;\n  }\n  else if (typeof slot5AgentOutput.text === 'string') {\n    const jsonMatch = slot5AgentOutput.text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      slot5Selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (slot5AgentOutput.output) {\n    const responseText = typeof slot5AgentOutput.output === 'string' ? slot5AgentOutput.output : JSON.stringify(slot5AgentOutput.output);\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      slot5Selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n} catch (e) {\n  slot5Selection = { selected_id: 'unknown', selected_headline: 'Parse error', selected_source: 'Unknown' };\n}\n\nif (!slot5Selection) {\n  slot5Selection = { selected_id: 'unknown', selected_headline: 'Parse error', selected_source: 'Unknown' };\n}\n\n// Look up Slot 5 pivotId from candidates\nconst slot5MatchingCandidate = slot5Candidates.find(c => c.storyID === slot5Selection.selected_id);\nslot5Selection.pivotId = slot5MatchingCandidate?.pivotId || '';\n\n// Calculate next issue date (skip weekends)\n// Newsletter goes out TOMORROW, unless tomorrow is Sat/Sun then it's Monday\nconst today = new Date();\nconst dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat\n\nlet daysToAdd;\nif (dayOfWeek === 5) {\n  // Friday -> Monday (add 3)\n  daysToAdd = 3;\n} else if (dayOfWeek === 6) {\n  // Saturday -> Monday (add 2)\n  daysToAdd = 2;\n} else {\n  // Sun-Thu -> next day (add 1)\n  daysToAdd = 1;\n}\n\nconst issueDateTime = new Date(today);\nissueDateTime.setDate(issueDateTime.getDate() + daysToAdd);\nconst month = issueDateTime.toLocaleDateString('en-US', { month: 'short' });\nconst day = issueDateTime.getDate();\nconst issueDate = issueDateTime.toISOString().split('T')[0];\nconst issueId = `Pivot 5 - ${month} ${day}`;\n\n// Build the assembled newsletter data\nconst assembledData = {\n  issue_date: issueDate,\n  issue_id: issueId,\n  \n  // Slot 1\n  slot_1_storyId: slot1.selection?.selected_id || 'unknown',\n  slot_1_headline: slot1.selection?.selected_headline || 'No headline',\n  slot_1_source: slot1.selection?.selected_source || 'Unknown',\n  slot_1_company: slot1.selection?.selected_company || null,\n  slot_1_reasoning: slot1.selection?.reasoning || '',\n  slot_1_pivotId: slot1.selection?.pivotId || '',\n  \n  // Slot 2\n  slot_2_storyId: slot2.selection?.selected_id || 'unknown',\n  slot_2_headline: slot2.selection?.selected_headline || 'No headline',\n  slot_2_source: slot2.selection?.selected_source || 'Unknown',\n  slot_2_company: slot2.selection?.selected_company || null,\n  slot_2_reasoning: slot2.selection?.reasoning || '',\n  slot_2_pivotId: slot2.selection?.pivotId || '',\n  \n  // Slot 3\n  slot_3_storyId: slot3.selection?.selected_id || 'unknown',\n  slot_3_headline: slot3.selection?.selected_headline || 'No headline',\n  slot_3_source: slot3.selection?.selected_source || 'Unknown',\n  slot_3_company: slot3.selection?.selected_company || null,\n  slot_3_reasoning: slot3.selection?.reasoning || '',\n  slot_3_pivotId: slot3.selection?.pivotId || '',\n  \n  // Slot 4\n  slot_4_storyId: slot4.selection?.selected_id || 'unknown',\n  slot_4_headline: slot4.selection?.selected_headline || 'No headline',\n  slot_4_source: slot4.selection?.selected_source || 'Unknown',\n  slot_4_company: slot4.selection?.selected_company || null,\n  slot_4_reasoning: slot4.selection?.reasoning || '',\n  slot_4_pivotId: slot4.selection?.pivotId || '',\n  \n  // Slot 5\n  slot_5_storyId: slot5Selection?.selected_id || 'unknown',\n  slot_5_headline: slot5Selection?.selected_headline || 'No headline',\n  slot_5_source: slot5Selection?.selected_source || 'Unknown',\n  slot_5_company: slot5Selection?.selected_company || null,\n  slot_5_reasoning: slot5Selection?.reasoning || '',\n  slot_5_pivotId: slot5Selection?.pivotId || '',\n  \n  // Headlines list for subject line generation\n  allHeadlines: [\n    slot1.selection?.selected_headline,\n    slot2.selection?.selected_headline,\n    slot3.selection?.selected_headline,\n    slot4.selection?.selected_headline,\n    slot5Selection?.selected_headline\n  ].filter(Boolean),\n  \n  status: 'pending'\n};\n\nreturn [{ json: assembledData }];"
+      },
+      "id": "41675350-4737-45b1-ae81-7ed1f606111a",
+      "name": "Assembly Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "= Generate an email subject line for today's AI newsletter.\n\n  The 5 stories are:\n  {{ $json.allHeadlines }}\n\n  Format:\n  - Combine 2-3 stories into short, punchy phrases\n  - Separate with commas\n  - Each phrase should be a condensed version of the headline (5-8 words max per phrase)\n  - Total length: 60-90 characters\n  - News-style tone, not clickbait\n  - No \"+\" symbols\n\n  Examples of good subject lines:\n  - \"ChatGPT's Mobile App Hits $3 Billion, Anthropic Expands AI Commerce Experiment\"\n  - \"50% of Workers Use AI At Work, Google Turns Tabs Into Custom Tools\"\n  - \"OpenAI Opens App Store, Google Expands Gemini, Lovable Hits $6.6 Billion Valuation\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "19c280c0-02d5-425c-a818-0e68698d702f",
+      "name": "Subject Line Generator",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        3136,
+        -112
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Write Data Code Node\n// Formats data for Airtable writes - uses NEXT ISSUE DATE (tomorrow, or Monday if weekend)\n\nconst assemblyData = $('Assembly Code').first().json;\n\n// Parse subject line response, stripping any markdown formatting\nconst subjectResponse = $('Subject Line Generator').first().json;\nlet subjectText = '';\n\n// Handle Claude's content array format\nif (subjectResponse.content && Array.isArray(subjectResponse.content) && subjectResponse.content[0]?.text) {\n  subjectText = subjectResponse.content[0].text;\n} else {\n  subjectText = subjectResponse.message?.content || 'AI News Today';\n}\n\nsubjectText = subjectText.replace(/```[a-z]*\\n?/g, '').replace(/```\\n?/g, '').replace(/^[\"']/g, '').replace(/[\"']$/g, '').trim();\nconst subjectLine = subjectText;\n\n// Calculate next issue date (skip weekends)\n// Newsletter goes out TOMORROW, unless tomorrow is Sat/Sun then it's Monday\nconst today = new Date();\nconst dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat\n\nlet daysToAdd;\nif (dayOfWeek === 5) {\n  // Friday -> Monday (add 3)\n  daysToAdd = 3;\n} else if (dayOfWeek === 6) {\n  // Saturday -> Monday (add 2)\n  daysToAdd = 2;\n} else {\n  // Sun-Thu -> next day (add 1)\n  daysToAdd = 1;\n}\n\nconst issueDateTime = new Date(today);\nissueDateTime.setDate(issueDateTime.getDate() + daysToAdd);\nconst month = issueDateTime.toLocaleDateString('en-US', { month: 'short' });\nconst day = issueDateTime.getDate();\nconst issueId = `Pivot 5 - ${month} ${day}`;\nconst issueDateStr = issueDateTime.toISOString().split('T')[0];\n\n// Format AI Editor Issues record using flat structure from Assembly Code\nconst issueRecord = {\n  issue_id: issueId,\n  issue_date: issueDateStr,\n  subject_line: subjectLine,\n  status: 'pending',\n  social_post_status: 'pending',\n  \n  // Slot 1\n  slot_1_storyId: assemblyData.slot_1_storyId,\n  slot_1_pivotId: assemblyData.slot_1_pivotId || '',\n  slot_1_headline: assemblyData.slot_1_headline,\n  slot_1_source: assemblyData.slot_1_source,\n  slot_1_company: assemblyData.slot_1_company,\n  \n  // Slot 2\n  slot_2_storyId: assemblyData.slot_2_storyId,\n  slot_2_pivotId: assemblyData.slot_2_pivotId || '',\n  slot_2_headline: assemblyData.slot_2_headline,\n  slot_2_source: assemblyData.slot_2_source,\n  slot_2_company: assemblyData.slot_2_company,\n  \n  // Slot 3\n  slot_3_storyId: assemblyData.slot_3_storyId,\n  slot_3_pivotId: assemblyData.slot_3_pivotId || '',\n  slot_3_headline: assemblyData.slot_3_headline,\n  slot_3_source: assemblyData.slot_3_source,\n  slot_3_company: assemblyData.slot_3_company,\n  \n  // Slot 4\n  slot_4_storyId: assemblyData.slot_4_storyId,\n  slot_4_pivotId: assemblyData.slot_4_pivotId || '',\n  slot_4_headline: assemblyData.slot_4_headline,\n  slot_4_source: assemblyData.slot_4_source,\n  slot_4_company: assemblyData.slot_4_company,\n  \n  // Slot 5\n  slot_5_storyId: assemblyData.slot_5_storyId,\n  slot_5_pivotId: assemblyData.slot_5_pivotId || '',\n  slot_5_headline: assemblyData.slot_5_headline,\n  slot_5_source: assemblyData.slot_5_source,\n  slot_5_company: assemblyData.slot_5_company\n};\n\nreturn [{\n  json: {\n    issue_record: issueRecord,\n    webhook_response: {\n      success: true,\n      issue_id: issueId,\n      issue_date: issueDateStr,\n      subject_line: subjectLine,\n      selections: [\n        { slot: 1, storyId: assemblyData.slot_1_storyId, headline: assemblyData.slot_1_headline, pivotId: assemblyData.slot_1_pivotId },\n        { slot: 2, storyId: assemblyData.slot_2_storyId, headline: assemblyData.slot_2_headline, pivotId: assemblyData.slot_2_pivotId },\n        { slot: 3, storyId: assemblyData.slot_3_storyId, headline: assemblyData.slot_3_headline, pivotId: assemblyData.slot_3_pivotId },\n        { slot: 4, storyId: assemblyData.slot_4_storyId, headline: assemblyData.slot_4_headline, pivotId: assemblyData.slot_4_pivotId },\n        { slot: 5, storyId: assemblyData.slot_5_storyId, headline: assemblyData.slot_5_headline, pivotId: assemblyData.slot_5_pivotId }\n      ]\n    }\n  }\n}];"
+      },
+      "id": "e4f84f37-3024-4e58-8446-10c3205ae96e",
+      "name": "Prepare Write Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3504,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "list",
+          "cachedResultName": "Pivot 5 AI Editor 2.0",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblzt2z7r512Kto3O",
+          "mode": "list",
+          "cachedResultName": "AI Editor - Selected Slots",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl/tblzt2z7r512Kto3O"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "issue_id": "={{ $('Prepare Write Data').first().json.issue_record.issue_id }}",
+            "issue_date": "={{ $('Prepare Write Data').first().json.issue_record.issue_date }}",
+            "subject_line": "={{ $('Prepare Write Data').first().json.issue_record.subject_line }}",
+            "status": "={{ $('Prepare Write Data').first().json.issue_record.status }}",
+            "social_post_status": "={{ $('Prepare Write Data').first().json.issue_record.social_post_status }}",
+            "slot_1_storyId": "={{ $('Prepare Write Data').first().json.issue_record.slot_1_storyId }}",
+            "slot_1_pivotId": "={{ $('Prepare Write Data').first().json.issue_record.slot_1_pivotId }}",
+            "slot_1_headline": "={{ $('Prepare Write Data').first().json.issue_record.slot_1_headline }}",
+            "slot_2_storyId": "={{ $('Prepare Write Data').first().json.issue_record.slot_2_storyId }}",
+            "slot_2_pivotId": "={{ $('Prepare Write Data').first().json.issue_record.slot_2_pivotId }}",
+            "slot_2_headline": "={{ $('Prepare Write Data').first().json.issue_record.slot_2_headline }}",
+            "slot_3_storyId": "={{ $('Prepare Write Data').first().json.issue_record.slot_3_storyId }}",
+            "slot_3_pivotId": "={{ $('Prepare Write Data').first().json.issue_record.slot_3_pivotId }}",
+            "slot_3_headline": "={{ $('Prepare Write Data').first().json.issue_record.slot_3_headline }}",
+            "slot_4_storyId": "={{ $('Prepare Write Data').first().json.issue_record.slot_4_storyId }}",
+            "slot_4_pivotId": "={{ $('Prepare Write Data').first().json.issue_record.slot_4_pivotId }}",
+            "slot_4_headline": "={{ $('Prepare Write Data').first().json.issue_record.slot_4_headline }}",
+            "slot_5_storyId": "={{ $('Prepare Write Data').first().json.issue_record.slot_5_storyId }}",
+            "slot_5_pivotId": "={{ $('Prepare Write Data').first().json.issue_record.slot_5_pivotId }}",
+            "slot_5_headline": "={{ $('Prepare Write Data').first().json.issue_record.slot_5_headline }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "issue_id",
+              "displayName": "issue_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "issue_date",
+              "displayName": "issue_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false
+            },
+            {
+              "id": "slot_1_headline",
+              "displayName": "slot_1_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_1_storyId",
+              "displayName": "slot_1_storyId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_1_pivotId",
+              "displayName": "slot_1_pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_2_headline",
+              "displayName": "slot_2_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_2_storyId",
+              "displayName": "slot_2_storyId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_2_pivotId",
+              "displayName": "slot_2_pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_3_headline",
+              "displayName": "slot_3_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_3_storyId",
+              "displayName": "slot_3_storyId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_3_pivotId",
+              "displayName": "slot_3_pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_4_headline",
+              "displayName": "slot_4_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_4_storyId",
+              "displayName": "slot_4_storyId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_4_pivotId",
+              "displayName": "slot_4_pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_5_headline",
+              "displayName": "slot_5_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_5_storyId",
+              "displayName": "slot_5_storyId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "slot_5_pivotId",
+              "displayName": "slot_5_pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "decorated",
+                  "value": "decorated"
+                }
+              ],
+              "readOnly": false
+            },
+            {
+              "id": "social_post_status",
+              "displayName": "social_post_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "ready",
+                  "value": "ready"
+                },
+                {
+                  "name": "posted",
+                  "value": "posted"
+                }
+              ],
+              "readOnly": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "324ae5d4-3e2f-4fba-a045-6320a21fbad6",
+      "name": "Write AI Editor - Selected Slots",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3728,
+        -208
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are selecting ONE story for **Slot 1** (Breaking News) of a daily AI newsletter.\n\n## Slot 1 is ALWAYS one of:  \n- OpenAI OR Google OR Meta OR Nvidia; or  \n- AI impact on jobs or \n- AI impact on economy\n\nEspecially prioritize one of the 4 companies listed above.\n\n## SOURCE CREDIBILITY GUIDE\nCredibility scores help weigh story quality when comparing similar options:\n| Score | Sources | Weight |\n|-------|---------|--------|\n| 5 | TechCrunch, The Verge, TAAFT | High - prefer when available |\n| 4 | Bloomberg, WSJ, NYTimes | Good - reliable sources |\n| 3 | CNBC, Semafor | Moderate - acceptable sources |\n| 2 | Unknown/unlisted | Lower weight - but story quality matters most |\n\nCredibility score is ONE factor among many. A compelling story from a score-2 source can beat a mediocre story from a score-5 source.\n\n## STORIES TO AVOID - DO NOT SELECT THESE TYPES\n- Leadership shuffles and personnel moves (any hiring, firing, replacing, stepping down, departing, appointed, promoted, resigned, ousted, exits, joins, leaves, new CEO/CTO/Chief)\n- AI gossip (\"AI leader predicts...\", rumors, speculation)\n- Geeky/techy content (model updates, AGI discussions, algorithm details)\n- Content interesting to engineers but not business people\n- Generic market updates like stock prices up and down or tech stocks\n\n**Editorial lens:** \"For a working professional, is this useful to me right now, in my job and day to day?\" Stories should be APPLICABLE, not just interesting.\n\n## EDITORIAL RULES - YOU MUST FOLLOW ALL OF THESE\n\n### Rule 1: \n**Yesterday's headlines - Do NOT select any story covering the same topic as yesterday's headlines, even from a different source\n\n{{ JSON.stringify($json.yesterdayHeadlines, null, 2) }}\n\n### Rule 2: \nDon't select the same Slot 1 company twice (slot 1 is the first company listed in the above)\n\n--\n\n## CANDIDATES ({{ $json.candidateCount }} stories) \nEach candidate includes storyID, headline, source_name, credibility_score (1-5, 5=best), date_og_published, and primary_company. \n\nSelect from them here:\n{{ JSON.stringify($json.candidates, null, 2) }}\n\n\n## SELECTION OUTPUT\nReturn ONLY valid JSON with no additional text:\n{\n  \"selected_id\": \"storyID\",\n  \"selected_headline\": \"headline text\",\n  \"selected_source\": \"source_name\",\n  \"selected_company\": \"primary company featured (e.g., OpenAI, Nvidia, Google) or null if no specific company\",\n  \"credibility_score\": number,\n  \"reasoning\": \"2-3 sentences explaining why this story was selected and how it satisfies all editorial rules\"\n}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "82f79a2c-0dbb-48c7-a67c-f0e2578baf66",
+      "name": "Slot 1 - Agent",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        -832
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "= You are selecting ONE story for **Slot 2** (Recent Important News) of a daily AI newsletter.\n\n## Slot 2 should be:\n- Broader set of tier 1 AI companies: OpenAI, GOOG, META, NVDA, MSFT, Anthropic, xAI, AMZN  \n- OR a broad economic theme\n- OR relevant research around AI adoption, impact, etc.  \n\n## SOURCE CREDIBILITY GUIDE\nCredibility scores help weigh story quality when comparing similar options:\n  | Score | Sources | Weight |\n  |-------|---------|--------|\n  | 5 | TechCrunch, The Verge, TAAFT | High - prefer when available |\n  | 4 | Bloomberg, WSJ, NYTimes | Good - reliable sources |\n  | 3 | CNBC, Semafor | Moderate - acceptable sources |\n  | 2 | Unknown/unlisted | Lower weight - but story quality matters most |\n\nCredibility score is ONE factor among many. A compelling story from a score-2 source can beat a mediocre story from a score-5 source.\n\n## STORIES TO AVOID - DO NOT SELECT THESE TYPES\n- Leadership shuffles and personnel moves (any hiring, firing, replacing, stepping down, departing, appointed, promoted, resigned, ousted, exits, joins, leaves, new CEO/CTO/Chief)\n- AI gossip (\"AI leader predicts...\", rumors, speculation)\n- Geeky/techy content (model updates, AGI discussions, algorithm details)\n- Content interesting to engineers but not business people\n- Skip any stories about AI-generated imagery, deepfakes, or explicit content involving minors or children.   \n\n**Editorial lens:** \"For a working professional, is this useful to me right now, in my job and day to day?\" Stories should be APPLICABLE, not just interesting.\n\n## EDITORIAL RULES - YOU MUST FOLLOW ALL OF THESE\n\n### Rule 1: Recent Headlines (Last 14 Days)\n**CRITICAL: Semantic Deduplication** - Do NOT select any story about the same topic/event as these recent headlines. Consider headlines as duplicates if they cover:\n- The same announcement, deal, acquisition, or news event\n- The same company action with different wording\n- The same research study, product launch, or partnership\n\nEven if headlines are worded differently, if they're about the SAME underlying news, treat them as duplicates.\n\n{{ JSON.stringify($json.recentHeadlines, null, 2) }}\n\n### Rule 2:\n**No repeat companies today** - Don't select a story about any company already featured in today's issue:\n\n{{ JSON.stringify($json.previouslySelectedCompanies, null, 2) }}\n\n### Rule 3:\n**Source diversity** - Max 2 stories per source. Current source counts:\n\n{{ JSON.stringify($json.previouslySelectedSources, null, 2) }}\n\n ### Rule 4: Already Selected Today\n  Do NOT select a story already selected in Slot 1:\n\n  {{ JSON.stringify($json.previouslySelectedIds, null, 2) }}\n\n--\n\n## CANDIDATES ({{ $json.candidateCount }} stories)\n\nEach candidate includes storyID, headline, source_name, credibility_score (1-5, 5=best), date_og_published, and primary_company. \n\nSelect from them here:\n{{ JSON.stringify($json.candidates, null, 2) }}\n\n## SELECTION OUTPUT\nReturn ONLY valid JSON with no additional text:\n  {\n    \"selected_id\": \"storyID\",\n    \"selected_headline\": \"headline text\",\n    \"selected_source\": \"source_name\",\n    \"selected_company\": \"primary company featured (e.g., OpenAI, Nvidia, Google) or null if no specific company\",\n    \"credibility_score\": number,\n    \"reasoning\": \"2-3 sentences explaining why this story was selected and how it satisfies all editorial rules\"\n  }\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1045800a-70a8-4a23-9ff0-cd40335b9464",
+      "name": "Slot 2 Agent",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        -496
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "= You are selecting ONE story for **Slot 3** (Evergreen/Feature Content) of a daily AI newsletter.\n\n  ## Slot 3 should be:\n  - Industry-specific trend/theme/insight/news (healthcare, govt, education, transportation, legal, accounting, etc.)\n  - i.e., a non-tech industry being impacted positively/negatively/neutrally by AI\n\n  ## SOURCE CREDIBILITY GUIDE\n  Credibility scores help weigh story quality when comparing similar options:\n    | Score | Sources | Weight |\n    |-------|---------|--------|\n    | 5 | TechCrunch, The Verge, TAAFT | High - prefer when available |\n    | 4 | Bloomberg, WSJ, NYTimes | Good - reliable sources |\n    | 3 | CNBC, Semafor | Moderate - acceptable sources |\n    | 2 | Unknown/unlisted | Lower weight - but story quality matters most |\n\n  Credibility score is ONE factor among many. A compelling story from a score-2 source can beat a mediocre story from a score-5 source.\n\n  ## STORIES TO AVOID - DO NOT SELECT THESE TYPES\n  - Leadership shuffles and personnel moves (any hiring, firing, replacing, stepping down, departing, appointed, promoted, resigned, ousted, exits, joins, leaves, new CEO/CTO/Chief)\n  - AI gossip (\"AI leader predicts...\", rumors, speculation)\n  - Geeky/techy content (model updates, AGI discussions, algorithm details)\n  - Content interesting to engineers but not business people\n  - Skip any stories about AI-generated imagery, deepfakes, or explicit content involving minors or children.   \n\n  **Editorial lens:** \"For a working professional, is this useful to me right now, in my job and day to day?\" Stories should be APPLICABLE, not just interesting.\n\n  ## EDITORIAL RULES - YOU MUST FOLLOW ALL OF THESE\n\n  ### Rule 1: Recent Headlines (Last 14 Days)\n**CRITICAL: Semantic Deduplication** - Do NOT select any story about the same topic/event as these recent headlines. Consider headlines as duplicates if they cover:\n- The same announcement, deal, acquisition, or news event\n- The same company action with different wording\n- The same research study, product launch, or partnership\n\nEven if headlines are worded differently, if they're about the SAME underlying news, treat them as duplicates.\n\n{{ JSON.stringify($json.recentHeadlines, null, 2) }}\n\n### Rule 2:\n  **No repeat companies today** - Don't select a story about any company already featured in today's issue:\n\n  {{ JSON.stringify($json.previouslySelectedCompanies, null, 2) }}\n\n  ### Rule 3:\n  **Source diversity** - Max 2 stories per source. Current source counts:\n\n  {{ JSON.stringify($json.previouslySelectedSources, null, 2) }}\n\n  ### Rule 4: Already Selected Today\n  Do NOT select a story already selected in Slots 1-2:\n\n  {{ JSON.stringify($json.previouslySelectedIds, null, 2) }}\n\n  --\n\n  ## CANDIDATES ({{ $json.candidateCount }} stories)\n\n  Each candidate includes storyID, headline, source_name, credibility_score (1-5, 5=best), date_og_published, and primary_company. \n\n  Select from them here:\n  {{ JSON.stringify($json.candidates, null, 2) }}\n\n  ## SELECTION OUTPUT\n  Return ONLY valid JSON with no additional text:\n    {\n      \"selected_id\": \"storyID\",\n      \"selected_headline\": \"headline text\",\n      \"selected_source\": \"source_name\",\n      \"selected_company\": \"primary company featured (e.g., OpenAI, Nvidia, Google) or null if no specific company\",\n      \"credibility_score\": number,\n      \"reasoning\": \"2-3 sentences explaining why this story was selected and how it satisfies all editorial rules\"\n    }"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f31652c5-7f92-41ad-aec7-b6bbb309c250",
+      "name": "Slot 3 Agent",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -96
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are selecting ONE story for **Slot 4** of a daily AI newsletter.\n\n  ## Slot 4 should be:\n  Company-specific news from a **less known company** (not tier 1 like OpenAI, Google, Meta, Nvidia, Microsoft, Amazon, Apple). It's okay if the company isn't recognizable, but the news should be interesting/impactful:\n  - Product feature launch\n  - Big fundraise\n  - Major partnership or acquisition\n  - Significant growth milestone\n\n  ## SOURCE CREDIBILITY GUIDE\n  When multiple stories compete, use source credibility as a weighted factor (not disqualifying):\n  | Tier | Sources | Notes |\n  |------|---------|-------|\n  | Tier 1 | WSJ, NYT, Bloomberg, Reuters, Financial Times, The Information, Wired, MIT Tech Review, Harvard Business Review | Most authoritative |\n  | Tier 2 | TechCrunch, The Verge, Ars Technica, VentureBeat, CNBC, Business Insider, Forbes, Fortune | Strong tech coverage |\n  | Tier 3 | Axios, Semafor, Quartz, Fast Company, Inc., Entrepreneur | Good business context |\n  | Tier 4 | ZDNet, CIO, InfoWorld, eWeek, SDxCentral | IT/enterprise focus |\n  | Tier 5 | Company blogs, press releases, niche outlets | Use when story is exclusive |\n\n  ## STORIES TO AVOID - DO NOT SELECT THESE TYPES\n  - Leadership shuffles / executive moves (unless major strategic shift)\n  - Gossip / rumors / speculation\n  - Overly technical content without business relevance\n  - Stories already widely covered by tier 1 sources (look for the emerging story)\n  - Skip any stories about AI-generated imagery, deepfakes, or explicit content involving minors or children.   \n\n  ## EDITORIAL RULES - YOU MUST FOLLOW ALL OF THESE\n\n  ### Rule 1: Recent Headlines (Last 14 Days)\n**CRITICAL: Semantic Deduplication** - Do NOT select any story about the same topic/event as these recent headlines. Consider headlines as duplicates if they cover:\n- The same announcement, deal, acquisition, or news event\n- The same company action with different wording\n- The same research study, product launch, or partnership\n\nEven if headlines are worded differently, if they're about the SAME underlying news, treat them as duplicates.\n\n{{ JSON.stringify($json.recentHeadlines, null, 2) }}\n\n### Rule 2: No Repeat Companies\n  Do NOT select a story about a company already selected in today's issue:\n\n  {{ JSON.stringify($json.previouslySelectedCompanies, null, 2) }}\n\n  ### Rule 3: Source Diversity\n  Max 2 stories per source per day. Current source counts:\n\n  {{ JSON.stringify($json.previouslySelectedSources, null, 2) }}\n\n  ### Rule 4: Already Selected Today\n  Do NOT select a story already selected in Slots 1-3:\n\n  {{ JSON.stringify($json.previouslySelectedIds, null, 2) }}\n\n  ---\n\n  ## CANDIDATES ({{ $json.candidateCount }} stories)\n\n  {{ JSON.stringify($json.candidates, null, 2) }}\n\n  ## SELECTION OUTPUT\n  Return ONLY valid JSON (no markdown, no explanation):\n  {\n    \"slot\": 4,\n    \"selected_id\": \"<storyId of chosen story>\",\n    \"selected_headline\": \"<headline>\",\n    \"selected_source\": \"<source name>\",\n    \"selected_company\": \"<primary company mentioned, or null>\",\n    \"selection_reasoning\": \"<1-2 sentences explaining why this story fits Slot 4>\"\n  }\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "016b6732-415f-4b94-a5d4-5f57ed129f3e",
+      "name": "Slot 4 Agent",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        272
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=  You are selecting ONE story for **Slot 5** of a daily AI newsletter.\n\n## Slot 5 should be:\n- A **consumer AI interest piece** \n- something that's \"nice to know\" vs \"need to know.\" NOT business, finance, or tech-focused.\n- Instead, focus on:\n  - AI's impact on humanity\n  - AI in everyday life (health, creativity, relationships, entertainment)\n  - Human interest stories about AI\n  - Cultural/societal implications of AI\n  - AI helping solve real-world problems for regular people\n\nThis is the \"feel good\" or \"thought-provoking\" story that resonates beyond the business audience.\n\n  ## SOURCE CREDIBILITY GUIDE\n  When multiple stories compete, use source credibility as a weighted factor (not disqualifying):\n  | Tier | Sources | Notes |\n  |------|---------|-------|\n  | Tier 1 | WSJ, NYT, Bloomberg, Reuters, Financial Times, The Information, Wired, MIT Tech Review, Harvard Business Review | Most authoritative |\n  | Tier 2 | TechCrunch, The Verge, Ars Technica, VentureBeat, CNBC, Business Insider, Forbes, Fortune | Strong tech coverage |\n  | Tier 3 | Axios, Semafor, Quartz, Fast Company, Inc., Entrepreneur | Good business context |\n  | Tier 4 | ZDNet, CIO, InfoWorld, eWeek, SDxCentral | IT/enterprise focus |\n  | Tier 5 | Company blogs, press releases, niche outlets | Use when story is exclusive |\n\n  ## STORIES TO AVOID - DO NOT SELECT THESE TYPES\n  - Leadership shuffles / executive moves\n  - Business deals, fundraises, acquisitions (that's Slot 4 territory)\n  - Overly technical content (model updates, benchmarks, algorithms)\n  - Enterprise/B2B focused stories\n  - Stock market / financial news\n  - Skip any stories about AI-generated imagery, deepfakes, or explicit content involving minors or children.   \n\n  ## EDITORIAL RULES - YOU MUST FOLLOW ALL OF THESE\n\n  ### Rule 1: Recent Headlines (Last 14 Days)\n**CRITICAL: Semantic Deduplication** - Do NOT select any story about the same topic/event as these recent headlines. Consider headlines as duplicates if they cover:\n- The same announcement, deal, acquisition, or news event\n- The same company action with different wording\n- The same research study, product launch, or partnership\n\nEven if headlines are worded differently, if they're about the SAME underlying news, treat them as duplicates.\n\n{{ JSON.stringify($json.recentHeadlines, null, 2) }}\n\n### Rule 2: No Repeat Companies\n  Do NOT select a story about a company already selected in today's issue:\n\n  {{ JSON.stringify($json.previouslySelectedCompanies, null, 2) }}\n\n  ### Rule 3: Source Diversity\n  Max 2 stories per source per day. Current source counts:\n\n  {{ JSON.stringify($json.previouslySelectedSources, null, 2) }}\n\n  ### Rule 4: Already Selected Today\n  Do NOT select a story already selected in Slots 1-4:\n\n  {{ JSON.stringify($json.previouslySelectedIds, null, 2) }}\n\n  ---\n\n  ## CANDIDATES ({{ $json.candidateCount }} stories)\n\n  {{ JSON.stringify($json.candidates, null, 2) }}\n\n  ## SELECTION OUTPUT\n  Return ONLY valid JSON (no markdown, no explanation):\n  {\n    \"slot\": 5,\n    \"selected_id\": \"<storyId of chosen story>\",\n    \"selected_headline\": \"<headline>\",\n    \"selected_source\": \"<source name>\",\n    \"selected_company\": \"<primary company mentioned, or null>\",\n    \"selection_reasoning\": \"<1-2 sentences explaining why this story fits Slot 5>\"\n  }\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "28ff94ca-67c0-4342-b7b7-9126931ad409",
+      "name": "Slot 5 Agent",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        656
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remove Slot 2 Stories - Parse agent output and accumulate tracking\nconst agentOutput = $input.first().json;\nconst prevData = $('Remove Slot 1 Stories').first().json;\n\n// Get candidates to look up pivotId\nconst prepContext = $('Prepare Slot 2 Context').first().json;\nconst candidates = prepContext.candidates || [];\n\n// Parse the agent's response - handle Claude's content array format\nlet selection;\ntry {\n  if (agentOutput.content && Array.isArray(agentOutput.content) && agentOutput.content[0]?.text) {\n    const responseText = agentOutput.content[0].text;\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.selected_id) {\n    selection = agentOutput;\n  }\n  else if (typeof agentOutput.text === 'string') {\n    const jsonMatch = agentOutput.text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.output) {\n    const responseText = typeof agentOutput.output === 'string' ? agentOutput.output : JSON.stringify(agentOutput.output);\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n} catch (e) {\n  console.error('Error parsing Slot 2 agent output:', e);\n  selection = null;\n}\n\nif (!selection || !selection.selected_id) {\n  selection = {\n    selected_id: 'unknown',\n    selected_headline: 'Parsing failed',\n    selected_source: 'Unknown',\n    selected_company: null,\n    credibility_score: 0,\n    reasoning: 'Failed to parse agent response'\n  };\n}\n\n// Look up pivotId from candidates based on selected_id\nconst matchingCandidate = candidates.find(c => c.storyID === selection.selected_id);\nselection.pivotId = matchingCandidate?.pivotId || '';\n\n// Accumulate tracking data\nconst selectedIds = [...(prevData.previouslySelectedIds || []), selection.selected_id];\nconst selectedCompanies = [...(prevData.previouslySelectedCompanies || [])];\nif (selection.selected_company) {\n  selectedCompanies.push(selection.selected_company);\n}\nconst selectedSources = { ...(prevData.previouslySelectedSources || {}) };\nif (selection.selected_source) {\n  selectedSources[selection.selected_source] = (selectedSources[selection.selected_source] || 0) + 1;\n}\n\nreturn [{\n  json: {\n    slotNumber: 2,\n    selection: selection,\n    previouslySelectedIds: selectedIds,\n    previouslySelectedCompanies: selectedCompanies,\n    previouslySelectedSources: selectedSources\n  }\n}];"
+      },
+      "id": "eecbe635-3e67-45a2-8619-54b94d4fe1ea",
+      "name": "Remove Slot 2 Stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "filterByFormula": "=AND({slot}=\"1\", IS_AFTER({date_og_published}, DATEADD(NOW(), IF(OR(WEEKDAY(NOW())=0, WEEKDAY(NOW())=1), -72, -24), 'hours')))",
+        "options": {}
+      },
+      "id": "pull-slot-1-candidates",
+      "name": "Pull Slot 1 Candidates",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        -752
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "filterByFormula": "=AND({slot}=\"2\", IS_AFTER({date_og_published}, DATEADD(NOW(), IF(OR(WEEKDAY(NOW())=0, WEEKDAY(NOW())=1), -72, -48), 'hours')))",
+        "options": {}
+      },
+      "id": "pull-slot-2-candidates",
+      "name": "Pull Slot 2 Candidates",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        656,
+        -368
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "filterByFormula": "=AND({slot}=\"3\", IS_AFTER({date_og_published}, DATEADD(NOW(), -7, 'days')))",
+        "options": {}
+      },
+      "id": "pull-slot-3-candidates",
+      "name": "Pull Slot 3 Candidates",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        640,
+        -80
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "filterByFormula": "=AND({slot}=\"4\", IS_AFTER({date_og_published}, DATEADD(NOW(), IF(OR(WEEKDAY(NOW())=0, WEEKDAY(NOW())=1), -72, -48), 'hours')))",
+        "options": {}
+      },
+      "id": "pull-slot-4-candidates",
+      "name": "Pull Slot 4 Candidates",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        160
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "filterByFormula": "=AND({slot}=\"5\", IS_AFTER({date_og_published}, DATEADD(NOW(), -7, 'days')))",
+        "options": {}
+      },
+      "id": "pull-slot-5-candidates",
+      "name": "Pull Slot 5 Candidates",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        624
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Slot 1 Context - Merge candidates with ALL recent issues for deduplication\n// Note: Source credibility is handled by the agent's built-in guide\n\nconst candidates = $('Pull Slot 1 Candidates').all();\nconst recentIssues = $('Pull Recent Issues').all(); // Get ALL recent issues, not just yesterday\n\n// Helper to extract source from URL\nconst extractSourceFromUrl = (url) => {\n  if (!url) return 'Unknown';\n  try {\n    const hostname = new URL(url).hostname.replace('www.', '');\n    const domainMap = {\n      'techcrunch.com': 'TechCrunch',\n      'theverge.com': 'The Verge',\n      'bloomberg.com': 'Bloomberg',\n      'wsj.com': 'WSJ',\n      'nytimes.com': 'NYTimes',\n      'cnbc.com': 'CNBC',\n      'semafor.com': 'Semafor',\n      'reuters.com': 'Reuters',\n      'wired.com': 'Wired',\n      'arstechnica.com': 'Ars Technica'\n    };\n    return domainMap[hostname] || hostname.split('.')[0];\n  } catch (e) {\n    return 'Unknown';\n  }\n};\n\n// Format candidates for the agent\nconst formattedCandidates = candidates.map(c => {\n  const fields = c.json.fields || c.json;\n  const url = fields.core_url || fields.url || fields.decorated_url || '';\n  const sourceFromField = fields.source_id || fields.source_name || fields.source;\n  const source = sourceFromField || extractSourceFromUrl(url);\n  \n  return {\n    storyID: fields.storyID || fields.story_id || fields.article_id || c.json.id,\n    headline: fields.headline || fields.ai_headline || 'Untitled',\n    source_name: source,\n    date_og_published: fields.date_og_published || fields.published_date || null,\n    primary_company: fields.primary_company || fields.company || null,\n    pivotId: fields.pivotId || fields.pivot_id || null,\n    url: url\n  };\n});\n\n// Aggregate ALL headlines and story IDs from ALL recent issues\nconst recentHeadlines = [];\nconst recentStoryIds = [];\nlet yesterdaySlot1Company = null;\n\nrecentIssues.forEach((issue, index) => {\n  const yFields = issue?.json?.fields || issue?.json || {};\n  \n  // Get yesterday's (most recent) slot 1 company for rotation rule\n  if (index === 0) {\n    yesterdaySlot1Company = yFields.slot_1_company || null;\n  }\n  \n  // Collect all headlines\n  [yFields.slot_1_headline, yFields.slot_2_headline, yFields.slot_3_headline,\n   yFields.slot_4_headline, yFields.slot_5_headline].filter(Boolean).forEach(h => {\n    if (!recentHeadlines.includes(h)) recentHeadlines.push(h);\n  });\n  \n  // Collect all story IDs\n  [yFields.slot_1_storyId, yFields.slot_2_storyId, yFields.slot_3_storyId,\n   yFields.slot_4_storyId, yFields.slot_5_storyId].filter(Boolean).forEach(id => {\n    if (!recentStoryIds.includes(id)) recentStoryIds.push(id);\n  });\n});\n\nreturn [{\n  json: {\n    candidates: formattedCandidates,\n    candidateCount: formattedCandidates.length,\n    recentHeadlines: recentHeadlines,\n    recentStoryIds: recentStoryIds,\n    yesterdayHeadlines: recentHeadlines, // Keep for backward compatibility\n    yesterdayStoryIds: recentStoryIds,    // Keep for backward compatibility\n    yesterdaySlot1Company,\n    previouslySelectedIds: [],\n    previouslySelectedCompanies: [],\n    previouslySelectedSources: {},\n    recentIssueCount: recentIssues.length\n  }\n}];"
+      },
+      "id": "prepare-slot-1-context",
+      "name": "Prepare Slot 1 Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Slot 2 Context - Merge candidates with tracking data from Slot 1\nconst candidates = $('Pull Slot 2 Candidates').all();\nconst recentIssues = $('Pull Recent Issues').all(); // Get ALL recent issues\nconst prevSlotData = $('Remove Slot 1 Stories').first().json;\n\nconst extractSourceFromUrl = (url) => {\n  if (!url) return 'Unknown';\n  try {\n    const hostname = new URL(url).hostname.replace('www.', '');\n    const domainMap = {\n      'techcrunch.com': 'TechCrunch', 'theverge.com': 'The Verge',\n      'bloomberg.com': 'Bloomberg', 'wsj.com': 'WSJ', 'nytimes.com': 'NYTimes',\n      'cnbc.com': 'CNBC', 'semafor.com': 'Semafor', 'reuters.com': 'Reuters',\n      'wired.com': 'Wired', 'arstechnica.com': 'Ars Technica'\n    };\n    return domainMap[hostname] || hostname.split('.')[0];\n  } catch (e) { return 'Unknown'; }\n};\n\nconst formattedCandidates = candidates.map(c => {\n  const fields = c.json.fields || c.json;\n  const url = fields.core_url || fields.url || fields.decorated_url || '';\n  const sourceFromField = fields.source_id || fields.source_name || fields.source;\n  const source = sourceFromField || extractSourceFromUrl(url);\n  return {\n    storyID: fields.storyID || fields.story_id || fields.article_id || c.json.id,\n    headline: fields.headline || fields.ai_headline || 'Untitled',\n    source_name: source,\n    date_og_published: fields.date_og_published || fields.published_date || null,\n    primary_company: fields.primary_company || fields.company || null,\n    pivotId: fields.pivotId || fields.pivot_id || null,\n    url: url\n  };\n});\n\n// Aggregate ALL headlines and story IDs from ALL recent issues\nconst recentHeadlines = [];\nconst recentStoryIds = [];\n\nrecentIssues.forEach((issue) => {\n  const yFields = issue?.json?.fields || issue?.json || {};\n  [yFields.slot_1_headline, yFields.slot_2_headline, yFields.slot_3_headline,\n   yFields.slot_4_headline, yFields.slot_5_headline].filter(Boolean).forEach(h => {\n    if (!recentHeadlines.includes(h)) recentHeadlines.push(h);\n  });\n  [yFields.slot_1_storyId, yFields.slot_2_storyId, yFields.slot_3_storyId,\n   yFields.slot_4_storyId, yFields.slot_5_storyId].filter(Boolean).forEach(id => {\n    if (!recentStoryIds.includes(id)) recentStoryIds.push(id);\n  });\n});\n\nreturn [{\n  json: {\n    slotNumber: 2,\n    candidates: formattedCandidates,\n    candidateCount: formattedCandidates.length,\n    recentHeadlines: recentHeadlines,\n    recentStoryIds: recentStoryIds,\n    yesterdayHeadlines: recentHeadlines,\n    yesterdayStoryIds: recentStoryIds,\n    previouslySelectedIds: prevSlotData.previouslySelectedIds || [],\n    previouslySelectedCompanies: prevSlotData.previouslySelectedCompanies || [],\n    previouslySelectedSources: prevSlotData.previouslySelectedSources || {},\n    recentIssueCount: recentIssues.length\n  }\n}];"
+      },
+      "id": "prepare-slot-2-context",
+      "name": "Prepare Slot 2 Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Slot 3 Context - Merge candidates with tracking data from Slot 2\nconst candidates = $('Pull Slot 3 Candidates').all();\nconst recentIssues = $('Pull Recent Issues').all(); // Get ALL recent issues\nconst prevSlotData = $('Remove Slot 2 Stories').first().json;\n\nconst extractSourceFromUrl = (url) => {\n  if (!url) return 'Unknown';\n  try {\n    const hostname = new URL(url).hostname.replace('www.', '');\n    const domainMap = {\n      'techcrunch.com': 'TechCrunch', 'theverge.com': 'The Verge',\n      'bloomberg.com': 'Bloomberg', 'wsj.com': 'WSJ', 'nytimes.com': 'NYTimes',\n      'cnbc.com': 'CNBC', 'semafor.com': 'Semafor', 'reuters.com': 'Reuters',\n      'wired.com': 'Wired', 'arstechnica.com': 'Ars Technica'\n    };\n    return domainMap[hostname] || hostname.split('.')[0];\n  } catch (e) { return 'Unknown'; }\n};\n\nconst formattedCandidates = candidates.map(c => {\n  const fields = c.json.fields || c.json;\n  const url = fields.core_url || fields.url || fields.decorated_url || '';\n  const sourceFromField = fields.source_id || fields.source_name || fields.source;\n  const source = sourceFromField || extractSourceFromUrl(url);\n  return {\n    storyID: fields.storyID || fields.story_id || fields.article_id || c.json.id,\n    headline: fields.headline || fields.ai_headline || 'Untitled',\n    source_name: source,\n    date_og_published: fields.date_og_published || fields.published_date || null,\n    primary_company: fields.primary_company || fields.company || null,\n    pivotId: fields.pivotId || fields.pivot_id || null,\n    url: url\n  };\n});\n\n// Aggregate ALL headlines and story IDs from ALL recent issues\nconst recentHeadlines = [];\nconst recentStoryIds = [];\n\nrecentIssues.forEach((issue) => {\n  const yFields = issue?.json?.fields || issue?.json || {};\n  [yFields.slot_1_headline, yFields.slot_2_headline, yFields.slot_3_headline,\n   yFields.slot_4_headline, yFields.slot_5_headline].filter(Boolean).forEach(h => {\n    if (!recentHeadlines.includes(h)) recentHeadlines.push(h);\n  });\n  [yFields.slot_1_storyId, yFields.slot_2_storyId, yFields.slot_3_storyId,\n   yFields.slot_4_storyId, yFields.slot_5_storyId].filter(Boolean).forEach(id => {\n    if (!recentStoryIds.includes(id)) recentStoryIds.push(id);\n  });\n});\n\nreturn [{\n  json: {\n    slotNumber: 3,\n    candidates: formattedCandidates,\n    candidateCount: formattedCandidates.length,\n    recentHeadlines: recentHeadlines,\n    recentStoryIds: recentStoryIds,\n    yesterdayHeadlines: recentHeadlines,\n    yesterdayStoryIds: recentStoryIds,\n    previouslySelectedIds: prevSlotData.previouslySelectedIds || [],\n    previouslySelectedCompanies: prevSlotData.previouslySelectedCompanies || [],\n    previouslySelectedSources: prevSlotData.previouslySelectedSources || {},\n    recentIssueCount: recentIssues.length\n  }\n}];"
+      },
+      "id": "prepare-slot-3-context",
+      "name": "Prepare Slot 3 Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Slot 4 Context - Merge candidates with tracking data from Slot 3\nconst candidates = $('Pull Slot 4 Candidates').all();\nconst recentIssues = $('Pull Recent Issues').all(); // Get ALL recent issues\nconst prevSlotData = $('Remove Slot 3 Stories').first().json;\n\nconst extractSourceFromUrl = (url) => {\n  if (!url) return 'Unknown';\n  try {\n    const hostname = new URL(url).hostname.replace('www.', '');\n    const domainMap = {\n      'techcrunch.com': 'TechCrunch', 'theverge.com': 'The Verge',\n      'bloomberg.com': 'Bloomberg', 'wsj.com': 'WSJ', 'nytimes.com': 'NYTimes',\n      'cnbc.com': 'CNBC', 'semafor.com': 'Semafor', 'reuters.com': 'Reuters',\n      'wired.com': 'Wired', 'arstechnica.com': 'Ars Technica'\n    };\n    return domainMap[hostname] || hostname.split('.')[0];\n  } catch (e) { return 'Unknown'; }\n};\n\nconst formattedCandidates = candidates.map(c => {\n  const fields = c.json.fields || c.json;\n  const url = fields.core_url || fields.url || fields.decorated_url || '';\n  const sourceFromField = fields.source_id || fields.source_name || fields.source;\n  const source = sourceFromField || extractSourceFromUrl(url);\n  return {\n    storyID: fields.storyID || fields.story_id || fields.article_id || c.json.id,\n    headline: fields.headline || fields.ai_headline || 'Untitled',\n    source_name: source,\n    date_og_published: fields.date_og_published || fields.published_date || null,\n    primary_company: fields.primary_company || fields.company || null,\n    pivotId: fields.pivotId || fields.pivot_id || null,\n    url: url\n  };\n});\n\n// Aggregate ALL headlines and story IDs from ALL recent issues\nconst recentHeadlines = [];\nconst recentStoryIds = [];\n\nrecentIssues.forEach((issue) => {\n  const yFields = issue?.json?.fields || issue?.json || {};\n  [yFields.slot_1_headline, yFields.slot_2_headline, yFields.slot_3_headline,\n   yFields.slot_4_headline, yFields.slot_5_headline].filter(Boolean).forEach(h => {\n    if (!recentHeadlines.includes(h)) recentHeadlines.push(h);\n  });\n  [yFields.slot_1_storyId, yFields.slot_2_storyId, yFields.slot_3_storyId,\n   yFields.slot_4_storyId, yFields.slot_5_storyId].filter(Boolean).forEach(id => {\n    if (!recentStoryIds.includes(id)) recentStoryIds.push(id);\n  });\n});\n\nreturn [{\n  json: {\n    slotNumber: 4,\n    candidates: formattedCandidates,\n    candidateCount: formattedCandidates.length,\n    recentHeadlines: recentHeadlines,\n    recentStoryIds: recentStoryIds,\n    yesterdayHeadlines: recentHeadlines,\n    yesterdayStoryIds: recentStoryIds,\n    previouslySelectedIds: prevSlotData.previouslySelectedIds || [],\n    previouslySelectedCompanies: prevSlotData.previouslySelectedCompanies || [],\n    previouslySelectedSources: prevSlotData.previouslySelectedSources || {},\n    recentIssueCount: recentIssues.length\n  }\n}];"
+      },
+      "id": "prepare-slot-4-context",
+      "name": "Prepare Slot 4 Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Slot 5 Context - Merge candidates with tracking data from Slot 4\nconst candidates = $('Pull Slot 5 Candidates').all();\nconst recentIssues = $('Pull Recent Issues').all(); // Get ALL recent issues\nconst prevSlotData = $('Remove Slot 4 Stories').first().json;\n\nconst extractSourceFromUrl = (url) => {\n  if (!url) return 'Unknown';\n  try {\n    const hostname = new URL(url).hostname.replace('www.', '');\n    const domainMap = {\n      'techcrunch.com': 'TechCrunch', 'theverge.com': 'The Verge',\n      'bloomberg.com': 'Bloomberg', 'wsj.com': 'WSJ', 'nytimes.com': 'NYTimes',\n      'cnbc.com': 'CNBC', 'semafor.com': 'Semafor', 'reuters.com': 'Reuters',\n      'wired.com': 'Wired', 'arstechnica.com': 'Ars Technica'\n    };\n    return domainMap[hostname] || hostname.split('.')[0];\n  } catch (e) { return 'Unknown'; }\n};\n\nconst formattedCandidates = candidates.map(c => {\n  const fields = c.json.fields || c.json;\n  const url = fields.core_url || fields.url || fields.decorated_url || '';\n  const sourceFromField = fields.source_id || fields.source_name || fields.source;\n  const source = sourceFromField || extractSourceFromUrl(url);\n  return {\n    storyID: fields.storyID || fields.story_id || fields.article_id || c.json.id,\n    headline: fields.headline || fields.ai_headline || 'Untitled',\n    source_name: source,\n    date_og_published: fields.date_og_published || fields.published_date || null,\n    primary_company: fields.primary_company || fields.company || null,\n    pivotId: fields.pivotId || fields.pivot_id || null,\n    url: url\n  };\n});\n\n// Aggregate ALL headlines and story IDs from ALL recent issues\nconst recentHeadlines = [];\nconst recentStoryIds = [];\n\nrecentIssues.forEach((issue) => {\n  const yFields = issue?.json?.fields || issue?.json || {};\n  [yFields.slot_1_headline, yFields.slot_2_headline, yFields.slot_3_headline,\n   yFields.slot_4_headline, yFields.slot_5_headline].filter(Boolean).forEach(h => {\n    if (!recentHeadlines.includes(h)) recentHeadlines.push(h);\n  });\n  [yFields.slot_1_storyId, yFields.slot_2_storyId, yFields.slot_3_storyId,\n   yFields.slot_4_storyId, yFields.slot_5_storyId].filter(Boolean).forEach(id => {\n    if (!recentStoryIds.includes(id)) recentStoryIds.push(id);\n  });\n});\n\nreturn [{\n  json: {\n    slotNumber: 5,\n    candidates: formattedCandidates,\n    candidateCount: formattedCandidates.length,\n    recentHeadlines: recentHeadlines,\n    recentStoryIds: recentStoryIds,\n    yesterdayHeadlines: recentHeadlines,\n    yesterdayStoryIds: recentStoryIds,\n    previouslySelectedIds: prevSlotData.previouslySelectedIds || [],\n    previouslySelectedCompanies: prevSlotData.previouslySelectedCompanies || [],\n    previouslySelectedSources: prevSlotData.previouslySelectedSources || {},\n    recentIssueCount: recentIssues.length\n  }\n}];"
+      },
+      "id": "prepare-slot-5-context",
+      "name": "Prepare Slot 5 Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        672
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "merge-slot-1-inputs",
+      "name": "Merge Slot 1 Inputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        944,
+        -816
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "679f53ef-b3fd-4a07-ac8c-249ce590f8da",
+      "name": "Merge Slot 2 Inputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        960,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1008,
+        -112
+      ],
+      "id": "a2353b14-2bdb-4d15-98ea-70e5a73f6567",
+      "name": "Merge Slot 3 Inputs"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1040,
+        256
+      ],
+      "id": "b92d704f-6c40-4565-9c9b-18990738e5b1",
+      "name": "Merge Slot 4 Inputs"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1040,
+        672
+      ],
+      "id": "4deff55b-20c4-4a6a-8285-7fcf9b6fb064",
+      "name": "Merge Slot 5 Inputs"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remove Slot 1 Stories - Parse agent output and track selection\nconst agentOutput = $input.first().json;\n\n// Get candidates to look up pivotId\nconst prepContext = $('Prepare Slot 1 Context').first().json;\nconst candidates = prepContext.candidates || [];\n\n// Parse the agent's response - handle Claude's content array format\nlet selection;\ntry {\n  if (agentOutput.content && Array.isArray(agentOutput.content) && agentOutput.content[0]?.text) {\n    const responseText = agentOutput.content[0].text;\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.selected_id) {\n    selection = agentOutput;\n  }\n  else if (typeof agentOutput.text === 'string') {\n    const jsonMatch = agentOutput.text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n  else if (agentOutput.output) {\n    const responseText = typeof agentOutput.output === 'string' ? agentOutput.output : JSON.stringify(agentOutput.output);\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      selection = JSON.parse(jsonMatch[0]);\n    }\n  }\n} catch (e) {\n  console.error('Error parsing Slot 1 agent output:', e);\n  selection = null;\n}\n\nif (!selection || !selection.selected_id) {\n  selection = {\n    selected_id: 'unknown',\n    selected_headline: 'Parsing failed',\n    selected_source: 'Unknown',\n    selected_company: null,\n    credibility_score: 0,\n    reasoning: 'Failed to parse agent response'\n  };\n}\n\n// Look up pivotId from candidates based on selected_id\nconst matchingCandidate = candidates.find(c => c.storyID === selection.selected_id);\nselection.pivotId = matchingCandidate?.pivotId || '';\n\n// Build tracking data for subsequent slots\nconst selectedIds = [selection.selected_id];\nconst selectedCompanies = selection.selected_company ? [selection.selected_company] : [];\nconst selectedSources = {};\nif (selection.selected_source) {\n  selectedSources[selection.selected_source] = 1;\n}\n\nreturn [{\n  json: {\n    slotNumber: 1,\n    selection: selection,\n    previouslySelectedIds: selectedIds,\n    previouslySelectedCompanies: selectedCompanies,\n    previouslySelectedSources: selectedSources\n  }\n}];"
+      },
+      "id": "bae0051c-ab60-4d64-ac3e-02cc7da35c60",
+      "name": "Remove Slot 1 Stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1936,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 2 * * 2-6 "
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -64,
+        -64
+      ],
+      "id": "7f0c4df7-9a14-4ab2-b0ff-5ec29d47603b",
+      "name": "Schedule Trigger 9:15pm ET"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Assembly Code": {
+      "main": [
+        [
+          {
+            "node": "Subject Line Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subject Line Generator": {
+      "main": [
+        [
+          {
+            "node": "Prepare Write Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Write Data": {
+      "main": [
+        [
+          {
+            "node": "Write AI Editor - Selected Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 5 Agent": {
+      "main": [
+        [
+          {
+            "node": "Assembly Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Slot 1 Context": {
+      "main": [
+        [
+          {
+            "node": "Slot 1 - Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Slot 2 Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 2 Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Slot 3 Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 3 Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Slot 4 Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 4 Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Slot 5 Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 5 Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Slot 1 Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 1 Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Recent Issues": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 1 Inputs",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Merge Slot 2 Inputs",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Merge Slot 3 Inputs",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Merge Slot 4 Inputs",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Merge Slot 5 Inputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Slot 1 Inputs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slot 1 Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Slot 2 Inputs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slot 2 Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Slot 3 Inputs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slot 3 Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Slot 4 Inputs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slot 4 Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Slot 5 Inputs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slot 5 Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 1 - Agent": {
+      "main": [
+        [
+          {
+            "node": "Remove Slot 1 Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Slot 1 Stories": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 2 Inputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Prepare Slot 2 Context": {
+      "main": [
+        [
+          {
+            "node": "Slot 2 Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 2 Agent": {
+      "main": [
+        [
+          {
+            "node": "Remove Slot 2 Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Slot 2 Stories": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 3 Inputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Prepare Slot 3 Context": {
+      "main": [
+        [
+          {
+            "node": "Slot 3 Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 3 Agent": {
+      "main": [
+        [
+          {
+            "node": "Remove Slot 3 Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Slot 3 Stories": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 4 Inputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Prepare Slot 4 Context": {
+      "main": [
+        [
+          {
+            "node": "Slot 4 Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 4 Agent": {
+      "main": [
+        [
+          {
+            "node": "Remove Slot 4 Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Slot 4 Stories": {
+      "main": [
+        [
+          {
+            "node": "Merge Slot 5 Inputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Prepare Slot 5 Context": {
+      "main": [
+        [
+          {
+            "node": "Slot 5 Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger 9:15pm ET": {
+      "main": [
+        [
+          {
+            "node": "Pull Recent Issues",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Slot 1 Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Slot 2 Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Slot 3 Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Slot 4 Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Slot 5 Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "62e66553-db4a-4e86-818d-c22b1e1688e0",
+  "meta": {
+    "instanceId": "bbbd911fcbd9efe5def160e3f7a7b14baf0691f4a0ba4531005de9dea9d03f69"
+  },
+  "id": "SZmPztKNEmisG3Zf",
+  "tags": []
+}

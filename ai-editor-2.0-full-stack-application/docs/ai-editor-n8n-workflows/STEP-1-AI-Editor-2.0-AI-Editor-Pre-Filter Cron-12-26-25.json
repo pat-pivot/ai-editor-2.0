@@ -1,0 +1,2003 @@
+{
+  "name": "STEP 1 AI Editor 2.0 - AI Editor Pre-Filter Cron",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Enhanced Prepare Candidates with dedupe, source scores, and slot eligibility\nconst freshCandidates = $('Pull Fresh Candidates').all();\nconst queuedStories = $('Pull Queued Stories').all();\nconst yesterdayIssue = $('Pull Yesterday Issue').first()?.json || {};\nconst sourceScores = $('Pull Source Scores').all();\nconst articlesSource = $('Pull Articles Source').all();\n\n// Build source score lookup\nconst scoreLookup = {};\nfor (const s of sourceScores) {\n  const name = (s.json.source_name || s.json.name || '').toLowerCase();\n  scoreLookup[name] = s.json.credibility_score || s.json.score || 2;\n}\n\n// Build articles lookup by pivotId for source_id and original_url\nconst articlesLookup = {};\nfor (const a of articlesSource) {\n  const pivotId = a.json.pivotId || a.json.pivot_Id;\n  if (pivotId) {\n    articlesLookup[pivotId] = {\n      source_id: a.json.source_id || '',\n      original_url: a.json.original_url || ''\n    };\n  }\n}\n\n// Get yesterday's story IDs to exclude\nconst yesterdayStoryIds = new Set();\nfor (let i = 1; i <= 5; i++) {\n  const id = yesterdayIssue[`slot_${i}_story_id`];\n  if (id) yesterdayStoryIds.add(id);\n}\n\nconst now = new Date();\nconst candidates = [];\n\n// Process fresh candidates\nfor (const item of freshCandidates) {\n  const story = item.json;\n  const storyId = story.storyID || story.pivotId || story.pivot_Id || story.story_id;\n  const pivotId = story.pivotId || story.pivot_Id || story.storyID || story.story_id;\n\n  // Skip if no ID or in yesterday's issue\n  if (!storyId) continue;\n  if (yesterdayStoryIds.has(storyId)) continue;\n\n  // Calculate freshness\n  const published = new Date(story.date_og_published || story.date_published);\n  const freshnessHours = Math.round((now - published) / (1000 * 60 * 60));\n\n  // Assign eligible slots based on freshness\n  const eligibleSlots = [];\n  if (freshnessHours <= 24) eligibleSlots.push(1, 2, 3, 4, 5);\n  else if (freshnessHours <= 48) eligibleSlots.push(2, 3, 4, 5);\n  else if (freshnessHours <= 72) eligibleSlots.push(3, 4, 5);\n  else if (freshnessHours <= 168) eligibleSlots.push(3, 5);\n\n  if (eligibleSlots.length === 0) continue;\n\n  // Get source_id and original_url from articles lookup\n  const articleData = articlesLookup[pivotId] || {};\n  const source_id = articleData.source_id || story.source_id || '';\n  const original_url = story.original_url || articleData.original_url || '';\n\n  // Lookup source score\n  const sourceScore = scoreLookup[source_id.toLowerCase()] || 2;\n\n  // Build summary from AI-decorated fields (not raw markdown)\n  const summary = [\n    story.ai_dek,\n    story.ai_bullet_1,\n    story.ai_bullet_2,\n    story.ai_bullet_3\n  ].filter(Boolean).join(' | ');\n\n  candidates.push({\n    json: {\n      article_id: storyId,\n      story_id: storyId,\n      pivot_id: pivotId,\n      headline: story.ai_headline || story.headline || 'No headline',\n      ai_dek: story.ai_dek || '',\n      ai_bullet_1: story.ai_bullet_1 || '',\n      ai_bullet_2: story.ai_bullet_2 || '',\n      ai_bullet_3: story.ai_bullet_3 || '',\n      summary: summary,\n      original_url: original_url,\n      source_id: source_id,\n      source_score: sourceScore,\n      date_og_published: story.date_og_published || story.date_published || null,\n      date_ingested: story.date_ingested || null,\n      freshness_hours: freshnessHours,\n      eligible_slots: eligibleSlots,\n      from_queue: false\n    }\n  });\n}\n\n// Process queued stories (bypass freshness, use pre-assigned slot)\nfor (const item of queuedStories) {\n  const story = item.json;\n  const storyId = story.storyID || story.story_id;\n  const pivotId = story.pivotId || story.pivot_Id || storyId;\n\n  // Skip if no ID, in yesterday's issue, or expired\n  if (!storyId) continue;\n  if (yesterdayStoryIds.has(storyId)) continue;\n  if (story.expires_date && new Date(story.expires_date) < now) continue;\n\n  // Get source_id and original_url from articles lookup\n  const articleData = articlesLookup[pivotId] || {};\n  const source_id = articleData.source_id || story.source_id || '';\n  const original_url = story.original_url || articleData.original_url || '';\n\n  const sourceScore = scoreLookup[source_id.toLowerCase()] || 2;\n\n  const summary = [\n    story.ai_dek,\n    story.ai_bullet_1,\n    story.ai_bullet_2,\n    story.ai_bullet_3\n  ].filter(Boolean).join(' | ');\n\n  candidates.push({\n    json: {\n      article_id: storyId,\n      story_id: storyId,\n      pivot_id: pivotId,\n      headline: story.ai_headline || story.headline || 'No headline',\n      ai_dek: story.ai_dek || '',\n      ai_bullet_1: story.ai_bullet_1 || '',\n      ai_bullet_2: story.ai_bullet_2 || '',\n      ai_bullet_3: story.ai_bullet_3 || '',\n      summary: summary,\n      original_url: original_url,\n      source_id: source_id,\n      source_score: sourceScore,\n      date_og_published: story.date_og_published || story.date_published || null,\n      date_ingested: story.date_ingested || null,\n      freshness_hours: null,\n      eligible_slots: [story.original_slot || story.slot],\n      from_queue: true\n    }\n  });\n}\n\nif (candidates.length === 0) {\n  return [{ json: { message: 'No candidates to process', count: 0 } }];\n}\n\nreturn candidates;"
+      },
+      "id": "prepare-candidates",
+      "name": "Prepare Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate articles with source scores for Gemini evaluation - WITH EXPLICIT INDEX\nconst articles = $input.all();\n\nconst batch = articles.map((item, idx) => ({\n  index: idx + 1,  // EXPLICIT 1-based index for Gemini to reference\n  article_id: item.json.article_id,\n  story_id: item.json.story_id,\n  pivot_id: item.json.pivot_id,\n  headline: item.json.headline,\n  summary: item.json.summary,\n  original_url: item.json.original_url,\n  source_id: item.json.source_id,\n  source_score: item.json.source_score || 2,\n  freshness_hours: item.json.freshness_hours,\n  date_og_published: item.json.date_og_published\n}));\n\nreturn [{\n  json: {\n    articles: batch,\n    article_count: batch.length\n  }\n}];"
+      },
+      "id": "aggregate-articles",
+      "name": "Aggregate Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a pre-filter for an AI newsletter's lead story slot.\n\nReview these candidates and identify ONLY stories about:\n1. AI impact on JOBS (layoffs, hiring, workforce changes, labor market)\n2. AI impact on ECONOMY (GDP, productivity, economic shifts, industry-wide effects)\n3. AI STOCK MARKET / VALUATIONS (market moves, IPOs, funding rounds, earnings)\n4. BROAD AI IMPACT (societal, regulatory, not company-specific product launches)\n\nPlease review all CANDIDATES here (each has an 'index' field - USE THIS INDEX IN YOUR RESPONSE):\n{{ JSON.stringify($json.articles) }}  \n\nReturn the story_id value for each matching article.                                                                          \nand then Return ONLY valid JSON:\n{\n  \"matches\": [\n    {\n      \"story_id\": \"rec123ABC\",\n      \"headline\": \"headline text\"\n    },\n    {\n      \"story_id\": \"rec456DEF\",\n      \"headline\": \"other headline\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        2112,
+        -288
+      ],
+      "id": "a0b16c62-05b9-46ec-8b97-f2b38c0d9684",
+      "name": "Slot 1 Pre-Filter",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "sW8sK3FqkjIXfY39",
+          "name": "Google Gemini(PaLM) Api hi@kunal.live"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a pre-filter for Slot 2 (Tier 1 / Insight) of an AI newsletter.\n\nReview these candidates and identify stories that fit ANY of these criteria:\n\n1. TIER 1 AI COMPANIES: OpenAI, Google, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon\n   - But NOT just a passing mention - the story should be PRIMARILY about the company\n   - The list above is not exhaustive - use judgment for other major AI players\n\n2. BROAD ECONOMIC THEMES related to AI, including but not limited to:\n   - Industry-wide AI adoption\n   - AI's impact on productivity, business operations\n   - Economic shifts driven by AI\n\n3. AI RESEARCH / INSIGHT PIECES, including but not limited to: \n   - Studies, reports, analysis about AI trends\n   - Not breaking news - thoughtful analysis\n   - Adoption patterns, usage statistics, benchmarks\n\nPlease review all CANDIDATES here (each has an 'index' field - USE THIS INDEX IN YOUR RESPONSE):\n{{ JSON.stringify($json.articles) }}  \n\nReturn the story_id value for each matching article.                                                                          \nand then Return ONLY valid JSON:\n{\n  \"matches\": [\n    {\n      \"story_id\": \"rec123ABC\",\n      \"headline\": \"headline text\"\n    },\n    {\n      \"story_id\": \"rec456DEF\",\n      \"headline\": \"other headline\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "slot-2-prefilter",
+      "name": "Slot 2 Pre-Filter",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        -32
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "sW8sK3FqkjIXfY39",
+          "name": "Google Gemini(PaLM) Api hi@kunal.live"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a pre-filter for Slot 3 (Industry Impact) of an AI newsletter.\n\nSlot 3 focuses on how AI is impacting NON-TECH industries. Review these candidates and identify stories that fit:\n\n**ELIGIBLE INDUSTRIES:** Healthcare, Government, Education, Legal, Accounting, Retail, Security, Transportation, Manufacturing, Real Estate, Agriculture, Energy\n\n**WHAT TO LOOK FOR:**\n- AI adoption in these industries\n- AI impact on industry operations\n- Regulatory changes affecting AI in these sectors\n- Case studies of AI implementation\n\n**Do NOT include:**\n- Stories primarily about tech companies (those go to Slots 1-2)\n- Stories about small/emerging AI startups (those go to Slot 4)\n- Human interest / consumer AI stories (those go to Slot 5)\n- Leadership shuffles\n\nPlease review all CANDIDATES here (each has an 'index' field - USE THIS INDEX IN YOUR RESPONSE):\n{{ JSON.stringify($json.articles) }}  \n\nReturn the story_id value for each matching article.                                                                          \nand then Return ONLY valid JSON:\n{\n  \"matches\": [\n    {\n      \"story_id\": \"rec123ABC\",\n      \"headline\": \"headline text\"\n    },\n    {\n      \"story_id\": \"rec456DEF\",\n      \"headline\": \"other headline\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "slot-3-prefilter",
+      "name": "Slot 3 Pre-Filter",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        176
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "sW8sK3FqkjIXfY39",
+          "name": "Google Gemini(PaLM) Api hi@kunal.live"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a pre-filter for Slot 4 (Emerging Companies) of an AI newsletter.\n\nSlot 4 focuses on smaller/emerging AI companies (NOT Tier 1 giants like OpenAI, Google, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon).\n\n**WHAT TO LOOK FOR:**\n- Product launches from emerging AI companies\n- Big fundraising rounds (Series A, B, C, etc.)\n- Acquisition news involving smaller players\n- New AI tool/service launches\n- Startup milestones and achievements\n\n**Do NOT include:**\n- Stories primarily about Tier 1 companies\n- Industry-specific AI impact (those go to Slot 3)\n- Human interest / consumer AI stories (those go to Slot 5)\n- Leadership shuffles\n\nPlease review all CANDIDATES here (each has an 'index' field - USE THIS INDEX IN YOUR RESPONSE):\n{{ JSON.stringify($json.articles) }}  \n\nReturn the story_id value for each matching article.                                                                          \nand then Return ONLY valid JSON:\n{\n  \"matches\": [\n    {\n      \"story_id\": \"rec123ABC\",\n      \"headline\": \"headline text\"\n    },\n    {\n      \"story_id\": \"rec456DEF\",\n      \"headline\": \"other headline\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "slot-4-prefilter",
+      "name": "Slot 4 Pre-Filter",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        336
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "sW8sK3FqkjIXfY39",
+          "name": "Google Gemini(PaLM) Api hi@kunal.live"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3-flash-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a pre-filter for Slot 5 (Consumer AI / Human Interest) of an AI newsletter.\n\nSlot 5 focuses on consumer-friendly AI stories - the \"nice to know\" pieces about AI's impact on everyday life.\n\n**WHAT TO LOOK FOR:**\n- AI's impact on humanity and society\n- Consumer AI products and experiences\n- AI in arts, entertainment, creativity\n- AI ethics and philosophical questions\n- Heartwarming or thought-provoking AI stories\n- Fun, quirky, or surprising AI use cases\n\n**Do NOT include:**\n- Business/enterprise AI news (those go to Slots 1-4)\n- Technical/developer focused stories\n- Fundraising, acquisitions, corporate news\n- Industry-specific B2B applications\n- Leadership changes\n\n**TONE:** \"Nice to know\" not \"need to know\"\n\nPlease review all CANDIDATES here (each has an 'index' field - USE THIS INDEX IN YOUR RESPONSE):\n{{ JSON.stringify($json.articles) }}  \n\nReturn the story_id value for each matching article.                                                                          \nand then Return ONLY valid JSON:\n{\n  \"matches\": [\n    {\n      \"story_id\": \"rec123ABC\",\n      \"headline\": \"headline text\"\n    },\n    {\n      \"story_id\": \"rec456DEF\",\n      \"headline\": \"other headline\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "slot-5-prefilter",
+      "name": "Slot 5 Pre-Filter",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        480
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "sW8sK3FqkjIXfY39",
+          "name": "Google Gemini(PaLM) Api hi@kunal.live"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResponse = $input.first().json;\nconst allArticles = $('Aggregate Articles').first().json.articles;\nconst slotNumber = 1;\n\nlet parsed;\ntry {\n  let text = geminiResponse.text || geminiResponse.content?.parts?.[0]?.text || '';\n  if (text.startsWith('```json')) text = text.replace(/^```json\\n?/, '').replace(/\\n?```$/, '');\n  else if (text.startsWith('```')) text = text.replace(/^```\\n?/, '').replace(/\\n?```$/, '');\n  parsed = JSON.parse(text.trim());\n} catch (e) {\n  return [{ json: { _placeholder: true, _reason: 'parse_error', _error: e.message } }];\n}\n\n// Handle both raw array and {matches: [...]} format from Gemini\nconst matches = Array.isArray(parsed) ? parsed : (parsed.matches || []);\nconst eligibleIds = matches.map(m => m.story_id);\n\n// Build lookup by story_id\nconst storyLookup = {};\nallArticles.forEach(a => {\n  storyLookup[a.story_id] = a;\n});\n\n// Map eligibleIds to actual articles\nconst results = eligibleIds\n  .map(id => storyLookup[id])\n  .filter(a => a)\n  .map(a => ({\n    json: {\n      article_id: a.article_id,\n      story_id: a.story_id,\n      pivot_id: a.pivot_id,\n      headline: a.headline,\n      original_url: a.original_url || '',\n      source_id: a.source_id || '',\n      date_og_published: a.date_og_published,\n      date_prefiltered: new Date().toISOString(),\n      slot: String(slotNumber)\n    }\n  }));\n\nif (results.length === 0) {\n  return [{ json: { _placeholder: true, _reason: 'no_matches', _matchCount: matches.length, _articleCount: allArticles.length } }];\n}\n\nreturn results;"
+      },
+      "id": "filter-slot-1",
+      "name": "Filter Slot 1 Eligible",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        -352
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "storyID": "={{ $json.story_id }}",
+            "pivotId": "={{ $json.pivot_id }}",
+            "headline": "={{ $json.headline }}",
+            "source_id": "={{ $json.source_id }}",
+            "date_og_published": "={{ $json.date_og_published }}",
+            "date_prefiltered": "={{ $json.date_prefiltered }}",
+            "slot": "={{ $json.slot }}",
+            "core_url": "={{ $json.original_url }}"
+          },
+          "matchingColumns": [
+            "storyID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "pivotId",
+              "displayName": "pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_og_published",
+              "displayName": "date_og_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "slot",
+              "displayName": "slot",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "1",
+                  "value": "1"
+                },
+                {
+                  "name": "2",
+                  "value": "2"
+                },
+                {
+                  "name": "3",
+                  "value": "3"
+                },
+                {
+                  "name": "4",
+                  "value": "4"
+                },
+                {
+                  "name": "5",
+                  "value": "5"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "headline",
+              "displayName": "headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_prefiltered",
+              "displayName": "date_prefiltered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "storyID",
+              "displayName": "storyID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "write-slot-1",
+      "name": "Write Slot 1 Log",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3168,
+        -512
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResponse = $input.first().json;\nconst allArticles = $('Aggregate Slot 2 Articles').first().json.articles;\nconst slotNumber = 2;\n\nlet parsed;\ntry {\n  let text = geminiResponse.text || geminiResponse.content?.parts?.[0]?.text || '';\n  if (text.startsWith('```json')) text = text.replace(/^```json\\n?/, '').replace(/\\n?```$/, '');\n  else if (text.startsWith('```')) text = text.replace(/^```\\n?/, '').replace(/\\n?```$/, '');\n  parsed = JSON.parse(text.trim());\n} catch (e) {\n  return [{ json: { _placeholder: true, _reason: 'parse_error', _error: e.message } }];\n}\n\n// Handle both raw array and {matches: [...]} format from Gemini\nconst matches = Array.isArray(parsed) ? parsed : (parsed.matches || []);\nconst eligibleIds = matches.map(m => m.story_id);\n\n// Build lookup by story_id\nconst storyLookup = {};\nallArticles.forEach(a => {\n  storyLookup[a.story_id] = a;\n});\n\n// Map eligibleIds to actual articles\nconst results = eligibleIds\n  .map(id => storyLookup[id])\n  .filter(a => a)\n  .map(a => ({\n    json: {\n      article_id: a.article_id,\n      story_id: a.story_id,\n      pivot_id: a.pivot_id,\n      headline: a.headline,\n      original_url: a.original_url || '',\n      source_id: a.source_id || '',\n      date_og_published: a.date_og_published,\n      date_prefiltered: new Date().toISOString(),\n      slot: String(slotNumber)\n    }\n  }));\n\nif (results.length === 0) {\n  return [{ json: { _placeholder: true, _reason: 'no_matches', _matchCount: matches.length, _articleCount: allArticles.length } }];\n}\n\nreturn results;"
+      },
+      "id": "filter-slot-2",
+      "name": "Filter Slot 2 Eligible",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "storyID": "={{ $json.story_id }}",
+            "pivotId": "={{ $json.pivot_id }}",
+            "headline": "={{ $json.headline }}",
+            "source_id": "={{ $json.source_id }}",
+            "date_og_published": "={{ $json.date_og_published }}",
+            "date_prefiltered": "={{ $json.date_prefiltered }}",
+            "slot": "={{ $json.slot }}",
+            "core_url": "={{ $json.original_url }}"
+          },
+          "matchingColumns": [
+            "storyID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "pivotId",
+              "displayName": "pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_og_published",
+              "displayName": "date_og_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "slot",
+              "displayName": "slot",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "1",
+                  "value": "1"
+                },
+                {
+                  "name": "2",
+                  "value": "2"
+                },
+                {
+                  "name": "3",
+                  "value": "3"
+                },
+                {
+                  "name": "4",
+                  "value": "4"
+                },
+                {
+                  "name": "5",
+                  "value": "5"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "headline",
+              "displayName": "headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_prefiltered",
+              "displayName": "date_prefiltered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "storyID",
+              "displayName": "storyID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "write-slot-2",
+      "name": "Write Slot 2 Log",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3456,
+        48
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResponse = $input.first().json;\nconst allArticles = $('Aggregate Slot 3 Articles').first().json.articles;\nconst slotNumber = 3;\n\nlet parsed;\ntry {\n  let text = geminiResponse.text || geminiResponse.content?.parts?.[0]?.text || '';\n  if (text.startsWith('```json')) text = text.replace(/^```json\\n?/, '').replace(/\\n?```$/, '');\n  else if (text.startsWith('```')) text = text.replace(/^```\\n?/, '').replace(/\\n?```$/, '');\n  parsed = JSON.parse(text.trim());\n} catch (e) {\n  return [{ json: { _placeholder: true, _reason: 'parse_error', _error: e.message } }];\n}\n\n// Handle both raw array and {matches: [...]} format from Gemini\nconst matches = Array.isArray(parsed) ? parsed : (parsed.matches || []);\nconst eligibleIds = matches.map(m => m.story_id);\n\n// Build lookup by story_id\nconst storyLookup = {};\nallArticles.forEach(a => {\n  storyLookup[a.story_id] = a;\n});\n\n// Map eligibleIds to actual articles\nconst results = eligibleIds\n  .map(id => storyLookup[id])\n  .filter(a => a)\n  .map(a => ({\n    json: {\n      article_id: a.article_id,\n      story_id: a.story_id,\n      pivot_id: a.pivot_id,\n      headline: a.headline,\n      original_url: a.original_url || '',\n      source_id: a.source_id || '',\n      date_og_published: a.date_og_published,\n      date_prefiltered: new Date().toISOString(),\n      slot: String(slotNumber)\n    }\n  }));\n\nif (results.length === 0) {\n  return [{ json: { _placeholder: true, _reason: 'no_matches', _matchCount: matches.length, _articleCount: allArticles.length } }];\n}\n\nreturn results;"
+      },
+      "id": "filter-slot-3",
+      "name": "Filter Slot 3 Eligible",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3024,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "storyID": "={{ $json.story_id }}",
+            "pivotId": "={{ $json.pivot_id }}",
+            "headline": "={{ $json.headline }}",
+            "source_id": "={{ $json.source_id }}",
+            "date_og_published": "={{ $json.date_og_published }}",
+            "date_prefiltered": "={{ $json.date_prefiltered }}",
+            "slot": "={{ $json.slot }}",
+            "core_url": "={{ $json.original_url }}"
+          },
+          "matchingColumns": [
+            "storyID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "pivotId",
+              "displayName": "pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_og_published",
+              "displayName": "date_og_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "slot",
+              "displayName": "slot",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "1",
+                  "value": "1"
+                },
+                {
+                  "name": "2",
+                  "value": "2"
+                },
+                {
+                  "name": "3",
+                  "value": "3"
+                },
+                {
+                  "name": "4",
+                  "value": "4"
+                },
+                {
+                  "name": "5",
+                  "value": "5"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "headline",
+              "displayName": "headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_prefiltered",
+              "displayName": "date_prefiltered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "storyID",
+              "displayName": "storyID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "write-slot-3",
+      "name": "Write Slot 3 Log",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3440,
+        224
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResponse = $input.first().json;\nconst allArticles = $('Aggregate Slot 4 Articles').first().json.articles;\nconst slotNumber = 4;\n\nlet parsed;\ntry {\n  let text = geminiResponse.text || geminiResponse.content?.parts?.[0]?.text || '';\n  if (text.startsWith('```json')) text = text.replace(/^```json\\n?/, '').replace(/\\n?```$/, '');\n  else if (text.startsWith('```')) text = text.replace(/^```\\n?/, '').replace(/\\n?```$/, '');\n  parsed = JSON.parse(text.trim());\n} catch (e) {\n  return [{ json: { _placeholder: true, _reason: 'parse_error', _error: e.message } }];\n}\n\n// Handle both raw array and {matches: [...]} format from Gemini\nconst matches = Array.isArray(parsed) ? parsed : (parsed.matches || []);\nconst eligibleIds = matches.map(m => m.story_id);\n\n// Build lookup by story_id\nconst storyLookup = {};\nallArticles.forEach(a => {\n  storyLookup[a.story_id] = a;\n});\n\n// Map eligibleIds to actual articles\nconst results = eligibleIds\n  .map(id => storyLookup[id])\n  .filter(a => a)\n  .map(a => ({\n    json: {\n      article_id: a.article_id,\n      story_id: a.story_id,\n      pivot_id: a.pivot_id,\n      headline: a.headline,\n      original_url: a.original_url || '',\n      source_id: a.source_id || '',\n      date_og_published: a.date_og_published,\n      date_prefiltered: new Date().toISOString(),\n      slot: String(slotNumber)\n    }\n  }));\n\nif (results.length === 0) {\n  return [{ json: { _placeholder: true, _reason: 'no_matches', _matchCount: matches.length, _articleCount: allArticles.length } }];\n}\n\nreturn results;"
+      },
+      "id": "filter-slot-4",
+      "name": "Filter Slot 4 Eligible",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2656,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "storyID": "={{ $json.story_id }}",
+            "pivotId": "={{ $json.pivot_id }}",
+            "headline": "={{ $json.headline }}",
+            "source_id": "={{ $json.source_id }}",
+            "date_og_published": "={{ $json.date_og_published }}",
+            "date_prefiltered": "={{ $json.date_prefiltered }}",
+            "slot": "={{ $json.slot }}",
+            "core_url": "={{ $json.original_url }}"
+          },
+          "matchingColumns": [
+            "storyID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "pivotId",
+              "displayName": "pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_og_published",
+              "displayName": "date_og_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "slot",
+              "displayName": "slot",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "1",
+                  "value": "1"
+                },
+                {
+                  "name": "2",
+                  "value": "2"
+                },
+                {
+                  "name": "3",
+                  "value": "3"
+                },
+                {
+                  "name": "4",
+                  "value": "4"
+                },
+                {
+                  "name": "5",
+                  "value": "5"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "headline",
+              "displayName": "headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_prefiltered",
+              "displayName": "date_prefiltered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "storyID",
+              "displayName": "storyID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "write-slot-4",
+      "name": "Write Slot 4 Log",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2960,
+        352
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResponse = $input.first().json;\nconst allArticles = $('Aggregate Slot 5 Articles').first().json.articles;\nconst slotNumber = 5;\n\nlet parsed;\ntry {\n  let text = geminiResponse.text || geminiResponse.content?.parts?.[0]?.text || '';\n  if (text.startsWith('```json')) text = text.replace(/^```json\\n?/, '').replace(/\\n?```$/, '');\n  else if (text.startsWith('```')) text = text.replace(/^```\\n?/, '').replace(/\\n?```$/, '');\n  parsed = JSON.parse(text.trim());\n} catch (e) {\n  return [{ json: { _placeholder: true, _reason: 'parse_error', _error: e.message } }];\n}\n\n// Handle both raw array and {matches: [...]} format from Gemini\nconst matches = Array.isArray(parsed) ? parsed : (parsed.matches || []);\nconst eligibleIds = matches.map(m => m.story_id);\n\n// Build lookup by story_id\nconst storyLookup = {};\nallArticles.forEach(a => {\n  storyLookup[a.story_id] = a;\n});\n\n// Map eligibleIds to actual articles\nconst results = eligibleIds\n  .map(id => storyLookup[id])\n  .filter(a => a)\n  .map(a => ({\n    json: {\n      article_id: a.article_id,\n      story_id: a.story_id,\n      pivot_id: a.pivot_id,\n      headline: a.headline,\n      original_url: a.original_url || '',\n      source_id: a.source_id || '',\n      date_og_published: a.date_og_published,\n      date_prefiltered: new Date().toISOString(),\n      slot: String(slotNumber)\n    }\n  }));\n\nif (results.length === 0) {\n  return [{ json: { _placeholder: true, _reason: 'no_matches', _matchCount: matches.length, _articleCount: allArticles.length } }];\n}\n\nreturn results;"
+      },
+      "id": "filter-slot-5",
+      "name": "Filter Slot 5 Eligible",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2656,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl72YMsm9iRHj3sp",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "storyID": "={{ $json.story_id }}",
+            "pivotId": "={{ $json.pivot_id }}",
+            "headline": "={{ $json.headline }}",
+            "source_id": "={{ $json.source_id }}",
+            "date_og_published": "={{ $json.date_og_published }}",
+            "date_prefiltered": "={{ $json.date_prefiltered }}",
+            "slot": "={{ $json.slot }}",
+            "core_url": "={{ $json.original_url }}"
+          },
+          "matchingColumns": [
+            "storyID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "pivotId",
+              "displayName": "pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_og_published",
+              "displayName": "date_og_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "slot",
+              "displayName": "slot",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "1",
+                  "value": "1"
+                },
+                {
+                  "name": "2",
+                  "value": "2"
+                },
+                {
+                  "name": "3",
+                  "value": "3"
+                },
+                {
+                  "name": "4",
+                  "value": "4"
+                },
+                {
+                  "name": "5",
+                  "value": "5"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "headline",
+              "displayName": "headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_prefiltered",
+              "displayName": "date_prefiltered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "storyID",
+              "displayName": "storyID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "id": "write-slot-5",
+      "name": "Write Slot 5 Log",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2960,
+        496
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblY78ziWp5yhiGXp",
+          "mode": "list",
+          "cachedResultName": "Newsletter Stories",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblY78ziWp5yhiGXp"
+        },
+        "filterByFormula": "=AND(OR({newsletter} = 'pivot_ai', {newsletter} = 'pivot_build', {newsletter} = 'pivot_invest'), IS_AFTER({date_og_published}, DATEADD(TODAY(), -7, 'days')))",
+        "options": {
+          "fields": [
+            "storyID",
+            "pivotId",
+            "ai_headline",
+            "ai_dek",
+            "ai_bullet_1",
+            "ai_bullet_2",
+            "ai_bullet_3",
+            "date_og_published",
+            "core_url",
+            "image_url",
+            "topic",
+            "fit_score",
+            "sentiment",
+            "tags",
+            "newsletter"
+          ]
+        }
+      },
+      "id": "29fcd940-181e-4ea1-a164-258ec50e2d36",
+      "name": "Pull Fresh Candidates",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        -208
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "list",
+          "cachedResultName": "Pivot 5 AI Editor 2.0",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblzt2z7r512Kto3O",
+          "mode": "list",
+          "cachedResultName": "AI Editor - Selected Slots",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl/tblzt2z7r512Kto3O"
+        },
+        "filterByFormula": "=IS_AFTER({issue_date}, DATEADD(TODAY(), -14, 'days'))",
+        "returnAll": false,
+        "options": {},
+        "sort": {
+          "property": [
+            {
+              "field": "issue_date",
+              "direction": "desc"
+            }
+          ]
+        }
+      },
+      "id": "c0159412-921e-497e-babc-19d011e05c04",
+      "name": "Pull Yesterday Issue",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        112
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl3Zkdl1No2edDLK",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "b0045567-df89-4178-b499-ae6a954b1b4d",
+      "name": "Pull Source Scores",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        272
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "id": "merge-all-data",
+      "name": "Merge All Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        784,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const candidates = $('Prepare Candidates').all().map(i => i.json);\nconst slot1Companies = ['openai', 'google', 'meta', 'nvidia'];\n\nconst companyMatches = candidates.filter(story => {\n  if (!story.eligible_slots?.includes(1)) return false;\n  const headline = (story.headline || '').toLowerCase();\n  return slot1Companies.some(company => headline.includes(company));\n});\n\nreturn companyMatches.map(s => ({\n  json: {\n    article_id: s.article_id,\n    story_id: s.story_id,\n    pivot_id: s.pivot_id,\n    headline: s.headline,\n    original_url: s.original_url || '',\n    source_id: s.source_id,\n    date_og_published: s.date_og_published,\n    date_ingested: s.date_ingested,\n    date_prefiltered: new Date().toISOString(),\n    slot: '1',\n    reason: `Tier 1 company in headline: ${slot1Companies.find(c => (s.headline || '').toLowerCase().includes(c))}`\n  }\n}));"
+      },
+      "id": "slot1-company-filter-001",
+      "name": "Slot 1 Company Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        -528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Slot 2 Time Filter: ≤48h articles eligible for slot 2\nconst candidates = $('Prepare Candidates').all().map(i => i.json);\nconst filtered = candidates.filter(s => s.eligible_slots?.includes(2));\nreturn filtered.map(s => ({ json: s }));"
+      },
+      "id": "slot2-time-filter",
+      "name": "Slot 2 Time Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Slot 3 Time Filter: ≤7d articles eligible for slot 3\nconst candidates = $('Prepare Candidates').all().map(i => i.json);\nconst filtered = candidates.filter(s => s.eligible_slots?.includes(3));\nreturn filtered.map(s => ({ json: s }));"
+      },
+      "id": "slot3-time-filter",
+      "name": "Slot 3 Time Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Slot 4 Time Filter: ≤3d articles eligible for slot 4\nconst candidates = $('Prepare Candidates').all().map(i => i.json);\nconst filtered = candidates.filter(s => s.eligible_slots?.includes(4));\nreturn filtered.map(s => ({ json: s }));"
+      },
+      "id": "slot4-time-filter",
+      "name": "Slot 4 Time Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Slot 5 Time Filter: ≤7d articles eligible for slot 5\nconst candidates = $('Prepare Candidates').all().map(i => i.json);\nconst filtered = candidates.filter(s => s.eligible_slots?.includes(5));\nreturn filtered.map(s => ({ json: s }));"
+      },
+      "id": "slot5-time-filter",
+      "name": "Slot 5 Time Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Slot 1 Time Filter: ≤24h articles eligible for slot 1\nconst candidates = $('Prepare Candidates').all().map(i => i.json);\nconst filtered = candidates.filter(s => s.eligible_slots?.includes(1));\nreturn filtered.map(s => ({ json: s }));"
+      },
+      "id": "slot1-time-filter",
+      "name": "Slot 1 Time Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -288
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2784,
+        -496
+      ],
+      "id": "fd33c23a-04d0-4c32-8e99-45bb563002ce",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate articles with source scores for Gemini evaluation - WITH EXPLICIT INDEX\nconst articles = $input.all();\n\nconst batch = articles.map((item, idx) => ({\n  index: idx + 1,  // EXPLICIT 1-based index for Gemini to reference\n  article_id: item.json.article_id,\n  story_id: item.json.story_id,\n  pivot_id: item.json.pivot_id,\n  headline: item.json.headline,\n  summary: item.json.summary,\n  original_url: item.json.original_url,\n  source_id: item.json.source_id,\n  source_score: item.json.source_score || 2,\n  freshness_hours: item.json.freshness_hours,\n  date_og_published: item.json.date_og_published\n}));\n\nreturn [{\n  json: {\n    articles: batch,\n    article_count: batch.length\n  }\n}];"
+      },
+      "id": "aggregate-slot2",
+      "name": "Aggregate Slot 2 Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate articles with source scores for Gemini evaluation - WITH EXPLICIT INDEX\nconst articles = $input.all();\n\nconst batch = articles.map((item, idx) => ({\n  index: idx + 1,  // EXPLICIT 1-based index for Gemini to reference\n  article_id: item.json.article_id,\n  story_id: item.json.story_id,\n  pivot_id: item.json.pivot_id,\n  headline: item.json.headline,\n  summary: item.json.summary,\n  original_url: item.json.original_url,\n  source_id: item.json.source_id,\n  source_score: item.json.source_score || 2,\n  freshness_hours: item.json.freshness_hours,\n  date_og_published: item.json.date_og_published\n}));\n\nreturn [{\n  json: {\n    articles: batch,\n    article_count: batch.length\n  }\n}];"
+      },
+      "id": "aggregate-slot3",
+      "name": "Aggregate Slot 3 Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate articles with source scores for Gemini evaluation - WITH EXPLICIT INDEX\nconst articles = $input.all();\n\nconst batch = articles.map((item, idx) => ({\n  index: idx + 1,  // EXPLICIT 1-based index for Gemini to reference\n  article_id: item.json.article_id,\n  story_id: item.json.story_id,\n  pivot_id: item.json.pivot_id,\n  headline: item.json.headline,\n  summary: item.json.summary,\n  original_url: item.json.original_url,\n  source_id: item.json.source_id,\n  source_score: item.json.source_score || 2,\n  freshness_hours: item.json.freshness_hours,\n  date_og_published: item.json.date_og_published\n}));\n\nreturn [{\n  json: {\n    articles: batch,\n    article_count: batch.length\n  }\n}];"
+      },
+      "id": "aggregate-slot4",
+      "name": "Aggregate Slot 4 Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate articles with source scores for Gemini evaluation - WITH EXPLICIT INDEX\nconst articles = $input.all();\n\nconst batch = articles.map((item, idx) => ({\n  index: idx + 1,  // EXPLICIT 1-based index for Gemini to reference\n  article_id: item.json.article_id,\n  story_id: item.json.story_id,\n  pivot_id: item.json.pivot_id,\n  headline: item.json.headline,\n  summary: item.json.summary,\n  original_url: item.json.original_url,\n  source_id: item.json.source_id,\n  source_score: item.json.source_score || 2,\n  freshness_hours: item.json.freshness_hours,\n  date_og_published: item.json.date_og_published\n}));\n\nreturn [{\n  json: {\n    articles: batch,\n    article_count: batch.length\n  }\n}];"
+      },
+      "id": "aggregate-slot5",
+      "name": "Aggregate Slot 5 Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out placeholder items that were added to ensure Merge triggers\nconst items = $input.all();\nconst filtered = items.filter(item => !item.json._placeholder);\n\nif (filtered.length === 0) {\n  // No real items to write - just return empty\n  return [];\n}\n\nreturn filtered;"
+      },
+      "id": "filter-placeholders-slot1",
+      "name": "Filter Placeholders Slot 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out placeholder items\nconst items = $input.all();\nconst filtered = items.filter(item => !item.json._placeholder);\nif (filtered.length === 0) return [];\nreturn filtered;"
+      },
+      "id": "filter-placeholders-slot2",
+      "name": "Filter Placeholders Slot 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out placeholder items\nconst items = $input.all();\nconst filtered = items.filter(item => !item.json._placeholder);\nif (filtered.length === 0) return [];\nreturn filtered;"
+      },
+      "id": "filter-placeholders-slot3",
+      "name": "Filter Placeholders Slot 3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out placeholder items\nconst items = $input.all();\nconst filtered = items.filter(item => !item.json._placeholder);\nif (filtered.length === 0) return [];\nreturn filtered;"
+      },
+      "id": "filter-placeholders-slot4",
+      "name": "Filter Placeholders Slot 4",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out placeholder items\nconst items = $input.all();\nconst filtered = items.filter(item => !item.json._placeholder);\nif (filtered.length === 0) return [];\nreturn filtered;"
+      },
+      "id": "filter-placeholders-slot5",
+      "name": "Filter Placeholders Slot 5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "id"
+        },
+        "filterByFormula": "=IS_AFTER({date_ingested}, DATEADD(TODAY(), -7, 'days'))",
+        "options": {
+          "fields": [
+            "source_id",
+            "original_url",
+            "pivot_Id"
+          ]
+        }
+      },
+      "id": "pull-articles-source",
+      "name": "Pull Articles Source",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        448
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": " 0 2 * * 2-6"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger 9pm ET Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -96,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appglKSJZxmA9iHpl",
+          "mode": "list",
+          "cachedResultName": "Pivot 5 AI Editor 2.0",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblkVBP5mKq3sBpkv",
+          "mode": "list",
+          "cachedResultName": "AI Editor Queue",
+          "cachedResultUrl": "https://airtable.com/appglKSJZxmA9iHpl/tblkVBP5mKq3sBpkv"
+        },
+        "filterByFormula": "=AND({status} = 'pending', IS_AFTER({expires_date}, TODAY()))",
+        "options": {}
+      },
+      "id": "c1618050-b570-4b9f-b83b-2e1b2b931622",
+      "name": "Pull Queued Stories",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        464,
+        -48
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Prepare Candidates": {
+      "main": [
+        [
+          {
+            "node": "Slot 1 Company Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slot 2 Time Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slot 3 Time Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slot 4 Time Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slot 5 Time Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slot 1 Time Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 1 Pre-Filter": {
+      "main": [
+        [
+          {
+            "node": "Filter Slot 1 Eligible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 2 Pre-Filter": {
+      "main": [
+        [
+          {
+            "node": "Filter Slot 2 Eligible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 3 Pre-Filter": {
+      "main": [
+        [
+          {
+            "node": "Filter Slot 3 Eligible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 4 Pre-Filter": {
+      "main": [
+        [
+          {
+            "node": "Filter Slot 4 Eligible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 5 Pre-Filter": {
+      "main": [
+        [
+          {
+            "node": "Filter Slot 5 Eligible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Slot 1 Eligible": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Pull Fresh Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Yesterday Issue": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Pull Source Scores": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Slot 1 Company Filter": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 1 Time Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Articles": {
+      "main": [
+        [
+          {
+            "node": "Slot 1 Pre-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 2 Time Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Slot 2 Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Slot 2 Articles": {
+      "main": [
+        [
+          {
+            "node": "Slot 2 Pre-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 3 Time Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Slot 3 Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Slot 3 Articles": {
+      "main": [
+        [
+          {
+            "node": "Slot 3 Pre-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 4 Time Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Slot 4 Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Slot 4 Articles": {
+      "main": [
+        [
+          {
+            "node": "Slot 4 Pre-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot 5 Time Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Slot 5 Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Slot 5 Articles": {
+      "main": [
+        [
+          {
+            "node": "Slot 5 Pre-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Filter Placeholders Slot 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Placeholders Slot 1": {
+      "main": [
+        [
+          {
+            "node": "Write Slot 1 Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Slot 2 Eligible": {
+      "main": [
+        [
+          {
+            "node": "Filter Placeholders Slot 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Placeholders Slot 2": {
+      "main": [
+        [
+          {
+            "node": "Write Slot 2 Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Slot 3 Eligible": {
+      "main": [
+        [
+          {
+            "node": "Filter Placeholders Slot 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Placeholders Slot 3": {
+      "main": [
+        [
+          {
+            "node": "Write Slot 3 Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Slot 4 Eligible": {
+      "main": [
+        [
+          {
+            "node": "Filter Placeholders Slot 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Placeholders Slot 4": {
+      "main": [
+        [
+          {
+            "node": "Write Slot 4 Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Slot 5 Eligible": {
+      "main": [
+        [
+          {
+            "node": "Filter Placeholders Slot 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Placeholders Slot 5": {
+      "main": [
+        [
+          {
+            "node": "Write Slot 5 Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Articles Source": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger 9pm ET Cron": {
+      "main": [
+        [
+          {
+            "node": "Pull Fresh Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Yesterday Issue",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Source Scores",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Articles Source",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pull Queued Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Queued Stories": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "aa48cabe-2453-4faf-a28c-1fc310e99c41",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bbbd911fcbd9efe5def160e3f7a7b14baf0691f4a0ba4531005de9dea9d03f69"
+  },
+  "id": "VoSZu0MIJAw1IuLL",
+  "tags": []
+}

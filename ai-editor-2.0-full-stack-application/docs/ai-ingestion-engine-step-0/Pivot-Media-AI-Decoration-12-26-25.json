@@ -1,0 +1,4414 @@
+{
+  "name": "Pivot Media AI Decoration",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "\n\nconst out = [];\n\n// Per-newsletter style / persona text\nconst styleByNewsletter = {\n  pivot_build: `\nAudience: builders, product managers, and operators.\nFocus: execution, experiments, roadmaps, concrete takeaways they can apply.\nTone: practical, direct, builder-focused. Avoid fluff; highlight what matters for shipping and strategy.\n\nGlobal Writing Rules:\n- Write for busy CEOs — clear, confident, direct.\n- Present tense, active voice.\n- No jargon, no \"could/might/possibly\".\n- Avoid vague terms like \"impact\" or \"transformation\".\n- Stick to business consequences.\n- EXACTLY 2 sentences per bullet.\n- Headline: Title Case, one sentence, NO colons or semi-colons.\n  `.trim(),\n\n  pivot_invest: `\nAudience: investors and markets-focused readers.\nFocus: capital flows, business models, risk/reward, unit economics, competition, and macro context.\nTone: analytical, concise, focused on what moves valuations or changes an investment thesis.\n\nGlobal Writing Rules:\n- Write for busy CEOs — clear, confident, direct.\n- Present tense, active voice.\n- No jargon, no \"could/might/possibly\".\n- Avoid vague terms like \"impact\" or \"transformation\".\n- Stick to business consequences.\n- EXACTLY 2 sentences per bullet.\n- Headline: Title Case, one sentence, NO colons or semi-colons.\n  `.trim(),\n\n  pivot_ai: `\nAudience: professionals following the AI field, not just technology broadly.\nFocus: capabilities, limitations, ecosystem dynamics, and real-world impact.\nTone: sharp, skeptical of hype, but accessible to a broad tech/business audience.\n\nGlobal Writing Rules:\n- Write for busy CEOs — clear, confident, direct.\n- Present tense, active voice.\n- No jargon, no \"could/might/possibly\".\n- Avoid vague terms like \"impact\" or \"transformation\".\n- Stick to business consequences.\n- EXACTLY 2 sentences per bullet.\n- Headline: Title Case, one sentence, NO colons or semi-colons.\n  `.trim(),\n\n  default: `\nAudience: busy professionals.\nFocus: what matters for decisions and strategy.\nTone: clear, concise, and BS-free. Avoid hype and generic filler.\n\nGlobal Writing Rules:\n- Write for busy CEOs — clear, confident, direct.\n- Present tense, active voice.\n- No jargon, no \"could/might/possibly\".\n- Avoid vague terms like \"impact\" or \"transformation\".\n- Stick to business consequences.\n- EXACTLY 2 sentences per bullet.\n- Headline: Title Case, one sentence, NO colons or semi-colons.\n  `.trim(),\n};\n\n// small helper for Airtable-style array fields\nfunction firstOrSelf(val) {\n  return Array.isArray(val) ? val[0] : val;\n}\n\nfor (const item of $input.all()) {\n  const j = item.json;\n  // Airtable often returns {id, fields:{...}} – handle both\n  const f = j.fields || j;\n\n  // Airtable record ID\n  const record_id = j.id || f.id || \"\";\n\n  // Story identifier (fallback to record id for now)\n  const storyID = f.storyID || j.storyID || record_id;\n\n  // pivot key (article id) – “normalized” key\n  const rawPivotKey =\n    f.pivot_key ||\n    f.pivotId ||\n    f.pivot_id ||\n    f.pivot_Id ||  // just in case\n    \"\";\n\n  const pivot_key = firstOrSelf(rawPivotKey || \"\");\n\n  // RAW pivot_Id string – mirror the original Airtable field name\n  const rawPivotIdField =\n    f.pivot_Id ||\n    f[\"pivot_Id\"] ||\n    rawPivotKey || \"\";\n\n  const pivot_Id = firstOrSelf(rawPivotIdField || \"\");\n\n  // Native fields now – NOT lookup \"(from pivotId)\" fields\n  const rawNewsletter = f.newsletter || f.newsletter_id || \"default\";\n  const rawUrl1       = f.core_url || f.original_url || \"\";\n  const rawTags       = f.tags || \"\";\n  const rawMarkdown   = f.markdown || \"\";\n\n  const newsletterId = firstOrSelf(rawNewsletter || \"default\");\n  const url          = firstOrSelf(rawUrl1 || \"\");\n  const tags         = Array.isArray(rawTags)\n    ? rawTags.join(\", \")\n    : (rawTags || \"\");\n  const markdown     = Array.isArray(rawMarkdown)\n    ? rawMarkdown.join(\"\\n\\n\")\n    : (rawMarkdown || \"\");\n\n  // Extra metadata you want to pass through\n  const topic                = firstOrSelf(f.topic || \"\");\n  const core_url             = firstOrSelf(f.core_url || f.original_url || \"\");\n  const sentiment            = firstOrSelf(f.sentiment ?? \"\");\n  const interest_score       = firstOrSelf(f.interest_score ?? f.interestScore ?? \"\");\n  const newsletterField      = firstOrSelf(f.newsletter || f.newsletter_id || newsletterId);\n  const fit_score            = firstOrSelf(f.fit_score || f.fitScore || \"\");\n  const reason_for_fit_score = firstOrSelf(\n    f[\"Reason for Fit Score\"] ||\n    f.reason_for_fit_score ||\n    \"\"\n  );\n  const date_published       = firstOrSelf(\n    f.date_published ||\n    f.published_date ||\n    f.datePublished ||\n    f.isodate ||\n    \"\"\n  );\n\n  // Limit markdown to first 10,000 characters\n  const markdown_sliced = (markdown || \"\").slice(0, 10000);\n\n  const style = styleByNewsletter[newsletterId] || styleByNewsletter.default;\n\n  const userContent = `\nYou are an expert newsletter editor and summarizer.\n\nNEWSLETTER CONTEXT\n- newsletter_id: ${newsletterId}\n- Writing style and audience:\n${style}\n\nIMPORTANT IDS (DO NOT CHANGE THESE VALUES)\n- record_id: ${record_id}\n- storyID: ${storyID}\n- pivot_key: ${pivot_key}\n- pivot_Id: ${pivot_Id}\n\nINSTRUCTIONS\nHEADLINE RULES\n- One punchy sentence in Title Case.\n- NO colons or semi-colons.\n- Should be equal to or less than 80 characters, including spaces\n- Focus on the most important business angle.\n- Must communicate the most important or surprising part of the story.\n- Use confident language that makes the business significance clear.\n ✅Example: OpenAI Courts Fortune 500s With Custom GPTs for Enterprise\n ✅ Example: Apple’s AI Plans Rely on Unlikely Partners to Stay Competitive\n ❌ Too vague: OpenAI Launches New GPT Builder for Enterprise\n ❌ Too passive: Apple Working on AI Tools With External Partners\n\nBULLET RULES\n- EXACTLY 2 sentences per bullet — no more, no less.\n- NO MORE than 260 characters per bullet (including spaces).\n- Bullet 1: Main Announcement — what happened, stated clearly with specific companies and facts.\n- Bullet 2: Key Details — supporting facts and business implications, focused on what matters to executives.\n- Bullet 3: Business Impact — factual, immediate business relevance, no predictions or advice.\n\nVOICE & STYLE\n- Write for busy CEOs — clear, confident, direct.\n- Present tense, active voice.\n- No jargon, no \"could/might/possibly\".\n- Avoid vague terms like \"impact\" or \"transformation\".\n- Stick strictly to facts from the article — no speculation.\n\nABSOLUTE RULES\n1. EXACTLY 2 sentences per bullet.\n2. No colons or semi-colons in the headline.\n3. Output ONLY valid JSON — no markdown outside JSON strings, no wrappers.\n4. Stick to facts from the article only.\n\nFORMATTING RULES\n- You MUST return ONLY valid JSON.\n- Do NOT wrap the JSON in backticks, code fences, or any extra text.\n- Do NOT add extra keys beyond those in the schema.\n- If you have fewer than 3 strong points, set remaining bullet fields to \"\".\n\nARTICLE METADATA\n- URL: ${url}\n- Topic: ${topic}\n- Core URL: ${core_url}\n- Sentiment: ${sentiment}\n- Interest score: ${interest_score}\n- Newsletter: ${newsletterField}\n- Fit score: ${fit_score}\n- Reason for fit score: ${reason_for_fit_score}\n- Tags: ${tags}\n- Date published: ${date_published}\n\n=== ARTICLE MARKDOWN START (TRUNCATED TO FIRST 10,000 CHARACTERS) ===\n${markdown_sliced}\n=== ARTICLE MARKDOWN END ===\n  `.trim();\n\n  out.push({\n    json: {\n      // IDs & routing\n      record_id,\n      storyID,\n      pivot_key,\n      pivot_Id,        // raw pivot ID string preserved\n      newsletterId,\n\n      // prompt for Anthropic\n      userContent,\n\n      // basic metadata\n      url,\n      tags,\n\n      // extra passthrough fields\n      topic,\n      core_url,\n      sentiment,\n      interest_score,\n      newsletter: newsletterField,\n      fit_score,\n      reason_for_fit_score,\n      date_published,\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        48
+      ],
+      "id": "f97da368-0c2f-46e6-a404-a32879cb3d16",
+      "name": "Build userContent1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert newsletter editor and summarizer.\n\nNEWSLETTER CONTEXT  \n\nYour job:\n- Read the full UserContent input.\n- Identify the audience, focus, tone, and newsletter identity from metadata already inside {{ $json.userContent }}.\n- Produce an editorial summary tailored specifically to that audience.\n- Preserve and return pivotId and storyID exactly as provided, with no modification.\n\nRules:\n- Use only information inside UserContent. Do NOT add external facts.\n- Do NOT change the values of pivotId or storyID or record_id.\n- Return ONLY valid JSON, no commentary, no code fences.\n\nARTICLE METADATA\n- URL: {{ $json.url }}\n- Tags: {{ $json.tags }}\n- newsletter_id: {{ $json.newsletterId }} \n\n=== ARTICLE MARKDOWN START ===\n{{ $json.userContent }}\n=== ARTICLE MARKDOWN END ===\n\nOutput schema:\n{\n  \"pivot_key\": \"string\",        // echo back unmodified\n  \"pivot_Id\": \"string\",        // echo back unmodified\n  \"core_url\": \"string\",        // echo back unmodified\n  \"date_published\": \"string\",        // echo back unmodified\n\"sentiment\": \"string\",        // echo back unmodified\n\"tags\": \"string\",        // echo back unmodified\n\"topic\": \"string\",        // echo back unmodified\n\"interest_score\": \"string\",        // echo back unmodified\n\"Reason for Fit Score\": \"string\",        // echo back unmodified\n\"fit_score\": \"string\",        // echo back unmodified\n\"newsletter\": \"string\",        // echo back unmodified\n  \"storyID\": \"string\",        // echo back unmodified\n  \"record_id\": \"string\",        // echo back unmodified\n  \"ai_headline\": \"string\",\n  \"ai_dek\": \"string\",\n  \"ai_bullet_1\": \"string\",\n  \"ai_bullet_2\": \"string or empty string\",\n  \"ai_bullet_3\": \"string or empty string\",\n  \"image_prompt\": \"string\"\n}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        752,
+        -32
+      ],
+      "id": "677b106f-99d1-4111-8dd7-48e2d1758d94",
+      "name": "Content Creator",
+      "retryOnFail": true,
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblY78ziWp5yhiGXp",
+          "mode": "list",
+          "cachedResultName": "Newsletter Stories",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblY78ziWp5yhiGXp"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ai_headline": "={{ $json.ai_headline }}",
+            "ai_dek": "={{ $json.ai_dek }}",
+            "ai_bullet_1": "={{ $json.ai_bullet_1 }}",
+            "ai_bullet_2": "={{ $json.ai_bullet_2 }}",
+            "ai_bullet_3": "={{ $json.ai_bullet_3 }}",
+            "storyID": "={{ $json.storyID }}",
+            "id": "={{ $json.storyID }}",
+            "interest_score": "={{ $json.interest_score }}",
+            "fit_score": "={{ $json.fit_score }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "topic": "={{ $json.topic }}",
+            "reason_for_fit_score": "={{ $json.reason_for_fit_score }}",
+            "tags": "={{ $json.tags }}",
+            "core_url": "={{ $json.core_url }}",
+            "newsletter": "={{ $json.newsletter }}",
+            "pivotId": "={{ $json.pivot_Id }}",
+            "date_og_published": "={{ $json.date_published }}",
+            "image_prompt": "={{ $json.image_prompt }}",
+            "image_status": "pending",
+            "image_url": "https://picsum.photos/1200/600?random=38061"
+          },
+          "matchingColumns": [
+            "storyID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "pivotId",
+              "displayName": "pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_complete",
+              "displayName": "ai_complete",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_ai_processed",
+              "displayName": "date_ai_processed",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "issue_id",
+              "displayName": "issue_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_dek",
+              "displayName": "ai_dek",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "position",
+              "displayName": "position",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "section",
+              "displayName": "section",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_label_override",
+              "displayName": "ai_label_override",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "storyID",
+              "displayName": "storyID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "reason_for_fit_score",
+              "displayName": "reason_for_fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "created by",
+              "displayName": "created by",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "has_been_used",
+              "displayName": "has_been_used",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "selected_for_publication",
+              "displayName": "selected_for_publication",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_og_published",
+              "displayName": "date_og_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "image_url",
+              "displayName": "image_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "image_prompt",
+              "displayName": "image_prompt",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "image_status",
+              "displayName": "image_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "complete",
+                  "value": "complete"
+                },
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "none",
+                  "value": "none"
+                },
+                {
+                  "name": "failed",
+                  "value": "failed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Issues",
+              "displayName": "Newsletter Issues",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Issues 2",
+              "displayName": "Newsletter Issues 2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2128,
+        -32
+      ],
+      "id": "3cbf5e78-17c2-46f5-8cd0-17adefd5f03e",
+      "name": "Enrich w/ AI Data",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        272,
+        48
+      ],
+      "id": "85de0c3c-80a4-4abf-8afb-8964b9cf03ab",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "amount": 8
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2864,
+        -32
+      ],
+      "id": "cb102e9e-0b40-4734-845f-e4d874fcf1f9",
+      "name": "Wait1",
+      "webhookId": "8ced334c-83e1-441e-9c4a-57f094c17d4a",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = [];\n\nfor (const item of $input.all()) {\n  const j = item.json || {};\n\n  // --- Fallback IDs from the wrapper in case AI JSON is missing or unparsable ---\n  const fallbackRecordId =\n    j.record_id || j.recordId || j.id || j.ID || \"\";\n  const fallbackStoryID =\n    j.storyID || j.storyId || j.story_id || j.id || \"\";\n  const fallbackPivotKey =\n    j.pivot_key || j.pivotKey || j.pivotId || j.pivotID || j.pivot_id || \"\";\n  const fallbackPivotId =\n    j.pivot_Id || j.pivotId || j.pivotID || j[\"pivot_Id\"] || \"\";\n\n  // Fallback date_published from wrapper\n  const fallbackDatePublished =\n    j.date_published ||\n    j.published_date ||\n    j.datePublished ||\n    j.isodate ||\n    \"\";\n\n  // --- 1) Extract raw text from Anthropic's response ---\n  let raw = \"\";\n\n  if (Array.isArray(j.content) && j.content.length > 0) {\n    const first = j.content[0];\n    raw = first && typeof first.text === \"string\" ? first.text : \"\";\n  } else if (typeof j.content === \"string\") {\n    raw = j.content;\n  } else if (typeof j.text === \"string\") {\n    raw = j.text;\n  }\n\n  raw = (raw || \"\").trim();\n\n  // Strip ```json ... ``` or ``` ... ``` fences if present\n  if (raw.startsWith(\"```\")) {\n    raw = raw.replace(/^```[a-zA-Z0-9]*\\s*/, \"\"); // opening fence\n    raw = raw.replace(/```$/, \"\").trim();        // closing fence\n  }\n\n  let ai = null;\n\n  try {\n    ai = JSON.parse(raw);\n  } catch (e) {\n    // Parse failed → we *can't* read from ai, so just return IDs + empty AI fields,\n    // plus whatever metadata might exist on the wrapper (usually nothing)\n    out.push({\n      json: {\n        // IDs\n        record_id: fallbackRecordId,\n        storyID: fallbackStoryID,\n        pivot_key: fallbackPivotKey,\n        pivot_Id: fallbackPivotId,\n\n        // metadata (best-effort from wrapper)\n        topic: j.topic || \"\",\n        core_url: j.core_url || j.url || \"\",\n        sentiment: j.sentiment ?? \"\",\n        interest_score: j.interest_score ?? j.interestScore ?? \"\",\n        newsletter: j.newsletter || j.newsletterId || j.newsletter_id || \"\",\n        fit_score: j.fit_score || j.fitScore || \"\",\n        reason_for_fit_score:\n          j.reason_for_fit_score ||\n          j[\"Reason for Fit Score\"] ||\n          \"\",\n        tags: j.tags || \"\",\n        date_published: fallbackDatePublished,\n\n        // AI fields (empty on failure)\n        ai_headline: \"\",\n        ai_dek: \"\",\n        ai_bullet_1: \"\",\n        ai_bullet_2: \"\",\n        ai_bullet_3: \"\",\n        image_prompt: \"\",              // NEW\n\n        decoration_status: \"ai_failed\",\n        parse_error: e.message,\n        raw_ai_output: raw,\n      },\n    });\n    continue;\n  }\n\n  // --- 2) Prefer IDs and metadata from parsed AI JSON; fallback to wrapper if missing ---\n  const record_id =\n    ai.record_id || ai.recordId || fallbackRecordId;\n  const storyID =\n    ai.storyID || ai.storyId || fallbackStoryID;\n  const pivot_key =\n    ai.pivot_key || ai.pivotKey || fallbackPivotKey;\n  const pivot_Id =\n    ai.pivot_Id || ai.pivotId || ai.pivotID || fallbackPivotId;\n\n  const topic =\n    ai.topic ?? j.topic ?? \"\";\n  const core_url =\n    ai.core_url || ai.url || j.core_url || j.url || \"\";\n  const sentiment =\n    ai.sentiment ?? j.sentiment ?? \"\";\n  const interest_score =\n    ai.interest_score ?? ai.interestScore ?? j.interest_score ?? j.interestScore ?? \"\";\n  const newsletter =\n    ai.newsletter || ai.newsletterId || ai.newsletter_id ||\n    j.newsletter || j.newsletterId || j.newsletter_id ||\n    \"\";\n  const fit_score =\n    ai.fit_score || ai.fitScore || j.fit_score || j.fitScore || \"\";\n  const reason_for_fit_score =\n    ai[\"Reason for Fit Score\"] ||\n    ai.reason_for_fit_score ||\n    j[\"Reason for Fit Score\"] ||\n    j.reason_for_fit_score ||\n    \"\";\n  const tags =\n    ai.tags || j.tags || \"\";\n  const date_published =\n    ai.date_published ||\n    ai.published_date ||\n    ai.datePublished ||\n    ai.isodate ||\n    fallbackDatePublished;\n\n  // --- 3) AI content fields ---\n  const ai_headline   = ai.ai_headline || \"\";\n  const ai_dek        = ai.ai_dek || \"\";\n  const ai_bullet_1   = ai.ai_bullet_1 || \"\";\n  const ai_bullet_2   = ai.ai_bullet_2 || \"\";\n  const ai_bullet_3   = ai.ai_bullet_3 || \"\";\n  const image_prompt  =\n    ai.image_prompt || ai.imagePrompt || j.image_prompt || j.imagePrompt || \"\";  // NEW\n\n  // --- 4) Return normalized row ---\n  out.push({\n    json: {\n      // IDs\n      record_id,\n      storyID,\n      pivot_key,\n      pivot_Id,   // raw pivot ID string preserved\n\n      // metadata from AI JSON / wrapper\n      topic,\n      core_url,\n      sentiment,\n      interest_score,\n      newsletter,\n      fit_score,\n      reason_for_fit_score,\n      tags,\n      date_published,\n\n      // AI text fields\n      ai_headline,\n      ai_dek,\n      ai_bullet_1,\n      ai_bullet_2,\n      ai_bullet_3,\n      image_prompt,             // NEW\n      decoration_status: \"completed\",\n      raw_ai_output: raw,\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1904,
+        -32
+      ],
+      "id": "203d79fb-3174-4154-b6f4-2c4efb3aef63",
+      "name": "Normalize Anthropic2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblY78ziWp5yhiGXp",
+          "mode": "list",
+          "cachedResultName": "Newsletter Stories",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblY78ziWp5yhiGXp"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.fields.storyID }}",
+            "date_ai_processed": "={{ new Date().toISOString() }}",
+            "ai_complete": true,
+            "storyID": "={{ $json.fields.storyID }}"
+          },
+          "matchingColumns": [
+            "storyID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false
+            },
+            {
+              "id": "pivotId",
+              "displayName": "pivotId",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_complete",
+              "displayName": "ai_complete",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "date_ai_processed",
+              "displayName": "date_ai_processed",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "issue_id",
+              "displayName": "issue_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_dek",
+              "displayName": "ai_dek",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "position",
+              "displayName": "position",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "section",
+              "displayName": "section",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_label_override",
+              "displayName": "ai_label_override",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "storyID",
+              "displayName": "storyID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "reason_for_fit_score",
+              "displayName": "reason_for_fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "created by",
+              "displayName": "created by",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "has_been_used",
+              "displayName": "has_been_used",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "selected_for_publication",
+              "displayName": "selected_for_publication",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_og_published",
+              "displayName": "date_og_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "image_url",
+              "displayName": "image_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "image_prompt",
+              "displayName": "image_prompt",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "image_status",
+              "displayName": "image_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "complete",
+                  "value": "complete"
+                },
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "none",
+                  "value": "none"
+                },
+                {
+                  "name": "failed",
+                  "value": "failed"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Issues",
+              "displayName": "Newsletter Issues",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Issues 2",
+              "displayName": "Newsletter Issues 2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2352,
+        -32
+      ],
+      "id": "f8846d7f-10f1-4235-8b07-0c7525454224",
+      "name": "Newsletter Stories AI Done",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "needs_decoration": false,
+            "decoration_status": "completed",
+            "pivot_Id": "={{ $json.fields.pivotId }}"
+          },
+          "matchingColumns": [
+            "pivot_Id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "pivot_Id",
+              "displayName": "pivot_Id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_ingested",
+              "displayName": "date_ingested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_scored",
+              "displayName": "date_scored",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "markdown",
+              "displayName": "markdown",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_ai",
+              "displayName": "needs_ai",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Reason for Fit Score",
+              "displayName": "Reason for Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "in_newsletter_stories",
+              "displayName": "in_newsletter_stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_decoration",
+              "displayName": "needs_decoration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "decoration_status",
+              "displayName": "decoration_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "completed",
+                  "value": "completed"
+                },
+                {
+                  "name": "skipped_low_score",
+                  "value": "skipped_low_score"
+                },
+                {
+                  "name": "error",
+                  "value": "error"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_byline",
+              "displayName": "ai_byline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "summary_raw",
+              "displayName": "summary_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Stories",
+              "displayName": "Newsletter Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2576,
+        -32
+      ],
+      "id": "1e673994-a9fc-487f-9f2d-f1d839501c7b",
+      "name": "Article AI Decoration Status",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -400,
+        48
+      ],
+      "id": "1bd9d3ec-1ac9-45a8-b946-d0c4ffd607eb",
+      "name": "Create Headlines/bullets"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "filterByFormula": "=AND(\n  {interest_score} >= 15,\n  OR(\n    {decoration_status} = \"pending\",\n    {decoration_status} = \"\"\n  )\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -176,
+        48
+      ],
+      "id": "ef5e7c4c-2237-43d3-9dee-ccd151758a41",
+      "name": "Pull by Interest Score",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You will receive a JSON object embedded in a Markdown code block. Your task is to modify only three fields and return the full JSON back unchanged except for the addition of Markdown bolding inside the bullet strings.\n\nInstructions\n\nFor each of these JSON fields:\n\n\"ai_bullet_1\"\n\n\"ai_bullet_2\"\n\n\"ai_bullet_3\"\n\nIdentify one phrase (10 to 15 words) that best represents the core message of that bullet.\n\nWrap that phrase in Markdown bold syntax:\n\n** before the phrase\n\n** after the phrase\n\nOnly bold one phrase per bullet.\n\nDo not bold an entire sentence.\n\nDo not change any wording, punctuation, or structure of the JSON.\n\nDo not add any new formatting other than the bold markers.\n\nReturn the full JSON object, unchanged except for the bold markers placed inside the three bullet strings.\n\nBold example for reference:\nNetflix unveiled a generative-AI search feature that lets subscribers ask for shows and movies using ChatGPT.\n\nNow apply this exact logic to the JSON below and output the full updated JSON:\n\n```json\n{{ $json.content[0].text }}\n```"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        -32
+      ],
+      "id": "27fa28f4-5050-47d1-9cd7-5c503049fc7a",
+      "name": "Bolding",
+      "retryOnFail": true,
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "filterByFormula": "=AND(\n  {interest_score} < 15,\n  OR(\n    {Decoration_status} = \"\",\n    {Decoration_status} = \"pending\"\n  )\n)\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -128,
+        704
+      ],
+      "id": "334df5ce-2605-4cd3-ba25-3b68d4a2f391",
+      "name": "Check for Will not decorate",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "decoration_status": "skipped_low_score",
+            "pivot_Id": "={{ $json.pivot_Id }}"
+          },
+          "matchingColumns": [
+            "pivot_Id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "pivot_Id",
+              "displayName": "pivot_Id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_ingested",
+              "displayName": "date_ingested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_scored",
+              "displayName": "date_scored",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "markdown",
+              "displayName": "markdown",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Reason for Fit Score",
+              "displayName": "Reason for Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "in_newsletter_stories",
+              "displayName": "in_newsletter_stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_ai",
+              "displayName": "needs_ai",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "decoration_status",
+              "displayName": "decoration_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "completed",
+                  "value": "completed"
+                },
+                {
+                  "name": "skipped_low_score",
+                  "value": "skipped_low_score"
+                },
+                {
+                  "name": "error",
+                  "value": "error"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created By",
+              "displayName": "Created By",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_byline",
+              "displayName": "ai_byline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "summary_raw",
+              "displayName": "summary_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Stories",
+              "displayName": "Newsletter Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_decoration",
+              "displayName": "needs_decoration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        112,
+        704
+      ],
+      "id": "92eb0537-c0d6-4519-9d45-a2ffdff154f0",
+      "name": "mark will not decorate",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert editor and content router for a family of newsletters.\n\nYour job for EACH ARTICLE:\n- Decide which newsletters this article best belongs in.\n- Compute a primary topic (not necessarily AI-only).\n- Generate 5 concise tags.\n- Identify the core URL (the true source of the story).\n- Score overall sentiment about the news.\n- Score how intrinsically interesting / important the story is for this newsletter ecosystem.\n- Return a single JSON object following the schema below.\n\nNEWSLETTERS & AUDIENCES\n\nYou must ONLY choose from these three newsletters:\n\n1) Pivot AI\n- Weekday newsletter for professionals and business leaders.\n- Focus: broad, high-signal overview of what’s happening in AI, including:\n  - Major model launches and capabilities\n  - Big company moves, strategy shifts, not just price movements\n  - Crypto- but only if AI companies like NVDA or GOOG or others are the focus\n  - How AI changes work, industries, and products\n  - High-quality thought pieces, essays, and analysis that help readers think better about the future of tech and AI\n\n2) Pivot Build\n- Newsletter for people building AI tools and products: founders, PMs, engineers, data scientists, infra folks.They're going to want to read about things that change their day to day work life\n- Readers care about:\n  - New APIs, SDKs, models, tools, and frameworks they can build with\n  - Changes in pricing, performance, or capabilities that affect their stacks\n  - Infrastructure, evals, safety, and deployment patterns\n  - Concrete implementation details and case studies from companies shipping AI or software products\n  - If the topic is \"Products & Tools\", it's probably made for Pivot Build. Imagine you're a smart Developer building AI products. Things you'd be interested in should be labeled as Pivot Build.\n\n3) Pivot Invest\n- Markets-focused newsletter.\n- Readers are investors, PMs, traders, and finance professionals.\n- The story should be primarily about:\n  - Public or private markets (stocks, indices, ETFs, bonds, credit, commodities, FX), OR\n  - Company funding, earnings, guidance, M&A, IPO/SPAC, or capital allocation, OR\n  - Macro conditions (rates, inflation, growth, unemployment, fiscal/monetary policy) with a clear impact on assets or sectors.\n- AI or technology is relevant only insofar as it moves prices, valuations, capital flows, or risk.\n\nROUTING LOGIC\n\nFor each article:\n- Consider all three newsletters (Pivot AI, Pivot Build, Pivot Invest).\n- The article may fit:\n  - zero newsletters (if basically irrelevant),\n  - one newsletter (most common),\n  - or multiple newsletters.\n- For each newsletter, assign a numeric fit_score from 0 to 25:\n  - 0–4: essentially not useful for that newsletter\n  - 5–9: marginal / niche interest\n  - 10–14: reasonable inclusion for that newsletter\n  - 15–19: strong fit; most readers will care\n  - 20–25: excellent fit; high-priority story for that newsletter\n- Only give a non-zero fit_score to \"pivot_invest\" if the article substantially discusses:\n  - specific companies, tickers, indices, sectors, or funds, OR\n  - funding rounds, valuations, revenue/growth metrics, earnings, or deal terms, OR\n  - macro variables that investors directly trade on (rates, inflation, jobs, GDP, etc.).\n- Do NOT recommend \"pivot_invest\" just because a story might indirectly affect investors. If there is no concrete discussion of markets, prices, funding, earnings, valuations, or macro variables, set its fit_score for \"pivot_invest\" to 0.\n- In borderline cases (e.g., AI safety, regulation, or strategy pieces), default to \"pivot_ai\" unless the article clearly links these topics to market or valuation impact in detail.\n- The primary newsletter is the one with the highest fit_score > 0.\n- If all fit_scores are 0, the article doesn’t belong in any of these three newsletters.\n\nTOPIC\n\nChoose the single best topic label, even if the story is not strictly about AI. Use this list:\n\nLABEL OPTIONS (select exactly one):\n- WORK\n- EDUCATION\n- INFRASTRUCTURE\n- POLICY\n- TALENT\n- HEALTH\n- RETAIL\n- ENTERPRISE\n- COMPETITION\n- FUNDING\n- SECURITY\n- TOOLS\n- SEARCH\n- INVESTORS\n- CHINA\n- REGULATION\n- ETHICS\n- LAWSUITS\n\nPick the topic that best reflects what the article is fundamentally about.\n\nTAGS\n\n- Return exactly 5 tags.\n- Each tag should be 1–3 words.\n- No hashtags, no emojis.\n- Mix of:\n  - key entities (companies, products, models),\n  - key themes (e.g. “model pricing”, “chips supply”, “enterprise adoption”),\n  - and key contexts (e.g. “regulation”, “macro”, “productivity”).\n- Tags should help with search and filtering later.\n\nCORE URL\n\n- \"core_url\" is the single URL that best represents the main story the article is about.\n- It is usually:\n  - The original article on a news site, company site, blog, research lab, or regulator.\n- Rules:\n  - If the article clearly references or is built around one main external link, use that.\n  - Prefer external sources over internal newsletter/archive links when possible.\n  - If no external link is clearly primary, use the article’s own URL.\n  - If there is genuine ambiguity, pick the best candidate and move on.\n\nSENTIMENT (INDEPENDENT OF INTEREST)\n\n- \"sentiment\" is an integer from -10 to 10, reflecting overall tone of the news itself, not the author’s opinion:\n  - -10 = Extremely negative (major failures, bans, catastrophic security incidents, severe layoffs, massive regulatory or legal risk)\n  - -5  = Moderately negative (meaningful setbacks, important risks, disappointing results, negative user or regulator reaction)\n  -  0  = Neutral / mixed / mostly descriptive\n  - +5  = Moderately positive (solid progress, useful launches, good results, incremental wins)\n  - +10 = Extremely positive (breakthrough success, very strong results, huge upside or opportunity)\n\nIMPORTANT:\n- Sentiment must be completely independent from how interesting or important the story is.\n- A very negative story can have very high interest_score; a very positive story can have low interest_score.\n\nGLOBAL INTEREST SCORE (INDEPENDENT OF SENTIMENT)\n\n- \"interest_score\" is an integer from 0 to 25, measuring how important or interesting this story is for the overall Pivot newsletter ecosystem (ignoring whether it is good or bad news).\n  - 0–4: very minor; probably not worth including anywhere\n  - 5–9: mild interest; filler or niche story\n  - 10–14: solid story; reasonable to include\n  - 15–19: strong story; many readers would care\n  - 20–25: major story; high-signal, high-priority piece\n\nIMPORTANT:\n- Do NOT derive interest_score from sentiment.\n- A negative, scary story about big risks or losses can have a very high interest_score.\n- A positive but small or trivial story can have a low interest_score.\n\nJSON OUTPUT SCHEMA\n\nReturn exactly ONE JSON object with these fields:\n\n- \"pivotId\"                     original internal pivot ID value {{ $json.preRecord.pivot_Id }}\n- \"article_id\"                  original article ID value {{ $json.preRecord.id }}\n- \"newsletter_recommendations\"  an array of 0–3 objects, one per newsletter where fit_score > 0, sorted by fit_score descending\n    Each object:\n      - \"newsletter_slug\"   one of: \"pivot_ai\", \"pivot_build\", \"pivot_invest\"\n      - \"newsletter_name\"   one of: \"Pivot AI\", \"Pivot Build\", \"Pivot Invest\"\n      - \"fit_score\"         integer 0–25, per rubric above\n      - \"reason\"            very short explanation (1 short sentence or phrase) of why this article fits that newsletter\n- \"primary_newsletter_slug\"     slug of the best-fit newsletter, or null if none (e.g. \"pivot_build\")\n- \"topic\"                       one of the topic labels specified above\n- \"tags\"                        array of exactly 5 short strings\n- \"core_url\"                    the best core URL per rules above\n- \"sentiment\"                   integer from -10 to 10\n- \"interest_score\"              integer from 0 to 25, per rubric above\n\nSTRICT JSON RULES\n\n- Return exactly ONE JSON object, not an array.\n- Use double quotes only.\n- No markdown, no backticks, no code fences.\n- No comments.\n- No trailing commas.\n- If you are uncertain, choose your best judgment and still return valid JSON.\n\nMETADATA\n\npivotId: {{ $json.preRecord.pivot_Id }}\narticle_id: {{ $json.preRecord.id }}\nTitle: \nSource: {{ $json.preRecord.source_id }}\nURL: {{ $json.preRecord.original_url }}\n\nARTICLE BODY\n{{ JSON.stringify($json.preRecord.markdown.slice(0, 10000)) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        640,
+        368
+      ],
+      "id": "fdb36211-594e-497e-b773-9a740b757e64",
+      "name": "Content Creator1",
+      "retryOnFail": true,
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take only the first 5 items from the input\nconst items = $input.all();\nconst firstFive = items.slice(0,10);\n\n// Return them in n8n format\nreturn firstFive;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        352
+      ],
+      "id": "0cb98730-64b5-42c7-842f-81e78a01174c",
+      "name": "Slice1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => ({\n  json: {\n    preRecord: item.json,      // full Airtable record\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        352
+      ],
+      "id": "e64ef7c8-a27b-4bcd-8104-22fc717c0496",
+      "name": "preRecord1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "needs_ai": false,
+            "pivot_Id": "={{ $json.fields.pivot_Id }}",
+            "decoration_status": "pending"
+          },
+          "matchingColumns": [
+            "pivot_Id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "pivot_Id",
+              "displayName": "pivot_Id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_ingested",
+              "displayName": "date_ingested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_scored",
+              "displayName": "date_scored",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "markdown",
+              "displayName": "markdown",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_ai",
+              "displayName": "needs_ai",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Reason for Fit Score",
+              "displayName": "Reason for Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "decoration_status",
+              "displayName": "decoration_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "completed",
+                  "value": "completed"
+                },
+                {
+                  "name": "skipped_low_score",
+                  "value": "skipped_low_score"
+                },
+                {
+                  "name": "error",
+                  "value": "error"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created By",
+              "displayName": "Created By",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_byline",
+              "displayName": "ai_byline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "summary_raw",
+              "displayName": "summary_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Stories",
+              "displayName": "Newsletter Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "in_newsletter_stories",
+              "displayName": "in_newsletter_stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_decoration",
+              "displayName": "needs_decoration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1632,
+        384
+      ],
+      "id": "008a390d-af09-4e28-b36e-0e57f8c4e92b",
+      "name": "Mark AI Steps as Done1",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "interest_score": "={{ $json.interest_score }}",
+            "topic": "={{ $json.topic }}",
+            "core_url": "={{ $json.core_url }}",
+            "pivot_Id": "={{ $json.pivotId }}",
+            "tags": "={{ $json.tags.join(', ') }}",
+            "newsletter": "={{ $json.newsletter_slug }}",
+            "fit_score": "={{ $json.newsletter_fit_score }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "Reason for Fit Score": "={{ $json.newsletter_reason }}",
+            "date_scored": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [
+            "pivot_Id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "pivot_Id",
+              "displayName": "pivot_Id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_ingested",
+              "displayName": "date_ingested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_scored",
+              "displayName": "date_scored",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "markdown",
+              "displayName": "markdown",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "needs_ai",
+              "displayName": "needs_ai",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Reason for Fit Score",
+              "displayName": "Reason for Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "in_newsletter_stories",
+              "displayName": "in_newsletter_stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "decoration_status",
+              "displayName": "decoration_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "completed",
+                  "value": "completed"
+                },
+                {
+                  "name": "skipped_low_score",
+                  "value": "skipped_low_score"
+                },
+                {
+                  "name": "error",
+                  "value": "error"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_byline",
+              "displayName": "ai_byline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "summary_raw",
+              "displayName": "summary_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Stories",
+              "displayName": "Newsletter Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_decoration",
+              "displayName": "needs_decoration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1440,
+        384
+      ],
+      "id": "1d583587-a637-4a4d-ba67-2ed2cb978339",
+      "name": "Enrich w/ AI Data1",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// SETTINGS — modify if you want to be more strict or lenient\nconst MIN_FIT_SCORE = 10;  // below this, a newsletter doesn't \"count\"\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const j = item.json;\n\n  const recs = Array.isArray(j.newsletter_recommendations)\n    ? j.newsletter_recommendations\n    : [];\n\n  // Keep only newsletter recs meeting the minimum fit score\n  const eligible = recs.filter(r => {\n    const score = typeof r.fit_score === 'number'\n      ? r.fit_score\n      : Number(r.fit_score || 0);\n    return score >= MIN_FIT_SCORE;\n  });\n\n  // 🟥 Case 1: no eligible newsletters → emit a single \"not_applicable\" item\n  if (eligible.length === 0) {\n    out.push({\n      json: {\n        ...j,\n        newsletter_slug: \"not_applicable\",\n        newsletter_fit_score: 0,\n        newsletter_reason: \"No newsletter reached the minimum fit threshold\",\n        // keep original recs if you want to inspect them later\n        newsletter_recommendations: recs,\n        primary_newsletter_slug: \"not_applicable\",\n      },\n    });\n    continue;\n  }\n\n  // 🟩 Case 2: at least one eligible → compute \"best\" for reference\n  const best = eligible.reduce((acc, r) => {\n    const accScore = typeof acc.fit_score === 'number'\n      ? acc.fit_score\n      : Number(acc.fit_score || 0);\n    const rScore = typeof r.fit_score === 'number'\n      ? r.fit_score\n      : Number(r.fit_score || 0);\n    return rScore > accScore ? r : acc;\n  }, eligible[0]);\n\n  // For EVERY eligible newsletter, emit a separate item\n  for (const r of eligible) {\n    const scoreNum = typeof r.fit_score === 'number'\n      ? r.fit_score\n      : Number(r.fit_score || 0);\n\n    out.push({\n      json: {\n        ...j,\n        // single chosen newsletter for *this* item\n        newsletter_slug: r.newsletter_slug,\n        newsletter_fit_score: scoreNum,\n        newsletter_reason: r.reason || \"\",\n        // keep the list of all eligible recs if useful\n        newsletter_recommendations: eligible,\n        // best overall, if you still want that reference\n        primary_newsletter_slug: best.newsletter_slug,\n      },\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        368
+      ],
+      "id": "8780e0f0-c048-4357-b80f-22ba85f680f0",
+      "name": "Pick Best Fit2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        432,
+        352
+      ],
+      "id": "024d4dab-935b-4cce-b095-9137ea1224fb",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1840,
+        384
+      ],
+      "id": "22443cdd-0b71-4a59-a351-7dfd7978807e",
+      "name": "Wait",
+      "webhookId": "ee12d56d-525c-42d9-8928-9baa3d93e1ec"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "filterByFormula": "{needs_ai} = 1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -128,
+        352
+      ],
+      "id": "4b4d1205-8deb-49a9-b5fd-60e57960a9cb",
+      "name": "Needs AI",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// This node expects input items in the Anthropic format:\n//\n// [\n//   {\n//     \"content\": [\n//       {\n//         \"type\": \"text\",\n//         \"text\": \"```json\\n{ ... }\\n```\"\n//       }\n//     ]\n//   },\n//   ...\n// ]\n//\n// It will:\n// - Strip the ```json ... ``` fences\n// - Parse the JSON\n// - Return clean objects with all relevant fields\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const contentArr = item.json.content || [];\n  const rawText = (contentArr[0]?.text || \"\").trim();\n\n  if (!rawText) {\n    // Nothing to parse; you can choose to skip or emit an error object\n    continue;\n  }\n\n  // Strip markdown code fences like ```json ... ```\n  const cleanedText = rawText\n    .replace(/^```json\\s*/i, \"\")  // remove leading ```json\n    .replace(/^```\\s*/i, \"\")      // just in case it's ``` without json\n    .replace(/```$/i, \"\")         // remove trailing ```\n    .trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleanedText);\n  } catch (err) {\n    // If parsing fails, emit an error object so you can inspect later\n    out.push({\n      json: {\n        parse_error: true,\n        message: err.message,\n        raw: rawText,\n      },\n    });\n    continue;\n  }\n\n  // Destructure the fields you care about (plus keep everything else)\n  const {\n    pivotId,\n    article_id,\n    newsletter_recommendations,\n    primary_newsletter_slug,\n    topic,\n    tags,\n    core_url,\n    sentiment,\n    // anything else in parsed is preserved via spread below\n  } = parsed;\n\n  out.push({\n    json: {\n      // keep full parsed object in case you add fields later\n      ...parsed,\n\n      // normalize / type-clean key fields\n      pivotId: pivotId || null,\n      article_id: article_id || null,\n      newsletter_recommendations: Array.isArray(newsletter_recommendations)\n        ? newsletter_recommendations\n        : [],\n      primary_newsletter_slug: primary_newsletter_slug || null,\n      topic: topic || null,\n      tags: Array.isArray(tags) ? tags : [],\n      core_url: core_url || null,\n      sentiment:\n        typeof sentiment === \"number\" ? sentiment : (sentiment != null ? Number(sentiment) : null),\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        368
+      ],
+      "id": "87537603-0c49-4db4-baeb-474781c582e2",
+      "name": "Normalize Anthropic"
+    },
+    {
+      "parameters": {
+        "content": "Broad Scoring/categorization from Ingestion Engine"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        320
+      ],
+      "id": "dc98e8ab-51ec-43db-a41f-575bd845caca",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Fill won't decorate field on Articles table"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        688
+      ],
+      "id": "ce9422c3-c105-4d54-80b3-842ed2a74817",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -320,
+        704
+      ],
+      "id": "e455d564-72c2-4c81-9e84-2b3e84bed02e",
+      "name": "Will Not Decorate 5 min"
+    },
+    {
+      "parameters": {
+        "content": "Create headlines, bullets, image prompts"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -736,
+        48
+      ],
+      "id": "e841b727-479f-478e-a38b-1e2455cbdc5d",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert visual-design prompt writer.\nYour job is to read the JSON metadata below and create a clean, minimal, infographic-style image prompt.\nThe final output must be an image-generation prompt suitable for an AI model\n\nInfographic Style Requirements\n\nInspired by modern enterprise AI infographics: soft beige/warm gradient background, orange accent tones, flat iconography, clean line art\n\nMuch less busy than typical corporate charts\n\nMinimal text (optional one–three short labels only)\n\nLarge, central visual icons\n\nStrong focus on visual storytelling, not paragraphs\n\nUse warm oranges + neutral grays, gentle shadows, and rounded shapes\n\nShould feel like a polished conference-deck visual\n\nShould visually represent the core theme extracted from the metadata\n\nYour Task\n\nRead the JSON metadata.\n\nIdentify 2–3 main visual concepts suggested by the story (for example: supply chain tension, shift to AI infrastructure, memory shortage, rising prices).\n\nConvert those concepts into iconic visual representations (e.g., semiconductor fabs, RAM modules, shifting arrows, broken supply chains, rising price charts, etc.)\n\nInclude minimal text only if helpful (large labels like “Infrastructure Shift” or “Memory Shortage”)\n\nOutput only the final image-generation prompt, nothing else.\n\nDo not rewrite or restate the metadata.\n\nMake sure the final prompt produces an infographic similar to the sample provided, but simpler and more visual-first.\n\nNow apply this exact logic to the JSON below and output the full updated JSON with the prompt you created called \"image_prompt\":\n\n```json\n{{ $json.content[0].text }}\n```"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        -32
+      ],
+      "id": "a657c653-61bd-4a98-a91d-f526745ac20e",
+      "name": "Create Image Prompt",
+      "retryOnFail": true,
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-5-20250929",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-5-20250929"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert editorial deduplication engine for a news content pipeline.\n\nYou will be given a JSON array of stories. Your job is to identify WHICH stories are true duplicates of each other – meaning they describe the SAME underlying news event – and to choose a single canonical story to keep from each duplicate cluster.\n\nYou care MUCH MORE about avoiding false positives than about catching every possible duplicate.\nOnly mark stories as duplicates if you are highly confident (80%+).\n\n--------------------\nDEFINITIONS\n--------------------\n\n\"Same underlying story\" means:\n- They describe the same event, development, or announcement, not just the same company.\n- Key entities match (companies, people, products).\n- Key NUMBERS or FACTS match (e.g., “35% productivity gain,” “$29.5 billion,” “10,000 layoffs”).\n- The time frame is the same (e.g., all clearly refer to the same quarter, day, or discrete announcement).\n- Differences are mostly in wording, tone, or framing.\n\nNOT duplicates if:\n- They mention the same company but are about clearly different events.\n- They mention similar themes (AI, layoffs, earnings, regulation) but different details or time frames.\n- One is about a bridge loan and another is about internal productivity tools, even if both mention Wells Fargo.\n- They use different *numbers* or describe clearly different metrics.\n\nExample:\n- \"Wells Fargo Engineers See 35% Productivity Gains From GenAI Coding Tools\"\n- \"Wells Fargo Reports 35% Engineering Efficiency From AI as Layoffs Accelerate\"\n\nThese ARE duplicates – same company, same 35% engineering/AI productivity story.\n\nBut:\n- \"Wells Fargo Engineers See 35% Productivity Gains From GenAI Coding Tools\"\n- \"Wells Fargo Commits $29.5bn to Netflix in One of Largest Bridge Loans Ever\"\n\nThese are NOT duplicates – same company name appears, but they describe entirely different events (internal engineering tools vs an external bridge loan).\n\n--------------------\nINPUT FORMAT\n--------------------\n\nYou will receive a single JSON array of story objects under the key \"stories\". Each story may look like:\n\n{\n  \"story_id\": \"rec123\",\n  \"headline\": \"Wells Fargo Engineers See 35% Productivity Gains From GenAI Coding Tools\",\n  \"summary\": \"Wells Fargo says internal GenAI coding tools boosted engineering productivity by 35%...\",\n  \"core_url\": \"https://example.com/wells-fargo-ai-tools\",\n  \"tags\": \"Wells Fargo, AI tools, productivity\",\n  \"date_published\": \"2025-12-10T15:30:00Z\"\n}\n\nField names may vary slightly. Focus on:\n- story_id (or StoryID)\n- headline\n- summary (if present)\n- core_url / url\n- tags\n- date_published\n\n--------------------\nYOUR TASK\n--------------------\n\n1. Read all stories and identify clusters of stories that are *true* duplicates of each other based on meaning, not just shared entities.\n\n2. For each duplicate cluster:\n   - Choose ONE canonical story to keep:\n     - Prefer the story with:\n       - Richer / clearer headline and summary.\n       - More complete description of the event.\n       - If tied, pick the one with an earlier date_published.\n       - If still tied, pick the one with the lexicographically smallest story_id.\n   - Mark all other stories in that cluster as duplicates of the canonical story.\n\n3. Treat stories as NON-DUPLICATES unless you are highly confident they describe the same event.\n\n--------------------\nOUTPUT FORMAT\n--------------------\n\nReturn ONLY valid JSON. No commentary, no extra text.\n\nUse this exact schema:\n\n{\n  \"duplicate_sets\": [\n    {\n      \"canonical_story_id\": \"string\",\n      \"duplicate_story_ids\": [\"string\", \"string\"],\n      \"reason\": \"short natural-language explanation of why these are duplicates\"\n    }\n  ],\n  \"nonduplicate_story_ids\": [\"string\", \"string\"]\n}\n\nWhere:\n- duplicate_sets: an array of clusters containing 2+ stories that describe the same story.\n  - canonical_story_id: the story_id you chose as the one to keep.\n  - duplicate_story_ids: all other story_ids in that cluster (must not include canonical_story_id).\n  - reason: brief explanation (1–2 sentences).\n\n- nonduplicate_story_ids:\n  - All story_ids that are NOT in any duplicate cluster.\n  - Also include canonical_story_id values here, since they should be kept.\n\nRules:\n- A given story_id MUST appear in exactly one of these places:\n  - As canonical_story_id (and also in nonduplicate_story_ids), OR\n  - In duplicate_story_ids, OR\n  - In nonduplicate_story_ids only.\n- Do NOT include the same story_id twice anywhere in the output.\n\n--------------------\nDUPLICATE DECISION HEURISTICS\n--------------------\n\nUse these to decide duplicates:\n\n1. Strong indicators of duplicates:\n   - Same primary company/organizations and same specific product or unit.\n   - Same key numbers (e.g., 35% productivity gain, $29.5B loan, 10,000 jobs cut).\n   - Same named initiative or product.\n   - Same time frame and event description (earnings for the same quarter, same regulatory fine, same acquisition).\n\n2. Weak indicators that are NOT enough alone:\n   - Same company but different numbers or metrics.\n   - Same company but clearly different events (loan vs AI tool vs earnings vs SEC fine).\n   - Vague or generic coincidence of keywords (AI, cloud, growth).\n\n3. Be conservative:\n   - If you are not sure whether two stories describe the same event, treat them as NON-DUPLICATES.\n   - Only cluster as duplicates when you are confident they refer to the same underlying news.\n\n--------------------\nNOW PROCESS THIS INPUT\n--------------------\n\nHere is the JSON input:\n\n{{stories_json}}\n\nRemember:\n- Only output JSON in the schema described above.\n- No backticks, no markdown, no extra explanation."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        624,
+        1040
+      ],
+      "id": "15137c90-d1d9-4c87-84ae-b351df75bf53",
+      "name": "Content Creator2",
+      "retryOnFail": true,
+      "credentials": {
+        "anthropicApi": {
+          "id": "YKM57Kb7DwoPLoVN",
+          "name": "Anthropic account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take only the first 5 items from the input\nconst items = $input.all();\nconst firstFive = items.slice(0,10);\n\n// Return them in n8n format\nreturn firstFive;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        1024
+      ],
+      "id": "ea06b54d-fe4e-4a71-ae5d-f5fb7a33171c",
+      "name": "Slice",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "needs_ai": false,
+            "pivot_Id": "={{ $json.fields.pivot_Id }}",
+            "decoration_status": "pending"
+          },
+          "matchingColumns": [
+            "pivot_Id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "pivot_Id",
+              "displayName": "pivot_Id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_ingested",
+              "displayName": "date_ingested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_scored",
+              "displayName": "date_scored",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "markdown",
+              "displayName": "markdown",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_ai",
+              "displayName": "needs_ai",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Reason for Fit Score",
+              "displayName": "Reason for Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "decoration_status",
+              "displayName": "decoration_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "completed",
+                  "value": "completed"
+                },
+                {
+                  "name": "skipped_low_score",
+                  "value": "skipped_low_score"
+                },
+                {
+                  "name": "error",
+                  "value": "error"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Created By",
+              "displayName": "Created By",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_byline",
+              "displayName": "ai_byline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "summary_raw",
+              "displayName": "summary_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Stories",
+              "displayName": "Newsletter Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "in_newsletter_stories",
+              "displayName": "in_newsletter_stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_decoration",
+              "displayName": "needs_decoration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1616,
+        1056
+      ],
+      "id": "178fd8bb-2396-46e7-b640-533141e9d21c",
+      "name": "Mark AI Steps as Done",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblGumae8KDpsrWvh",
+          "mode": "list",
+          "cachedResultName": "Articles",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblGumae8KDpsrWvh"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "interest_score": "={{ $json.interest_score }}",
+            "topic": "={{ $json.topic }}",
+            "core_url": "={{ $json.core_url }}",
+            "pivot_Id": "={{ $json.pivotId }}",
+            "tags": "={{ $json.tags.join(', ') }}",
+            "newsletter": "={{ $json.newsletter_slug }}",
+            "fit_score": "={{ $json.newsletter_fit_score }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "Reason for Fit Score": "={{ $json.newsletter_reason }}",
+            "date_scored": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [
+            "pivot_Id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "pivot_Id",
+              "displayName": "pivot_Id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_published",
+              "displayName": "date_published",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_ingested",
+              "displayName": "date_ingested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "date_scored",
+              "displayName": "date_scored",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "markdown",
+              "displayName": "markdown",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "newsletter",
+              "displayName": "newsletter",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "fit_score",
+              "displayName": "fit_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "needs_ai",
+              "displayName": "needs_ai",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "interest_score",
+              "displayName": "interest_score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "core_url",
+              "displayName": "core_url",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Reason for Fit Score",
+              "displayName": "Reason for Fit Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "primary_image",
+              "displayName": "primary_image",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "in_newsletter_stories",
+              "displayName": "in_newsletter_stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "decoration_status",
+              "displayName": "decoration_status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "pending",
+                  "value": "pending"
+                },
+                {
+                  "name": "completed",
+                  "value": "completed"
+                },
+                {
+                  "name": "skipped_low_score",
+                  "value": "skipped_low_score"
+                },
+                {
+                  "name": "error",
+                  "value": "error"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_headline",
+              "displayName": "ai_headline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_byline",
+              "displayName": "ai_byline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_1",
+              "displayName": "ai_bullet_1",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_2",
+              "displayName": "ai_bullet_2",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_bullet_3",
+              "displayName": "ai_bullet_3",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "summary_raw",
+              "displayName": "summary_raw",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "NewsletterStories",
+              "displayName": "NewsletterStories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Newsletter Stories",
+              "displayName": "Newsletter Stories",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "needs_decoration",
+              "displayName": "needs_decoration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1424,
+        1056
+      ],
+      "id": "a19bd84b-28cb-4242-9a71-e680f7d38590",
+      "name": "Enrich w/ AI Data2",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// SETTINGS — modify if you want to be more strict or lenient\nconst MIN_FIT_SCORE = 10;  // below this, a newsletter doesn't \"count\"\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const j = item.json;\n\n  const recs = Array.isArray(j.newsletter_recommendations)\n    ? j.newsletter_recommendations\n    : [];\n\n  // Keep only newsletter recs meeting the minimum fit score\n  const eligible = recs.filter(r => {\n    const score = typeof r.fit_score === 'number'\n      ? r.fit_score\n      : Number(r.fit_score || 0);\n    return score >= MIN_FIT_SCORE;\n  });\n\n  // 🟥 Case 1: no eligible newsletters → emit a single \"not_applicable\" item\n  if (eligible.length === 0) {\n    out.push({\n      json: {\n        ...j,\n        newsletter_slug: \"not_applicable\",\n        newsletter_fit_score: 0,\n        newsletter_reason: \"No newsletter reached the minimum fit threshold\",\n        // keep original recs if you want to inspect them later\n        newsletter_recommendations: recs,\n        primary_newsletter_slug: \"not_applicable\",\n      },\n    });\n    continue;\n  }\n\n  // 🟩 Case 2: at least one eligible → compute \"best\" for reference\n  const best = eligible.reduce((acc, r) => {\n    const accScore = typeof acc.fit_score === 'number'\n      ? acc.fit_score\n      : Number(acc.fit_score || 0);\n    const rScore = typeof r.fit_score === 'number'\n      ? r.fit_score\n      : Number(r.fit_score || 0);\n    return rScore > accScore ? r : acc;\n  }, eligible[0]);\n\n  // For EVERY eligible newsletter, emit a separate item\n  for (const r of eligible) {\n    const scoreNum = typeof r.fit_score === 'number'\n      ? r.fit_score\n      : Number(r.fit_score || 0);\n\n    out.push({\n      json: {\n        ...j,\n        // single chosen newsletter for *this* item\n        newsletter_slug: r.newsletter_slug,\n        newsletter_fit_score: scoreNum,\n        newsletter_reason: r.reason || \"\",\n        // keep the list of all eligible recs if useful\n        newsletter_recommendations: eligible,\n        // best overall, if you still want that reference\n        primary_newsletter_slug: best.newsletter_slug,\n      },\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1040
+      ],
+      "id": "130d8299-d8d7-4b2a-9d8f-ee1830913566",
+      "name": "Pick Best Fit",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        416,
+        1024
+      ],
+      "id": "6667bbf3-642f-41d8-ba87-5fd911dd4861",
+      "name": "Loop Over Items2",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1824,
+        1056
+      ],
+      "id": "45693e1a-b17b-4064-abca-a0d72e8a9997",
+      "name": "Wait2",
+      "webhookId": "ee12d56d-525c-42d9-8928-9baa3d93e1ec",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appwSozYTkrsQWUXB",
+          "mode": "list",
+          "cachedResultName": "Pivot Media Master",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblY78ziWp5yhiGXp",
+          "mode": "list",
+          "cachedResultName": "Newsletter Stories",
+          "cachedResultUrl": "https://airtable.com/appwSozYTkrsQWUXB/tblY78ziWp5yhiGXp"
+        },
+        "filterByFormula": "date_og_published >= NOW() - 7 days",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -144,
+        1024
+      ],
+      "id": "a0039b1c-0045-47bd-abd0-d6ab9624ff10",
+      "name": "Needs AI1",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "oWcf5peCOkQe8Rem",
+          "name": "Airtable Pivot Studio"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -320,
+        1024
+      ],
+      "id": "818024bd-aa8d-40c2-a5a0-06d9bb7d8082",
+      "name": "AI Scoring Trigger 1hr1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// This node expects input items in the Anthropic format:\n//\n// [\n//   {\n//     \"content\": [\n//       {\n//         \"type\": \"text\",\n//         \"text\": \"```json\\n{ ... }\\n```\"\n//       }\n//     ]\n//   },\n//   ...\n// ]\n//\n// It will:\n// - Strip the ```json ... ``` fences\n// - Parse the JSON\n// - Return clean objects with all relevant fields\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const contentArr = item.json.content || [];\n  const rawText = (contentArr[0]?.text || \"\").trim();\n\n  if (!rawText) {\n    // Nothing to parse; you can choose to skip or emit an error object\n    continue;\n  }\n\n  // Strip markdown code fences like ```json ... ```\n  const cleanedText = rawText\n    .replace(/^```json\\s*/i, \"\")  // remove leading ```json\n    .replace(/^```\\s*/i, \"\")      // just in case it's ``` without json\n    .replace(/```$/i, \"\")         // remove trailing ```\n    .trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleanedText);\n  } catch (err) {\n    // If parsing fails, emit an error object so you can inspect later\n    out.push({\n      json: {\n        parse_error: true,\n        message: err.message,\n        raw: rawText,\n      },\n    });\n    continue;\n  }\n\n  // Destructure the fields you care about (plus keep everything else)\n  const {\n    pivotId,\n    article_id,\n    newsletter_recommendations,\n    primary_newsletter_slug,\n    topic,\n    tags,\n    core_url,\n    sentiment,\n    // anything else in parsed is preserved via spread below\n  } = parsed;\n\n  out.push({\n    json: {\n      // keep full parsed object in case you add fields later\n      ...parsed,\n\n      // normalize / type-clean key fields\n      pivotId: pivotId || null,\n      article_id: article_id || null,\n      newsletter_recommendations: Array.isArray(newsletter_recommendations)\n        ? newsletter_recommendations\n        : [],\n      primary_newsletter_slug: primary_newsletter_slug || null,\n      topic: topic || null,\n      tags: Array.isArray(tags) ? tags : [],\n      core_url: core_url || null,\n      sentiment:\n        typeof sentiment === \"number\" ? sentiment : (sentiment != null ? Number(sentiment) : null),\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        1040
+      ],
+      "id": "274d9d54-b1b7-4b0e-8b44-09deabd28c42",
+      "name": "Normalize Anthropic1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "content": "De-Duplicate Stories"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        992
+      ],
+      "id": "b9a6f7ff-6d26-4d80-95ea-8d1c6eba1094",
+      "name": "Sticky Note4",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Update these if your field names differ:\nconst STORY_ID_FIELD = \"$input.first().json.storyID\";       // or \"pivot_Id\"\nconst HEADLINE_FIELD = \"$input.first().json.ai_headline\";   // or \"title\" / \"headline\"\n\nconst output = items.map(item => {\n  const rec = item.json;\n  const fields = rec.fields || {};\n\n  return {\n    json: {\n      record_id: rec.id || null,                 // Airtable record ID\n      story_id: fields[STORY_ID_FIELD] || null,  // your pivot ID\n      title: fields[HEADLINE_FIELD] || \"\"        // the headline/title\n    }\n  };\n});\n\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        1024
+      ],
+      "id": "79fc3dac-6ab8-4b47-a318-d343a0c39568",
+      "name": "Strip Stories",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -304,
+        352
+      ],
+      "id": "2839a0eb-1d2f-41c8-b40b-d01976225497",
+      "name": "AI Scoring Trigger 20min"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Build userContent1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content Creator": {
+      "main": [
+        [
+          {
+            "node": "Bolding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich w/ AI Data": {
+      "main": [
+        [
+          {
+            "node": "Newsletter Stories AI Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Content Creator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Anthropic2": {
+      "main": [
+        [
+          {
+            "node": "Enrich w/ AI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Newsletter Stories AI Done": {
+      "main": [
+        [
+          {
+            "node": "Article AI Decoration Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Article AI Decoration Status": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Headlines/bullets": {
+      "main": [
+        [
+          {
+            "node": "Pull by Interest Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull by Interest Score": {
+      "main": [
+        [
+          {
+            "node": "Build userContent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bolding": {
+      "main": [
+        [
+          {
+            "node": "Create Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Will not decorate": {
+      "main": [
+        [
+          {
+            "node": "mark will not decorate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "mark will not decorate": {
+      "main": [
+        []
+      ]
+    },
+    "Content Creator1": {
+      "main": [
+        [
+          {
+            "node": "Normalize Anthropic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "preRecord1": {
+      "main": [
+        [
+          {
+            "node": "Slice1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark AI Steps as Done1": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich w/ AI Data1": {
+      "main": [
+        [
+          {
+            "node": "Mark AI Steps as Done1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Best Fit2": {
+      "main": [
+        [
+          {
+            "node": "Enrich w/ AI Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Content Creator1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs AI": {
+      "main": [
+        [
+          {
+            "node": "preRecord1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Anthropic": {
+      "main": [
+        [
+          {
+            "node": "Pick Best Fit2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Will Not Decorate 5 min": {
+      "main": [
+        [
+          {
+            "node": "Check for Will not decorate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Normalize Anthropic2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content Creator2": {
+      "main": [
+        [
+          {
+            "node": "Normalize Anthropic1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slice": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark AI Steps as Done": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich w/ AI Data2": {
+      "main": [
+        [
+          {
+            "node": "Mark AI Steps as Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Best Fit": {
+      "main": [
+        [
+          {
+            "node": "Enrich w/ AI Data2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items2": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Content Creator2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs AI1": {
+      "main": [
+        [
+          {
+            "node": "Strip Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Scoring Trigger 1hr1": {
+      "main": [
+        [
+          {
+            "node": "Needs AI1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Anthropic1": {
+      "main": [
+        [
+          {
+            "node": "Pick Best Fit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip Stories": {
+      "main": [
+        [
+          {
+            "node": "Slice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Scoring Trigger 20min": {
+      "main": [
+        [
+          {
+            "node": "Needs AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "be2cf6c3-9da5-44a9-ad3a-87e294ebbae1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bbbd911fcbd9efe5def160e3f7a7b14baf0691f4a0ba4531005de9dea9d03f69"
+  },
+  "id": "mgIuocpwH9kXvPjM",
+  "tags": []
+}

@@ -1,0 +1,6 @@
+Kunal Gupta
+Hey, so I just had my chat with MailSor and uh as we had discussed to try to just improve deliverability testing and warming up the domains. Right now they are using essentially the email that gets sent from our system into Mautic. The suggestion is let's change this temporarily to a plain text email. So no images, no links, no logo, no use of the word pivot. uh five so let's remove that um so it's just like headline bullets and that's it um So if you can change the email that gets sent into Maudic daily to be that, that will kind of clean things up. And then let's see how that improves deliverability by just having a plain text email. And then once we get deliverability. Kind of going, then we'll start to like okay, let's add images, let's add links, let's add the pivot brand and see at what point it breaks. Um but yeah they sent they're using new inbox warm-up tools. Things are going to spam on a new domain, new tool, new IPs. So there is something going on and we just have to kind of get to the bottom of it. So I imagine this is the Langdon NADN workflow.
+
+Kunal Gupta
+I mean, if you want to, you can build the Mautic integration off your new AI editor. and then have the ability to customize what the type of email it is or just do it through in it end that might be the fastest way.
+
