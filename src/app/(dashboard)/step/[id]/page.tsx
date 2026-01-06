@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ExecutionLogs } from "@/components/step/execution-logs";
+import { LiveExecutionLogs } from "@/components/step/live-execution-logs";
 import { SystemPrompts } from "@/components/step/system-prompts";
 import { StepData } from "@/components/step/step-data";
 import { Progress } from "@/components/ui/progress";
@@ -1123,7 +1123,7 @@ export default function StepPage({ params }: PageProps) {
           )}
 
           {/* Execution Logs */}
-          <ExecutionLogs stepId={stepId} stepName={stepConfig.name} />
+          <LiveExecutionLogs stepId={stepId} title={`Step ${stepId}: ${stepConfig.name} Logs`} />
         </TabsContent>
 
         {stepConfig.prompts.length > 0 && (

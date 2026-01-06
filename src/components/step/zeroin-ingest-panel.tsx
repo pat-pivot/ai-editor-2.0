@@ -24,7 +24,7 @@ import {
 import { formatDateET, formatDuration } from "@/lib/date-utils";
 import { ArticlesTable } from "./articles-table";
 import { NewsletterSelectsTable } from "./newsletter-selects-table";
-import { ExecutionLogs } from "./execution-logs";
+import { LiveExecutionLogs } from "./live-execution-logs";
 
 // Status badge component for last run status
 function StatusBadge({ status }: { status: "success" | "failed" | "running" }) {
@@ -924,8 +924,8 @@ export function ZeroinIngestPanel() {
         </TabsContent>
       </Tabs>
 
-      {/* Execution Logs Section */}
-      <ExecutionLogs stepId={0} stepName="Ingest" />
+      {/* Execution Logs Section - Live from Render API */}
+      <LiveExecutionLogs stepId={0} title="Step 0: Ingest Logs" />
     </div>
   );
 }

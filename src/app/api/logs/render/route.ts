@@ -36,55 +36,52 @@ import { NextRequest, NextResponse } from "next/server";
 const RENDER_API_KEY = process.env.RENDER_API_KEY;
 const RENDER_API_URL = "https://api.render.com/v1/logs";
 
-// Service IDs for AI Editor components
-// These will be populated once the new cron jobs are deployed
+// Service IDs - hardcoded from Render dashboard
+// NOTE: Cron jobs use 'crn-' prefix, services use 'srv-'
 const SERVICE_IDS = {
-  // Existing services
+  // Core services
   worker: process.env.RENDER_WORKER_SERVICE_ID || "srv-d55i64juibrs7392tcn0",
-  scheduler: process.env.RENDER_SCHEDULER_SERVICE_ID || "srv-d55i64juibrs7392tcmg",
   trigger: process.env.RENDER_TRIGGER_SERVICE_ID || "srv-d563ffvgi27c73dtqdq0",
-  // Pipeline cron jobs (to be added after render.yaml deployment)
-  pipelineNight: process.env.RENDER_PIPELINE_NIGHT_ID,
-  pipelineMorning: process.env.RENDER_PIPELINE_MORNING_ID,
-  pipelineEod: process.env.RENDER_PIPELINE_EOD_ID,
-  // Individual cron jobs (current architecture)
-  ingestCron: process.env.RENDER_INGEST_CRON_ID,
-  prefilterSlot1: process.env.RENDER_PREFILTER_SLOT1_ID,
-  prefilterSlot2: process.env.RENDER_PREFILTER_SLOT2_ID,
-  prefilterSlot3: process.env.RENDER_PREFILTER_SLOT3_ID,
-  prefilterSlot4: process.env.RENDER_PREFILTER_SLOT4_ID,
-  prefilterSlot5: process.env.RENDER_PREFILTER_SLOT5_ID,
+  // Pipeline cron jobs (run Ingest → AI Scoring → Pre-Filter)
+  pipelineNight: process.env.RENDER_PIPELINE_NIGHT_ID || "crn-d5e2shv5r7bs73ca4dp0",
+  pipelineMorning: process.env.RENDER_PIPELINE_MORNING_ID || "crn-d5e2sl2li9vc73dt5q40",
+  pipelineEod: process.env.RENDER_PIPELINE_EOD_ID || "crn-d5e2smq4d50c73fjo0tg",
 };
 
 // Map step IDs to relevant Render services
 function getServiceIdsForStep(stepId: string): string[] {
   const ids: string[] = [];
 
+  // Pipeline crons handle ALL steps (Ingest → AI Scoring → Pre-Filter)
+  // So both Step 0 and Step 1 logs come from the same pipeline crons
   switch (stepId) {
     case "0":
-      // Step 0: Ingest + AI Scoring (runs on worker or trigger)
+      // Step 0: Ingest + AI Scoring
+      // Manual: worker + trigger
+      // Automated: pipeline crons
       if (SERVICE_IDS.worker) ids.push(SERVICE_IDS.worker);
       if (SERVICE_IDS.trigger) ids.push(SERVICE_IDS.trigger);
-      if (SERVICE_IDS.ingestCron) ids.push(SERVICE_IDS.ingestCron);
+      if (SERVICE_IDS.pipelineNight) ids.push(SERVICE_IDS.pipelineNight);
+      if (SERVICE_IDS.pipelineMorning) ids.push(SERVICE_IDS.pipelineMorning);
+      if (SERVICE_IDS.pipelineEod) ids.push(SERVICE_IDS.pipelineEod);
       break;
 
     case "1":
-      // Step 1: Pre-Filter (runs on worker or individual slot crons)
+      // Step 1: Pre-Filter
+      // Manual: worker + trigger
+      // Automated: pipeline crons (pre-filter is part of chained pipeline)
       if (SERVICE_IDS.worker) ids.push(SERVICE_IDS.worker);
-      if (SERVICE_IDS.prefilterSlot1) ids.push(SERVICE_IDS.prefilterSlot1);
-      if (SERVICE_IDS.prefilterSlot2) ids.push(SERVICE_IDS.prefilterSlot2);
-      if (SERVICE_IDS.prefilterSlot3) ids.push(SERVICE_IDS.prefilterSlot3);
-      if (SERVICE_IDS.prefilterSlot4) ids.push(SERVICE_IDS.prefilterSlot4);
-      if (SERVICE_IDS.prefilterSlot5) ids.push(SERVICE_IDS.prefilterSlot5);
+      if (SERVICE_IDS.trigger) ids.push(SERVICE_IDS.trigger);
+      if (SERVICE_IDS.pipelineNight) ids.push(SERVICE_IDS.pipelineNight);
+      if (SERVICE_IDS.pipelineMorning) ids.push(SERVICE_IDS.pipelineMorning);
+      if (SERVICE_IDS.pipelineEod) ids.push(SERVICE_IDS.pipelineEod);
       break;
 
     case "all":
     default:
-      // All services - for pipeline view
+      // All services and crons
       if (SERVICE_IDS.worker) ids.push(SERVICE_IDS.worker);
       if (SERVICE_IDS.trigger) ids.push(SERVICE_IDS.trigger);
-      if (SERVICE_IDS.scheduler) ids.push(SERVICE_IDS.scheduler);
-      // Add pipeline crons if configured
       if (SERVICE_IDS.pipelineNight) ids.push(SERVICE_IDS.pipelineNight);
       if (SERVICE_IDS.pipelineMorning) ids.push(SERVICE_IDS.pipelineMorning);
       if (SERVICE_IDS.pipelineEod) ids.push(SERVICE_IDS.pipelineEod);
