@@ -3,12 +3,14 @@ Chained Pipeline Job for AI Editor 2.0
 
 Executes the full pipeline as a single chained job:
   1. Ingest (Step 0) - Fetch articles from FreshRSS, decode Google News URLs
-  2. AI Scoring (Step 0.5) - Score articles with Claude, create Newsletter Selects
-  3. Pre-Filter (Step 1) - Run all 5 slots sequentially with Gemini
+  2. Direct Feed Ingest (Step 0a) - Ingest non-Google News RSS feeds
+  3. AI Scoring (Step 0.5) - Score articles with Claude, create Newsletter Selects
+  4. Pre-Filter (Step 1) - Run all 5 slots sequentially with Gemini
 
 CHAINED EXECUTION:
   - Each step runs only after the previous completes
-  - AI Scoring only runs if new articles were ingested
+  - Direct Feed Ingest runs after Google News ingest (processes different URLs)
+  - AI Scoring only runs if new articles were ingested (from either source)
   - Pre-Filter runs regardless (picks up any pending Newsletter Selects)
   - Each slot writes to Airtable immediately (crash-safe)
 
@@ -17,7 +19,7 @@ CRON SCHEDULE (see render.yaml):
   Cycle 2: 9:30 AM ET (14:30 UTC) - Morning publications
   Cycle 3: 5:00 PM ET (22:00 UTC) - End-of-day stories
 
-Each cycle takes ~3-4 hours to complete (Ingest + Scoring + PreFilter).
+Each cycle takes ~3-4 hours to complete (Ingest + Direct Feeds + Scoring + PreFilter).
 """
 
 from datetime import datetime
@@ -33,9 +35,10 @@ def run_full_pipeline() -> dict:
     Each step runs only after the previous completes.
 
     Pipeline Flow:
-      1. Ingest → Fetches articles from FreshRSS
-      2. AI Scoring → Scores articles (only if ingest found new articles)
-      3. Pre-Filter → Runs all 5 slots sequentially
+      1. Ingest → Fetches articles from FreshRSS (Google News URLs)
+      2. Direct Feed Ingest → Fetches non-Google News RSS feeds
+      3. AI Scoring → Scores articles (only if either ingest found new articles)
+      4. Pre-Filter → Runs all 5 slots sequentially
 
     Returns:
         Results dict with timing and counts from each step
@@ -43,11 +46,12 @@ def run_full_pipeline() -> dict:
     pipeline_start = datetime.now(EST)
     print(f"[Pipeline] ===== STARTING FULL PIPELINE =====")
     print(f"[Pipeline] Start time: {pipeline_start.strftime('%Y-%m-%d %I:%M %p ET')}")
-    print(f"[Pipeline] Chain: Ingest → AI Scoring → Pre-Filter (5 slots)")
+    print(f"[Pipeline] Chain: Ingest → Direct Feeds → AI Scoring → Pre-Filter (5 slots)")
 
     results = {
         "pipeline_started_at": pipeline_start.isoformat(),
         "ingest": None,
+        "direct_feeds": None,
         "ai_scoring": None,
         "pre_filter": None,
         "pipeline_completed_at": None,
@@ -76,15 +80,38 @@ def run_full_pipeline() -> dict:
         print(f"[Pipeline] → Duplicates skipped: {ingest_result.get('articles_skipped_duplicate', 0)}")
 
         # =====================================================================
+        # STEP 0a: DIRECT FEED INGEST
+        # Fetch non-Google News RSS feeds (Reuters, TechCrunch, etc.)
+        # Runs AFTER Google News ingest to avoid being skipped
+        # =====================================================================
+        print(f"\n[Pipeline] ----- STEP 0a: DIRECT FEED INGEST -----")
+        step_start = datetime.now(EST)
+
+        from jobs.ingest_direct_feeds import ingest_direct_feeds
+        direct_feeds_result = ingest_direct_feeds()
+        results["direct_feeds"] = direct_feeds_result
+
+        direct_feeds_ingested = direct_feeds_result.get("articles_ingested", 0)
+        step_duration = (datetime.now(EST) - step_start).total_seconds()
+        print(f"[Pipeline] Direct Feeds complete in {step_duration:.1f}s")
+        print(f"[Pipeline] → Direct feeds found: {direct_feeds_result.get('direct_feeds_found', 0)}")
+        print(f"[Pipeline] → Articles ingested: {direct_feeds_ingested}")
+        print(f"[Pipeline] → Google News skipped: {direct_feeds_result.get('google_news_skipped', 0)}")
+        print(f"[Pipeline] → Duplicates skipped: {direct_feeds_result.get('articles_skipped_duplicate', 0)}")
+
+        # Total articles from both ingest steps
+        total_ingested = articles_ingested + direct_feeds_ingested
+
+        # =====================================================================
         # STEP 0.5: AI SCORING
         # Score articles with Claude, create Newsletter Selects
-        # Only runs if new articles were ingested
+        # Only runs if new articles were ingested (from either source)
         # =====================================================================
         print(f"\n[Pipeline] ----- STEP 0.5: AI SCORING -----")
 
-        if articles_ingested > 0:
+        if total_ingested > 0:
             step_start = datetime.now(EST)
-            print(f"[Pipeline] Running AI Scoring for {articles_ingested} new articles...")
+            print(f"[Pipeline] Running AI Scoring for {total_ingested} new articles...")
 
             from jobs.ai_scoring_sandbox import run_ai_scoring_sandbox
             scoring_result = run_ai_scoring_sandbox()
@@ -146,13 +173,15 @@ def run_full_pipeline() -> dict:
 
         # Summary stats
         ingest = results.get("ingest") or {}
+        direct_feeds = results.get("direct_feeds") or {}
         scoring = results.get("ai_scoring") or {}
         prefilter = results.get("pre_filter") or {}
 
         print(f"[Pipeline] SUMMARY:")
-        print(f"  Ingest:     {ingest.get('articles_ingested', 0)} articles")
-        print(f"  AI Scoring: {scoring.get('articles_scored', 0) if not scoring.get('skipped') else 'skipped'}")
-        print(f"  Pre-Filter: {prefilter.get('written', 0)} records to Airtable")
+        print(f"  Ingest (Google News): {ingest.get('articles_ingested', 0)} articles")
+        print(f"  Direct Feeds:         {direct_feeds.get('articles_ingested', 0)} articles")
+        print(f"  AI Scoring:           {scoring.get('articles_scored', 0) if not scoring.get('skipped') else 'skipped'}")
+        print(f"  Pre-Filter:           {prefilter.get('written', 0)} records to Airtable")
         print(f"[Pipeline] ============================================")
 
     return results
