@@ -303,10 +303,10 @@ ARTICLE:
             use_db_prompt = True
             logger.info("[Gemini slot_1] Using prompt from database")
 
-        # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
-        # Reduced to 100 per chunk (1/1/26) - 200 caused JSON truncation in Slot 3
+        # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
+        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=100)
+        chunks = self._chunk_articles(articles, chunk_size=75)
         print(f"[Gemini slot_1] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -377,10 +377,10 @@ If no stories match, return: {{"matches": []}}"""
             use_db_prompt = True
             logger.info("[Gemini slot_2] Using prompt from database")
 
-        # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
-        # Reduced to 100 per chunk (1/1/26) - 200 caused JSON truncation in Slot 3
+        # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
+        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=100)
+        chunks = self._chunk_articles(articles, chunk_size=75)
         print(f"[Gemini slot_2] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -451,10 +451,10 @@ If no stories match, return: {{"matches": []}}"""
             use_db_prompt = True
             logger.info("[Gemini slot_3] Using prompt from database")
 
-        # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
-        # Reduced to 100 per chunk (1/1/26) - 200 caused JSON truncation in Slot 3
+        # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
+        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=100)
+        chunks = self._chunk_articles(articles, chunk_size=75)
         print(f"[Gemini slot_3] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -533,10 +533,10 @@ If no stories match, return: {{"matches": []}}"""
             use_db_prompt = True
             logger.info("[Gemini slot_4] Using prompt from database")
 
-        # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
-        # Reduced to 100 per chunk (1/1/26) - 200 caused JSON truncation in Slot 3
+        # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
+        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=100)
+        chunks = self._chunk_articles(articles, chunk_size=75)
         print(f"[Gemini slot_4] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -610,10 +610,10 @@ If no stories match, return: {{"matches": []}}"""
             use_db_prompt = True
             logger.info("[Gemini slot_5] Using prompt from database")
 
-        # Chunk large batches - Gemini 3 Flash supports 1M input / 64K output
-        # Reduced to 100 per chunk (1/1/26) - 200 caused JSON truncation in Slot 3
+        # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
+        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=100)
+        chunks = self._chunk_articles(articles, chunk_size=75)
         print(f"[Gemini slot_5] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
