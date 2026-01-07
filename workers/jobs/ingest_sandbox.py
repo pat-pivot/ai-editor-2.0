@@ -351,7 +351,7 @@ ARTICLES_TABLE_SANDBOX = os.environ.get(
 def ingest_articles_sandbox(
     debug: bool = False,
     limit: int = 1000,  # Increased to get all articles before filtering
-    since_hours: int = 36
+    since_hours: int = 24
 ) -> Dict[str, Any]:
     """
     Main sandbox ingestion job function.

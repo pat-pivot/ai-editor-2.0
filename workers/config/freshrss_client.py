@@ -245,7 +245,7 @@ class FreshRSSClient:
         self,
         limit: int = 100,
         feed_id: str = None,
-        since_hours: int = 36,
+        since_hours: int = 24,
         auto_refresh: bool = True
     ) -> List[Dict[str, Any]]:
         """

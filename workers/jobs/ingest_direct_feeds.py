@@ -131,7 +131,7 @@ def extract_source_from_url(url: str) -> Optional[str]:
 
 def ingest_direct_feeds(
     limit: int = 500,
-    since_hours: int = 36,
+    since_hours: int = 24,
     debug: bool = False
 ) -> Dict[str, Any]:
     """
