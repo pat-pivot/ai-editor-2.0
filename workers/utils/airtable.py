@@ -348,6 +348,52 @@ class AirtableClient:
 
         return records
 
+    def get_recent_decorated_stories(self, lookback_days: int = 14, max_records: int = 50) -> List[dict]:
+        """
+        Get recently decorated stories with full content for semantic deduplication.
+
+        Uses Newsletter Issue Stories (Decoration) table which has:
+        - headline, b1, b2, b3, ai_dek for semantic comparison
+        - storyID for exact match fallback (camelCase per Airtable convention)
+        - company for entity matching
+        - issue_id for date filtering
+
+        Added 1/7/26: For semantic deduplication to catch same news events
+        with different headlines/IDs.
+
+        Args:
+            lookback_days: Number of days to look back (default 14)
+            max_records: Maximum records to return (default 50)
+
+        Returns:
+            List of decorated story records from recent issues
+        """
+        # Newsletter Issue Stories table in AI Editor 2.0 base
+        table = self._get_table(
+            self.ai_editor_base_id,
+            self.decoration_table_id  # tbla16LJCf5Z6cRn3
+        )
+
+        # Filter for stories that have been decorated (have headline)
+        # Note: Airtable doesn't have created_at - use issue_id date filter
+        # issue_id format is "Pivot 5 - Jan 07" - sort by it descending
+        filter_formula = "{headline}!=''"
+
+        records = table.all(
+            formula=filter_formula,
+            sort=['-issue_id'],  # Most recent issues first
+            max_records=max_records,
+            fields=[
+                'storyID', 'headline',
+                'b1', 'b2', 'b3',
+                'ai_dek', 'company',
+                'issue_id'
+            ]
+        )
+
+        logger.info(f"[Airtable] get_recent_decorated_stories: Found {len(records)} stories")
+        return records
+
     def write_prefilter_log(self, record_data: dict) -> str:
         """
         Step 1, Node 17: Write to Pre-Filter Log table
