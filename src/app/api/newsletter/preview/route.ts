@@ -83,7 +83,10 @@ export async function GET() {
     const records = await fetchAirtable(AI_EDITOR_BASE_ID, NEWSLETTER_ISSUES_FINAL_TABLE, {
       maxRecords: 1,
       filterByFormula: `OR({status}="next-send", {status}="scheduled", {status}="compiled")`,
-      sort: [{ field: "issue_id", direction: "desc" }],
+      sort: [
+        { field: "issue_id", direction: "desc" },
+        { field: "Created Time", direction: "desc" }
+      ],
       fields: [
         "issue_id",
         "subject_line",
