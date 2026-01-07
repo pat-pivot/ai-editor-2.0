@@ -356,6 +356,114 @@ Note: Cloudinary uses unsigned upload with preset `MakeImage`, so no API key is 
 
 ---
 
+## Issue 4: Cloudflare URL Format Mismatch (FIXED 1/7/26)
+
+**Problem:** Python code was returning the wrong URL format from Cloudflare Images upload.
+
+**Current (wrong):**
+```
+https://imagedelivery.net/KXy14RehLGC3ziMxzD_shA/pivot5-recMA6WlMAzZRF5vF-gemini-jpg-1767807930/newsletter
+```
+
+**Expected (correct):**
+```
+https://img.pivotnews.com/cdn-cgi/imagedelivery/KXy14RehLGC3ziMxzD_shA/6708edfc-1ba9-4d41-4ab3-209135084600/newsletter
+```
+
+### Root Causes
+
+1. **Custom ID parameter:** Python was passing a custom `id` parameter to Cloudflare, creating IDs like `pivot5-recMA6WlMAzZRF5vF-gemini-jpg-1767807930`. The n8n workflow does NOT pass an ID, letting Cloudflare generate a UUID-style ID.
+
+2. **Wrong URL construction:** Python was returning `variants[0]` from the Cloudflare response, which gives the `imagedelivery.net` URL. The n8n workflow constructs the URL manually using the custom domain `img.pivotnews.com`.
+
+### n8n Workflow Reference
+
+**Upload to Cloudflare node** (n8n):
+- URL: `https://api.cloudflare.com/client/v4/accounts/57031a8d3a5fcec5b7f5f7b4e2fa943b/images/v1`
+- Method: POST with multipart/form-data
+- Body: Binary file upload with field name `file`
+- **No custom ID parameter** - Cloudflare generates UUID
+
+**Edit Fields node** (n8n) - URL construction:
+```javascript
+'https://img.pivotnews.com/cdn-cgi/imagedelivery/KXy14RehLGC3ziMxzD_shA/' + $json.result.id + '/newsletter'
+```
+
+### Fix Applied
+
+**File:** `/app/workers/utils/images.py`
+**Method:** `upload_to_cloudflare()`
+
+Changes:
+1. Removed the `data = {"id": unique_id}` parameter from the POST request
+2. Extract `image_id` from response: `result.get("result", {}).get("id")`
+3. Construct URL manually using custom domain:
+   ```python
+   cloudflare_account_hash = "KXy14RehLGC3ziMxzD_shA"
+   custom_url = f"https://img.pivotnews.com/cdn-cgi/imagedelivery/{cloudflare_account_hash}/{image_id}/newsletter"
+   ```
+
+### Before/After Code
+
+**Before (broken):**
+```python
+# Add timestamp to ID to avoid 409 conflicts on re-runs
+timestamp = int(time.time())
+unique_id = f"{filename.replace('.', '-')}-{timestamp}"
+
+files = {"file": (filename, BytesIO(image_bytes), "image/jpeg")}
+data = {"id": unique_id}  # WRONG: Creates custom ID format
+
+response = requests.post(
+    self.cloudflare_images_url,
+    headers=headers,
+    files=files,
+    data=data,  # WRONG: Passing custom ID
+    timeout=30
+)
+
+if response.status_code == 200:
+    result = response.json()
+    if result.get("success"):
+        variants = result.get("result", {}).get("variants", [])
+        if variants:
+            return variants[0]  # WRONG: Returns imagedelivery.net URL
+```
+
+**After (fixed):**
+```python
+cloudflare_account_hash = "KXy14RehLGC3ziMxzD_shA"
+
+files = {"file": (filename, BytesIO(image_bytes), "image/jpeg")}
+# NO 'data' parameter - let Cloudflare generate UUID
+
+response = requests.post(
+    self.cloudflare_images_url,
+    headers=headers,
+    files=files,  # Only files, no data
+    timeout=30
+)
+
+if response.status_code == 200:
+    result = response.json()
+    if result.get("success"):
+        image_id = result.get("result", {}).get("id")  # UUID format
+        if image_id:
+            # Construct custom domain URL manually
+            custom_url = f"https://img.pivotnews.com/cdn-cgi/imagedelivery/{cloudflare_account_hash}/{image_id}/newsletter"
+            return custom_url
+```
+
+### Testing
+
+After this fix, verify:
+- [ ] Image URLs start with `https://img.pivotnews.com/cdn-cgi/imagedelivery/`
+- [ ] Image IDs are UUID format like `6708edfc-1ba9-4d41-4ab3-209135084600`
+- [ ] URLs end with `/newsletter` variant
+- [ ] Images load correctly in browser
+
+---
+
 ## References
 
 - **n8n Workflow:** `HCbd2g852rkQgSqr`
