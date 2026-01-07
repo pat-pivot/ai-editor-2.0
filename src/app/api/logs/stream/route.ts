@@ -40,6 +40,8 @@ import {
 
 const RENDER_API_KEY = process.env.RENDER_API_KEY;
 const RENDER_API_URL = "https://api.render.com/v1/logs";
+// Owner ID required by Render Logs API (team/workspace ID)
+const RENDER_OWNER_ID = process.env.RENDER_OWNER_ID || "tea-d4pch32dbo4c73ediu3g";
 
 // Base polling interval: 6 seconds (10 req/min baseline)
 const BASE_POLL_INTERVAL_MS = 6000;
@@ -172,7 +174,10 @@ async function fetchRenderLogsWithCache(
   const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
   const params = new URLSearchParams();
-  serviceIds.forEach((id) => params.append("resource[]", id));
+  // Render API requires ownerId parameter
+  params.append("ownerId", RENDER_OWNER_ID);
+  // Render API uses "resource" (not "resource[]") for array parameters
+  serviceIds.forEach((id) => params.append("resource", id));
   params.append("startTime", startTime);
   params.append("limit", limit.toString());
   params.append("direction", "backward");
@@ -202,13 +207,15 @@ async function fetchRenderLogsWithCache(
       return { logs: [], fromCache: false, rateLimitRemaining: 0, wasRateLimited: true };
     }
 
-    // Clear rate limit on successful response
-    clearRateLimit();
-
     if (!response.ok) {
-      console.error("[SSE Stream] Render API error:", response.status);
+      const errorText = await response.text();
+      console.error("[SSE Stream] Render API error:", response.status, errorText);
+      console.error("[SSE Stream] Request URL was:", `${RENDER_API_URL}?${params}`);
       return { logs: [], fromCache: false, rateLimitRemaining, wasRateLimited: false };
     }
+
+    // Clear rate limit on successful response
+    clearRateLimit();
 
     const data = await response.json();
 

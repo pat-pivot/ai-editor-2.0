@@ -48,6 +48,8 @@ import {
 
 const RENDER_API_KEY = process.env.RENDER_API_KEY;
 const RENDER_API_URL = "https://api.render.com/v1/logs";
+// Owner ID required by Render Logs API (team/workspace ID)
+const RENDER_OWNER_ID = process.env.RENDER_OWNER_ID || "tea-d4pch32dbo4c73ediu3g";
 
 // Service IDs - hardcoded from Render dashboard
 // NOTE: Cron jobs use 'crn-' prefix, services use 'srv-'
@@ -225,11 +227,14 @@ export async function GET(request: NextRequest) {
   try {
     // Build query params for Render API
     const params = new URLSearchParams();
-    serviceIds.forEach((id) => params.append("resource[]", id));
+    // Render API requires ownerId parameter
+    params.append("ownerId", RENDER_OWNER_ID);
+    // Render API uses "resource" (not "resource[]") for array parameters
+    serviceIds.forEach((id) => params.append("resource", id));
     params.append("startTime", startTime);
     params.append("limit", limit.toString());
     params.append("direction", "backward"); // Most recent first
-    if (level) params.append("level[]", level);
+    if (level) params.append("level", level);
 
     const response = await fetch(`${RENDER_API_URL}?${params}`, {
       headers: {
