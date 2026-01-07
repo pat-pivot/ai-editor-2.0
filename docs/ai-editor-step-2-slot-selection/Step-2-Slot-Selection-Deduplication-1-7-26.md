@@ -7,9 +7,67 @@
 
 ## Executive Summary
 
-**ROOT CAUSE FOUND:** Claude returns headlines WITHOUT the source suffix (e.g., "Meta lays off 600..." instead of "Meta lays off 600... - Mashable"), causing exact headline matching to fail. When both storyID match AND headline match fail, pivotId lookup fails.
+**ROOT CAUSE FOUND:** The architecture was fundamentally wrong. Claude IS shown both storyID and pivotId for each candidate, but Claude was ONLY asked to return storyID. The code then tried to LOOK UP the pivotId by matching Claude's returned storyID against candidates. When Claude returned truncated/invalid storyIDs, the lookup failed.
 
-**FIX IMPLEMENTED:** Added multi-tier headline matching (exact, startswith, reverse-startswith, substring) to handle Claude's headline modifications.
+**FIX V3 IMPLEMENTED:** Now Claude returns `selected_pivotId` directly instead of relying on storyID lookup. Falls back to headline matching only if Claude doesn't return pivotId.
+
+---
+
+## What Was ACTUALLY Happening
+
+### The Architecture Problem
+
+```
+Claude sees:                    Claude returns:           Code tries:
+┌─────────────────────────┐    ┌────────────────────┐    ┌──────────────────────────┐
+│ Story 1:                │    │ selected_id: rec37 │    │ for c in candidates:     │
+│ - storyID: rec...ULlNV  │ →  │ selected_headline  │ →  │   if c.storyID == rec37  │
+│ - pivotId: p_mw7feg     │    │ (NO pivotId!)      │    │     get pivotId from c   │
+│ - headline: Meta...     │    └────────────────────┘    │ # FAILS - no match!      │
+└─────────────────────────┘                              └──────────────────────────┘
+```
+
+Claude WAS given the pivotId but was never asked to return it!
+
+### Why It Got Worse Today
+
+Today's semantic deduplication fix (commit `5886584`) added ~2500+ tokens to the prompt:
+- 20 story summaries with headlines, bullets, deks
+- 10 slot-specific history items per slot
+
+This longer context caused Claude to truncate/hallucinate storyIDs.
+
+### The V3 Fix (Correct Approach)
+
+Now Claude is asked to return pivotId directly:
+
+```json
+{
+  "selected_id": "storyID (COPY EXACTLY)",
+  "selected_pivotId": "pivotId (COPY EXACTLY)",  // ← NEW!
+  "selected_headline": "...",
+  ...
+}
+```
+
+Code now uses Claude's returned pivotId first:
+```python
+selected_pivot_id = selection.get("selected_pivotId", "")
+if selected_pivot_id:
+    # Use it directly!
+else:
+    # Fallback to storyID/headline lookup
+```
+
+---
+
+## Previous Fix Attempts (V1, V2)
+
+### V1 - Headline Fallback (7c3eabf) - WRONG APPROACH
+Added multi-tier headline matching when storyID lookup failed. This was masking the real problem instead of fixing it.
+
+### V2 - Semantic Deduplication (5886584) - CAUSED THE ISSUE
+Added more context to prompt which made Claude's responses worse.
 
 ---
 

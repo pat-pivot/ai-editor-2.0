@@ -262,7 +262,8 @@ Already used today: {sources_display}
 
 Return ONLY valid JSON with no additional text:
 {
-  "selected_id": "storyID of chosen story",
+  "selected_id": "storyID of chosen story (COPY EXACTLY from candidate)",
+  "selected_pivotId": "pivotId of chosen story (COPY EXACTLY from candidate)",
   "selected_headline": "headline of chosen story",
   "selected_source": "source_name",
   "selected_company": "primary company featured or null",
