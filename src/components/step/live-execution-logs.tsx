@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Radio, AlertCircle, WifiOff } from "lucide-react";
+import { Radio, AlertCircle, WifiOff, RefreshCw } from "lucide-react";
 
 type TimeFilter = "live" | "1h" | "12h" | "24h";
 
@@ -71,9 +71,49 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
   const [filter, setFilter] = useState<TimeFilter>("live");
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [reconnectCountdown, setReconnectCountdown] = useState<number | null>(null);
+  // Track the key for forcing reconnection
+  const [connectionKey, setConnectionKey] = useState(0);
+
   const logsEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Exponential backoff for reconnection (with jitter)
+  const getReconnectDelay = useCallback((attempt: number) => {
+    const baseDelay = 1000; // 1 second
+    const maxDelay = 30000; // 30 seconds
+    const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+    // Add jitter (+-25%)
+    return delay + (Math.random() - 0.5) * delay * 0.5;
+  }, []);
+
+  // Manual reconnect function
+  const manualReconnect = useCallback(() => {
+    // Clear any pending reconnect
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setReconnectCountdown(null);
+    setReconnectAttempt(0);
+    setConnectionError(null);
+    // Trigger reconnection by updating connection key
+    setConnectionKey((prev) => prev + 1);
+  }, []);
+
+  // Memoize the step parameter
+  const stepParam = useMemo(() => {
+    return stepId === 0 ? "0" : stepId === 1 ? "1" : "all";
+  }, [stepId]);
+
+  // Effect to handle connection - external system synchronization
   useEffect(() => {
     // Close existing connection
     if (eventSourceRef.current) {
@@ -81,30 +121,59 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
       eventSourceRef.current = null;
     }
 
-    setConnectionError(null);
-    setIsConnected(false);
+    // Clear any pending reconnect timers
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
 
-    // Open SSE connection
-    const stepParam = stepId === 0 ? "0" : stepId === 1 ? "1" : "all";
+    // Clear logs when starting a new connection (step or filter changed)
+    // Note: This runs asynchronously after render, not during render
+    // The logs will be replaced by the new connection's data
+
     const url = `/api/logs/stream?stepId=${stepParam}&filter=${filter}`;
-
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
       setIsConnected(true);
       setConnectionError(null);
+      setReconnectAttempt(0);
+      setReconnectCountdown(null);
     };
 
-    eventSource.onerror = (e) => {
-      console.error("[LiveLogs] SSE error:", e);
+    eventSource.onerror = () => {
       setIsConnected(false);
-      // Don't set error immediately - SSE can recover
-      setTimeout(() => {
-        if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
-          setConnectionError("Connection lost. Refresh to reconnect.");
-        }
-      }, 5000);
+
+      // Schedule reconnection with exponential backoff
+      const delay = getReconnectDelay(reconnectAttempt);
+      const delaySeconds = Math.round(delay / 1000);
+      setConnectionError(`Connection lost. Reconnecting in ${delaySeconds}s...`);
+      setReconnectCountdown(delaySeconds);
+
+      // Start countdown
+      countdownIntervalRef.current = setInterval(() => {
+        setReconnectCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
+            }
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Schedule reconnect
+      reconnectTimeoutRef.current = setTimeout(() => {
+        setReconnectAttempt((prev) => prev + 1);
+        setConnectionKey((prev) => prev + 1);
+      }, delay);
     };
 
     eventSource.onmessage = (event) => {
@@ -122,9 +191,13 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
 
         if (newLogs.length > 0) {
           setLogs((prev) => {
+            // Use filter from closure (captured at effect setup)
             if (filter === "live") {
               // Append new logs, keep last 500
-              const combined = [...prev, ...newLogs];
+              // Deduplicate by ID
+              const existingIds = new Set(prev.map((l) => l.id));
+              const uniqueNewLogs = newLogs.filter((l) => !existingIds.has(l.id));
+              const combined = [...prev, ...uniqueNewLogs];
               return combined.slice(-500);
             }
             // Replace for historical views
@@ -138,8 +211,14 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
 
     return () => {
       eventSource.close();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
     };
-  }, [stepId, filter]);
+  }, [stepParam, filter, connectionKey, reconnectAttempt, getReconnectDelay]);
 
   // Auto-scroll for live view
   useEffect(() => {
@@ -148,11 +227,21 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
     }
   }, [logs, filter]);
 
-  // Handle filter change
-  const handleFilterChange = (newFilter: TimeFilter) => {
-    setLogs([]); // Clear logs when changing filter
+  // Handle filter change - only clear logs for historical views
+  const handleFilterChange = useCallback((newFilter: TimeFilter) => {
+    // Reset reconnect state
+    setReconnectAttempt(0);
+    setConnectionError(null);
+    setReconnectCountdown(null);
+
+    // Only clear logs when switching to a historical view
+    if (newFilter !== "live") {
+      setLogs([]);
+    }
+    // When switching to live from historical, keep existing logs and append new ones
+
     setFilter(newFilter);
-  };
+  }, []);
 
   return (
     <Card>
@@ -206,9 +295,25 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
       <CardContent>
         {/* Connection Error Banner */}
         {connectionError && (
-          <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-2 text-sm text-amber-800">
-            <AlertCircle className="h-4 w-4" />
-            {connectionError}
+          <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-md flex items-center justify-between text-sm text-amber-800">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              <span>
+                {connectionError}
+                {reconnectCountdown !== null && reconnectCountdown > 0 && (
+                  <span className="ml-1">({reconnectCountdown}s)</span>
+                )}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={manualReconnect}
+              className="h-6 px-2 text-amber-800 hover:text-amber-900 hover:bg-amber-100"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Retry Now
+            </Button>
           </div>
         )}
 
@@ -217,7 +322,19 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
           {logs.length === 0 ? (
             <div className="text-zinc-500 text-center py-8">
               {connectionError ? (
-                <p>Unable to connect to log stream</p>
+                <div>
+                  <WifiOff className="h-6 w-6 mx-auto mb-2" />
+                  <p>Unable to connect to log stream</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={manualReconnect}
+                    className="mt-3"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Retry Connection
+                  </Button>
+                </div>
               ) : filter === "live" ? (
                 <>
                   <Radio className="h-6 w-6 mx-auto mb-2 animate-pulse" />
@@ -281,13 +398,16 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
           <div ref={logsEndRef} />
         </div>
 
-        {/* Footer with log count */}
+        {/* Footer with log count and update interval */}
         <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
           <span>
             {logs.length} log{logs.length !== 1 ? "s" : ""} displayed
           </span>
-          {filter === "live" && (
-            <span>Auto-updating every 3 seconds</span>
+          {filter === "live" && isConnected && (
+            <span>Auto-updating every 6 seconds</span>
+          )}
+          {filter === "live" && !isConnected && connectionError && (
+            <span className="text-amber-600">Connection interrupted</span>
           )}
         </div>
       </CardContent>

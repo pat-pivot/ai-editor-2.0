@@ -3,7 +3,8 @@
  *
  * GET /api/logs/stream
  *   Server-Sent Events endpoint that streams logs from Render API.
- *   Polls Render API every 3 seconds for new logs (within 30/min rate limit).
+ *   Uses server-side caching and exponential backoff to stay within
+ *   Render's 30 requests/minute rate limit.
  *
  * Query Parameters:
  *   - stepId: Filter by pipeline step ('0', '1', 'all')
@@ -13,18 +14,37 @@
  *   - data: JSON array of log entries
  *   - error: Error message if fetch fails
  *
+ * Rate Limit Strategy:
+ *   - Base poll interval: 6 seconds (10 req/min baseline)
+ *   - Server-side cache: 5 second TTL shared across all clients
+ *   - Exponential backoff on 429 or low remaining quota
+ *   - Reads Ratelimit-* headers from Render API
+ *
  * Usage:
  *   const eventSource = new EventSource('/api/logs/stream?stepId=all&filter=live');
  *   eventSource.onmessage = (e) => console.log(JSON.parse(e.data));
  */
 
 import { NextRequest } from "next/server";
+import {
+  getCachedLogs,
+  setCachedLogs,
+  canFetch,
+  markFetchTime,
+  markRateLimited,
+  clearRateLimit,
+  isCurrentlyRateLimited,
+  getTimeUntilReset,
+  type RenderLog,
+} from "@/lib/render-logs-cache";
 
 const RENDER_API_KEY = process.env.RENDER_API_KEY;
 const RENDER_API_URL = "https://api.render.com/v1/logs";
 
-// Polling interval in ms (3 seconds = 20 requests/min, well under 30/min limit)
-const POLL_INTERVAL_MS = 3000;
+// Base polling interval: 6 seconds (10 req/min baseline)
+const BASE_POLL_INTERVAL_MS = 6000;
+// Maximum backoff: 60 seconds
+const MAX_POLL_INTERVAL_MS = 60000;
 
 // Service IDs - hardcoded from Render dashboard
 // NOTE: Cron jobs use 'crn-' prefix, services use 'srv-'
@@ -32,7 +52,7 @@ const SERVICE_IDS = {
   // Core services
   worker: process.env.RENDER_WORKER_SERVICE_ID || "srv-d55i64juibrs7392tcn0",
   trigger: process.env.RENDER_TRIGGER_SERVICE_ID || "srv-d563ffvgi27c73dtqdq0",
-  // Pipeline cron jobs (run Ingest → AI Scoring → Pre-Filter)
+  // Pipeline cron jobs (run Ingest -> AI Scoring -> Pre-Filter)
   pipelineNight: process.env.RENDER_PIPELINE_NIGHT_ID || "crn-d5e2shv5r7bs73ca4dp0",
   pipelineMorning: process.env.RENDER_PIPELINE_MORNING_ID || "crn-d5e2sl2li9vc73dt5q40",
   pipelineEod: process.env.RENDER_PIPELINE_EOD_ID || "crn-d5e2smq4d50c73fjo0tg",
@@ -41,7 +61,7 @@ const SERVICE_IDS = {
 function getServiceIdsForStep(stepId: string): string[] {
   const ids: string[] = [];
 
-  // Pipeline crons handle ALL steps (Ingest → AI Scoring → Pre-Filter)
+  // Pipeline crons handle ALL steps (Ingest -> AI Scoring -> Pre-Filter)
   // So both Step 0 and Step 1 logs come from the same pipeline crons
   switch (stepId) {
     case "0":
@@ -104,21 +124,50 @@ interface RenderLogEntry {
   labels: Array<{ name: string; value: string }>;
 }
 
-async function fetchRenderLogs(
+interface FetchResult {
+  logs: RenderLog[];
+  fromCache: boolean;
+  rateLimitRemaining: number;
+  wasRateLimited: boolean;
+}
+
+/**
+ * Fetch logs from Render API with caching and rate limit awareness
+ */
+async function fetchRenderLogsWithCache(
   serviceIds: string[],
   hours: number,
   limit: number = 50
-): Promise<Array<{
-  id: string;
-  timestamp: string;
-  message: string;
-  level: string;
-  type: string;
-  service: string;
-}>> {
-  if (!RENDER_API_KEY || serviceIds.length === 0) {
-    return [];
+): Promise<FetchResult> {
+  // Check cache first
+  const cached = getCachedLogs(serviceIds);
+  if (cached) {
+    return {
+      logs: cached.logs,
+      fromCache: true,
+      rateLimitRemaining: cached.rateLimitRemaining,
+      wasRateLimited: false,
+    };
   }
+
+  // Check if we're rate limited
+  if (isCurrentlyRateLimited()) {
+    const waitTime = getTimeUntilReset();
+    console.log(`[SSE Stream] Rate limited, ${Math.round(waitTime / 1000)}s until reset`);
+    return { logs: [], fromCache: false, rateLimitRemaining: 0, wasRateLimited: true };
+  }
+
+  // Check if we can make an API call (respects minimum interval)
+  if (!canFetch()) {
+    // Return empty if we're locally throttled - use cache next time
+    return { logs: [], fromCache: false, rateLimitRemaining: 10, wasRateLimited: false };
+  }
+
+  if (!RENDER_API_KEY || serviceIds.length === 0) {
+    return { logs: [], fromCache: false, rateLimitRemaining: 30, wasRateLimited: false };
+  }
+
+  markFetchTime();
 
   const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
@@ -136,14 +185,34 @@ async function fetchRenderLogs(
       },
     });
 
+    // Extract rate limit headers
+    const rateLimitRemaining = parseInt(
+      response.headers.get("Ratelimit-Remaining") || "30",
+      10
+    );
+    const rateLimitReset = parseInt(
+      response.headers.get("Ratelimit-Reset") || "0",
+      10
+    );
+
+    // Handle rate limit
+    if (response.status === 429) {
+      console.warn("[SSE Stream] Rate limited by Render API (429)");
+      markRateLimited(rateLimitReset || Math.floor(Date.now() / 1000) + 60);
+      return { logs: [], fromCache: false, rateLimitRemaining: 0, wasRateLimited: true };
+    }
+
+    // Clear rate limit on successful response
+    clearRateLimit();
+
     if (!response.ok) {
       console.error("[SSE Stream] Render API error:", response.status);
-      return [];
+      return { logs: [], fromCache: false, rateLimitRemaining, wasRateLimited: false };
     }
 
     const data = await response.json();
 
-    return data.logs.map((log: RenderLogEntry) => ({
+    const logs: RenderLog[] = data.logs.map((log: RenderLogEntry) => ({
       id: log.id,
       timestamp: log.timestamp,
       message: log.message,
@@ -151,9 +220,19 @@ async function fetchRenderLogs(
       type: log.labels.find((l) => l.name === "type")?.value || "app",
       service: log.labels.find((l) => l.name === "service")?.value || "unknown",
     }));
+
+    // Cache the results
+    setCachedLogs(serviceIds, logs, rateLimitRemaining, rateLimitReset);
+
+    // Log rate limit info for monitoring
+    if (rateLimitRemaining < 10) {
+      console.warn(`[SSE Stream] Low rate limit remaining: ${rateLimitRemaining}`);
+    }
+
+    return { logs, fromCache: false, rateLimitRemaining, wasRateLimited: false };
   } catch (error) {
     console.error("[SSE Stream] Fetch error:", error);
-    return [];
+    return { logs: [], fromCache: false, rateLimitRemaining: 0, wasRateLimited: false };
   }
 }
 
@@ -166,8 +245,9 @@ export async function GET(request: NextRequest) {
   const encoder = new TextEncoder();
 
   // Track last seen timestamp to filter duplicates
-  let lastTimestamp: string | null = null;
   let seenIds = new Set<string>();
+  let currentPollInterval = BASE_POLL_INTERVAL_MS;
+  let consecutiveErrors = 0;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -190,15 +270,18 @@ export async function GET(request: NextRequest) {
       const initialLimit = filter === "live" ? 50 : 100;
 
       try {
-        const initialLogs = await fetchRenderLogs(serviceIds, initialHours, initialLimit);
+        const { logs: initialLogs, rateLimitRemaining, wasRateLimited } =
+          await fetchRenderLogsWithCache(serviceIds, initialHours, initialLimit);
 
         // Send initial batch
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialLogs)}\n\n`));
 
-        // Track seen IDs and last timestamp
+        // Track seen IDs
         initialLogs.forEach((log) => seenIds.add(log.id));
-        if (initialLogs.length > 0) {
-          lastTimestamp = initialLogs[0].timestamp; // Most recent (backward order)
+
+        // Adjust poll interval based on initial rate limit
+        if (wasRateLimited || rateLimitRemaining < 5) {
+          currentPollInterval = Math.min(BASE_POLL_INTERVAL_MS * 3, MAX_POLL_INTERVAL_MS);
         }
 
         // For non-live views, we're done after initial fetch
@@ -207,11 +290,14 @@ export async function GET(request: NextRequest) {
           return;
         }
 
-        // For live view, poll every 3 seconds
-        const pollInterval = setInterval(async () => {
+        // For live view, poll with adaptive interval
+        let pollTimeout: NodeJS.Timeout;
+
+        const poll = async () => {
           try {
             // Fetch last 3 minutes of logs
-            const newLogs = await fetchRenderLogs(serviceIds, 0.05, 30);
+            const { logs: newLogs, fromCache, rateLimitRemaining, wasRateLimited } =
+              await fetchRenderLogsWithCache(serviceIds, 0.05, 30);
 
             // Filter to only truly new logs (not seen before)
             const filteredLogs = newLogs.filter((log) => !seenIds.has(log.id));
@@ -222,7 +308,6 @@ export async function GET(request: NextRequest) {
 
               // Update tracking
               filteredLogs.forEach((log) => seenIds.add(log.id));
-              lastTimestamp = filteredLogs[0].timestamp;
 
               // Limit seen IDs set size (keep last 1000)
               if (seenIds.size > 1000) {
@@ -230,15 +315,53 @@ export async function GET(request: NextRequest) {
                 seenIds = new Set(idsArray.slice(-500));
               }
             }
+
+            // Adjust poll interval based on rate limit remaining
+            if (wasRateLimited) {
+              // We hit a rate limit - back off significantly
+              currentPollInterval = Math.min(currentPollInterval * 2, MAX_POLL_INTERVAL_MS);
+              consecutiveErrors++;
+              console.log(`[SSE Stream] Backing off to ${currentPollInterval}ms after rate limit`);
+            } else if (rateLimitRemaining < 5) {
+              // Getting close to limit, back off
+              currentPollInterval = Math.min(currentPollInterval * 1.5, MAX_POLL_INTERVAL_MS);
+              consecutiveErrors++;
+              console.log(`[SSE Stream] Low quota (${rateLimitRemaining}), backing off to ${currentPollInterval}ms`);
+            } else if (rateLimitRemaining > 20 && consecutiveErrors === 0) {
+              // Plenty of headroom, can poll at base rate
+              currentPollInterval = BASE_POLL_INTERVAL_MS;
+            } else if (!fromCache && rateLimitRemaining > 10) {
+              // Gradually recover from backoff
+              currentPollInterval = Math.max(
+                currentPollInterval * 0.9,
+                BASE_POLL_INTERVAL_MS
+              );
+            }
+
+            // Reset error counter on successful non-cached fetch with good quota
+            if (!fromCache && rateLimitRemaining > 10) {
+              consecutiveErrors = 0;
+            }
           } catch (error) {
             console.error("[SSE Stream] Poll error:", error);
-            // Don't close stream on poll error, just skip this interval
+            consecutiveErrors++;
+            // Exponential backoff on errors
+            currentPollInterval = Math.min(
+              BASE_POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors),
+              MAX_POLL_INTERVAL_MS
+            );
           }
-        }, POLL_INTERVAL_MS);
+
+          // Schedule next poll with current interval
+          pollTimeout = setTimeout(poll, currentPollInterval);
+        };
+
+        // Start polling
+        pollTimeout = setTimeout(poll, currentPollInterval);
 
         // Cleanup on client disconnect
         request.signal.addEventListener("abort", () => {
-          clearInterval(pollInterval);
+          clearTimeout(pollTimeout);
           controller.close();
         });
       } catch (error) {
