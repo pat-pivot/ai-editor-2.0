@@ -86,21 +86,32 @@ class ClaudeClient:
             Formatted string to append to system prompt
         """
         if not story_summaries:
+            logger.warning("[Claude] _format_story_summaries_for_prompt called with empty list!")
             return ""
+
+        logger.info(f"[Claude] Formatting {len(story_summaries)} story summaries for semantic deduplication")
 
         output = "\n\n## RECENT STORY SUMMARIES (for semantic deduplication)\n"
         output += "**CRITICAL:** Do NOT select stories about the SAME NEWS EVENT as these, even if headlines differ:\n\n"
 
+        formatted_count = 0
         for i, summary in enumerate(story_summaries[:20], 1):  # Limit to 20
+            headline = summary.get('headline', 'N/A')
             output += f"### Recent Story {i}\n"
-            output += f"- Headline: {summary.get('headline', 'N/A')}\n"
+            output += f"- Headline: {headline}\n"
             bullets = [b for b in summary.get('bullets', []) if b]
             if bullets:
                 output += f"- Key Points: {'; '.join(bullets)}\n"
             if summary.get('label'):  # FIXED 1/7/26: 'company' doesn't exist, use 'label'
                 output += f"- Label: {summary.get('label')}\n"
             output += "\n"
+            formatted_count += 1
 
+            # Log first 3 for debugging
+            if i <= 3:
+                logger.info(f"[Claude] Story summary {i}: '{headline[:60]}...' with {len(bullets)} bullets")
+
+        logger.info(f"[Claude] Added {formatted_count} story summaries to prompt for semantic deduplication")
         return output
 
     def _build_slot_system_prompt(self, slot: int, recent_data: dict, cumulative_state: dict, candidate_count: int = 0) -> str:
@@ -177,8 +188,13 @@ class ClaudeClient:
 
                 # NEW 1/7/26: Add story summaries for semantic deduplication
                 story_summaries = recent_data.get('story_summaries', [])
+                logger.info(f"[Claude] Slot {slot}: story_summaries in recent_data: {len(story_summaries)} items")
                 if story_summaries:
-                    prompt += self._format_story_summaries_for_prompt(story_summaries)
+                    summaries_section = self._format_story_summaries_for_prompt(story_summaries)
+                    prompt += summaries_section
+                    logger.info(f"[Claude] Slot {slot}: Added {len(summaries_section)} chars of story summaries to prompt")
+                else:
+                    logger.warning(f"[Claude] Slot {slot}: NO story_summaries found in recent_data!")
 
                 return prompt
             except KeyError as e:
@@ -703,12 +719,29 @@ Return JSON only:
         )
 
         # Parse JSON response or extract text
+        # Claude may return JSON with extra text around it, so we need to handle that
         response_text = response.content[0].text.strip()
+
+        # First try direct JSON parsing
         try:
             result = json.loads(response_text)
             if isinstance(result, dict) and 'summary' in result:
                 return result['summary']
             return response_text
         except json.JSONDecodeError:
-            # Return raw text if not JSON
-            return response_text
+            pass
+
+        # Try to extract JSON from response text (handles extra text around JSON)
+        import re
+        json_match = re.search(r'\{[^{}]*"summary"\s*:\s*"[^"]*"[^{}]*\}', response_text, re.DOTALL)
+        if json_match:
+            try:
+                result = json.loads(json_match.group())
+                if isinstance(result, dict) and 'summary' in result:
+                    return result['summary']
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: return raw text if no valid JSON found
+        logger.warning(f"[generate_summary] Could not parse JSON from response, returning raw text")
+        return response_text

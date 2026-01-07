@@ -392,6 +392,16 @@ class AirtableClient:
         )
 
         logger.info(f"[Airtable] get_recent_decorated_stories: Found {len(records)} stories")
+
+        # Log first 3 for debugging
+        for i, r in enumerate(records[:3]):
+            fields = r.get('fields', {})
+            headline = fields.get('headline', 'N/A')[:50]
+            has_b1 = bool(fields.get('b1'))
+            has_b2 = bool(fields.get('b2'))
+            has_b3 = bool(fields.get('b3'))
+            logger.info(f"[Airtable] Decorated story {i+1}: '{headline}...' b1={has_b1}, b2={has_b2}, b3={has_b3}")
+
         return records
 
     def write_prefilter_log(self, record_data: dict) -> str:

@@ -395,22 +395,39 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
 
     # NEW: Add semantic context from decorated stories
     if decorated_stories:
+        print(f"[Step 2] Processing {len(decorated_stories)} decorated stories for semantic context")
+        skipped_no_headline = 0
+        skipped_no_bullets = 0
         for story in decorated_stories[:30]:  # Limit to most recent 30
             fields = story.get('fields', {})
+            headline = fields.get('headline', '')
+            bullets = [
+                fields.get('b1', ''),
+                fields.get('b2', ''),
+                fields.get('b3', '')
+            ]
             summary = {
-                "headline": fields.get('headline', ''),
-                "bullets": [
-                    fields.get('b1', ''),
-                    fields.get('b2', ''),
-                    fields.get('b3', '')
-                ],
+                "headline": headline,
+                "bullets": bullets,
                 "dek": fields.get('ai_dek', ''),
                 "label": fields.get('label', ''),  # FIXED 1/7/26: 'company' doesn't exist, use 'label'
                 "storyId": fields.get('story_id', '')  # Newsletter Issue Stories uses snake_case
             }
             # Only add if has content
-            if summary["headline"] and any(summary["bullets"]):
-                data["story_summaries"].append(summary)
+            if not headline:
+                skipped_no_headline += 1
+                continue
+            if not any(bullets):
+                skipped_no_bullets += 1
+                continue
+            data["story_summaries"].append(summary)
+
+        print(f"[Step 2] Story summaries built: {len(data['story_summaries'])} added, {skipped_no_headline} skipped (no headline), {skipped_no_bullets} skipped (no bullets)")
+        # Log first 3 summaries for debugging
+        for i, s in enumerate(data["story_summaries"][:3]):
+            print(f"[Step 2] Summary {i+1}: '{s['headline'][:60]}...' bullets={len([b for b in s['bullets'] if b])}")
+    else:
+        print("[Step 2] WARNING: No decorated_stories provided for semantic deduplication!")
 
     return data
 
