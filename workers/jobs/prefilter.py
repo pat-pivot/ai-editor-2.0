@@ -4,11 +4,15 @@ Workflow ID: VoSZu0MIJAw1IuLL
 Schedule: 9:00 PM EST (0 2 * * 2-6 UTC)
 
 MATCHES n8n WORKFLOW ARCHITECTURE EXACTLY:
-- 5 separate Gemini calls (one per slot) with slot-specific prompts
+- 5 separate AI calls (one per slot) with slot-specific prompts
 - Each slot gets ALL eligible articles as a BATCH for comparison
-- Slot 1 Company Filter runs IN PARALLEL with Gemini Slot 1
-- Freshness pre-calculated BEFORE Gemini calls
+- Slot 1 Company Filter runs IN PARALLEL with AI Slot 1
+- Freshness pre-calculated BEFORE AI calls
 - Response format: {matches: [{story_id, headline}]}
+
+TEMPORARY (1/6/26): Using Claude Sonnet 4.5 instead of Gemini (quota exhausted)
+TODO(gemini-quota): Set PREFILTER_MODEL=gemini to revert when quota restored
+See docs/Gemini-Temporary-Swap-1-6-26.md for details
 """
 
 import os
@@ -17,7 +21,17 @@ from typing import List, Dict, Optional, Any, Set
 from zoneinfo import ZoneInfo
 
 from utils.airtable import AirtableClient
-from utils.gemini import GeminiClient
+
+# TEMPORARY: Use Claude instead of Gemini (Gemini quota exhausted 1/6/26)
+# TODO(gemini-quota): Set PREFILTER_MODEL=gemini to revert when quota restored
+PREFILTER_MODEL = os.environ.get('PREFILTER_MODEL', 'claude').lower()
+
+if PREFILTER_MODEL == 'gemini':
+    from utils.gemini import GeminiClient as PrefilterClient
+    PREFILTER_CLIENT_NAME = "Gemini"
+else:
+    from utils.claude_prefilter import ClaudePrefilterClient as PrefilterClient
+    PREFILTER_CLIENT_NAME = "Claude (TEMPORARY)"
 
 # Tier 1 companies for Slot 1 Company Filter (runs parallel to Gemini)
 # Updated 12/26/25: Reduced to 4 companies to match n8n workflow (line 1262)
@@ -54,7 +68,9 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
 
     # Initialize clients
     airtable = AirtableClient()
-    gemini = GeminiClient()
+    # TEMPORARY: Using Claude instead of Gemini (quota exhausted 1/6/26)
+    print(f"[Step 1] PREFILTER_MODEL={PREFILTER_MODEL} → Using {PREFILTER_CLIENT_NAME}", flush=True)
+    prefilter_client = PrefilterClient()
 
     # Track results
     results = {
@@ -276,22 +292,22 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
                 print(f"[Step 1] Slot {slot_num} ({source}): No records to write (slot_records is empty)", flush=True)
             return 0
 
-        # SLOT 1: Gemini Batch + Company Filter (parallel in n8n)
+        # SLOT 1: AI Batch + Company Filter (parallel in n8n)
         print(f"[Step 1] ========== SLOT 1 PROCESSING ==========", flush=True)
         print(f"[Step 1] Slot 1 input batch size: {len(slot_batches[1])} articles", flush=True)
-        print("[Step 1] Running Slot 1 Gemini batch pre-filter...", flush=True)
+        print(f"[Step 1] Running Slot 1 {PREFILTER_CLIENT_NAME} batch pre-filter...", flush=True)
         try:
-            slot1_gemini_matches = gemini.prefilter_batch_slot_1(slot_batches[1], yesterday_data['headlines'])
-            print(f"[Step 1] Slot 1 Gemini returned: {len(slot1_gemini_matches)} matches", flush=True)
-            if slot1_gemini_matches:
-                print(f"[Step 1] Slot 1 Gemini first match: {slot1_gemini_matches[0]}", flush=True)
-            _write_slot_records(1, slot1_gemini_matches, "Gemini")
+            slot1_ai_matches = prefilter_client.prefilter_batch_slot_1(slot_batches[1], yesterday_data['headlines'])
+            print(f"[Step 1] Slot 1 {PREFILTER_CLIENT_NAME} returned: {len(slot1_ai_matches)} matches", flush=True)
+            if slot1_ai_matches:
+                print(f"[Step 1] Slot 1 {PREFILTER_CLIENT_NAME} first match: {slot1_ai_matches[0]}", flush=True)
+            _write_slot_records(1, slot1_ai_matches, PREFILTER_CLIENT_NAME)
         except Exception as e:
-            print(f"[Step 1] Slot 1 Gemini ERROR (continuing): {e}", flush=True)
+            print(f"[Step 1] Slot 1 {PREFILTER_CLIENT_NAME} ERROR (continuing): {e}", flush=True)
             import traceback
-            print(f"[Step 1] Slot 1 Gemini traceback: {traceback.format_exc()}", flush=True)
-            results["errors"].append({"slot": 1, "source": "Gemini", "error": str(e)})
-            slot1_gemini_matches = []
+            print(f"[Step 1] Slot 1 {PREFILTER_CLIENT_NAME} traceback: {traceback.format_exc()}", flush=True)
+            results["errors"].append({"slot": 1, "source": PREFILTER_CLIENT_NAME, "error": str(e)})
+            slot1_ai_matches = []
 
         # Slot 1 Company Filter (runs in parallel, merged with Gemini results)
         print("[Step 1] Running Slot 1 Company Filter...", flush=True)
@@ -306,16 +322,16 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
             results["errors"].append({"slot": 1, "source": "CompanyFilter", "error": str(e)})
         print(f"[Step 1] ========== SLOT 1 COMPLETE ==========", flush=True)
 
-        # SLOT 2: Gemini Batch
+        # SLOT 2: AI Batch
         print(f"[Step 1] ========== SLOT 2 PROCESSING ==========", flush=True)
         print(f"[Step 1] Slot 2 input batch size: {len(slot_batches[2])} articles", flush=True)
-        print("[Step 1] Running Slot 2 Gemini batch pre-filter...", flush=True)
+        print(f"[Step 1] Running Slot 2 {PREFILTER_CLIENT_NAME} batch pre-filter...", flush=True)
         try:
-            slot2_matches = gemini.prefilter_batch_slot_2(slot_batches[2], yesterday_data['headlines'])
-            print(f"[Step 1] Slot 2 Gemini returned: {len(slot2_matches)} matches", flush=True)
+            slot2_matches = prefilter_client.prefilter_batch_slot_2(slot_batches[2], yesterday_data['headlines'])
+            print(f"[Step 1] Slot 2 {PREFILTER_CLIENT_NAME} returned: {len(slot2_matches)} matches", flush=True)
             if slot2_matches:
-                print(f"[Step 1] Slot 2 Gemini first match: {slot2_matches[0]}", flush=True)
-            _write_slot_records(2, slot2_matches, "Gemini")
+                print(f"[Step 1] Slot 2 {PREFILTER_CLIENT_NAME} first match: {slot2_matches[0]}", flush=True)
+            _write_slot_records(2, slot2_matches, PREFILTER_CLIENT_NAME)
         except Exception as e:
             print(f"[Step 1] Slot 2 ERROR (continuing): {e}", flush=True)
             import traceback
@@ -323,16 +339,16 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
             results["errors"].append({"slot": 2, "error": str(e)})
         print(f"[Step 1] ========== SLOT 2 COMPLETE ==========", flush=True)
 
-        # SLOT 3: Gemini Batch
+        # SLOT 3: AI Batch
         print(f"[Step 1] ========== SLOT 3 PROCESSING ==========", flush=True)
         print(f"[Step 1] Slot 3 input batch size: {len(slot_batches[3])} articles", flush=True)
-        print("[Step 1] Running Slot 3 Gemini batch pre-filter...", flush=True)
+        print(f"[Step 1] Running Slot 3 {PREFILTER_CLIENT_NAME} batch pre-filter...", flush=True)
         try:
-            slot3_matches = gemini.prefilter_batch_slot_3(slot_batches[3], yesterday_data['headlines'])
-            print(f"[Step 1] Slot 3 Gemini returned: {len(slot3_matches)} matches", flush=True)
+            slot3_matches = prefilter_client.prefilter_batch_slot_3(slot_batches[3], yesterday_data['headlines'])
+            print(f"[Step 1] Slot 3 {PREFILTER_CLIENT_NAME} returned: {len(slot3_matches)} matches", flush=True)
             if slot3_matches:
-                print(f"[Step 1] Slot 3 Gemini first match: {slot3_matches[0]}", flush=True)
-            _write_slot_records(3, slot3_matches, "Gemini")
+                print(f"[Step 1] Slot 3 {PREFILTER_CLIENT_NAME} first match: {slot3_matches[0]}", flush=True)
+            _write_slot_records(3, slot3_matches, PREFILTER_CLIENT_NAME)
         except Exception as e:
             print(f"[Step 1] Slot 3 ERROR (continuing): {e}", flush=True)
             import traceback
@@ -340,16 +356,16 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
             results["errors"].append({"slot": 3, "error": str(e)})
         print(f"[Step 1] ========== SLOT 3 COMPLETE ==========", flush=True)
 
-        # SLOT 4: Gemini Batch
+        # SLOT 4: AI Batch
         print(f"[Step 1] ========== SLOT 4 PROCESSING ==========", flush=True)
         print(f"[Step 1] Slot 4 input batch size: {len(slot_batches[4])} articles", flush=True)
-        print("[Step 1] Running Slot 4 Gemini batch pre-filter...", flush=True)
+        print(f"[Step 1] Running Slot 4 {PREFILTER_CLIENT_NAME} batch pre-filter...", flush=True)
         try:
-            slot4_matches = gemini.prefilter_batch_slot_4(slot_batches[4], yesterday_data['headlines'])
-            print(f"[Step 1] Slot 4 Gemini returned: {len(slot4_matches)} matches", flush=True)
+            slot4_matches = prefilter_client.prefilter_batch_slot_4(slot_batches[4], yesterday_data['headlines'])
+            print(f"[Step 1] Slot 4 {PREFILTER_CLIENT_NAME} returned: {len(slot4_matches)} matches", flush=True)
             if slot4_matches:
-                print(f"[Step 1] Slot 4 Gemini first match: {slot4_matches[0]}", flush=True)
-            _write_slot_records(4, slot4_matches, "Gemini")
+                print(f"[Step 1] Slot 4 {PREFILTER_CLIENT_NAME} first match: {slot4_matches[0]}", flush=True)
+            _write_slot_records(4, slot4_matches, PREFILTER_CLIENT_NAME)
         except Exception as e:
             print(f"[Step 1] Slot 4 ERROR (continuing): {e}", flush=True)
             import traceback
@@ -357,16 +373,16 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
             results["errors"].append({"slot": 4, "error": str(e)})
         print(f"[Step 1] ========== SLOT 4 COMPLETE ==========", flush=True)
 
-        # SLOT 5: Gemini Batch
+        # SLOT 5: AI Batch
         print(f"[Step 1] ========== SLOT 5 PROCESSING ==========", flush=True)
         print(f"[Step 1] Slot 5 input batch size: {len(slot_batches[5])} articles", flush=True)
-        print("[Step 1] Running Slot 5 Gemini batch pre-filter...", flush=True)
+        print(f"[Step 1] Running Slot 5 {PREFILTER_CLIENT_NAME} batch pre-filter...", flush=True)
         try:
-            slot5_matches = gemini.prefilter_batch_slot_5(slot_batches[5], yesterday_data['headlines'])
-            print(f"[Step 1] Slot 5 Gemini returned: {len(slot5_matches)} matches", flush=True)
+            slot5_matches = prefilter_client.prefilter_batch_slot_5(slot_batches[5], yesterday_data['headlines'])
+            print(f"[Step 1] Slot 5 {PREFILTER_CLIENT_NAME} returned: {len(slot5_matches)} matches", flush=True)
             if slot5_matches:
-                print(f"[Step 1] Slot 5 Gemini first match: {slot5_matches[0]}", flush=True)
-            _write_slot_records(5, slot5_matches, "Gemini")
+                print(f"[Step 1] Slot 5 {PREFILTER_CLIENT_NAME} first match: {slot5_matches[0]}", flush=True)
+            _write_slot_records(5, slot5_matches, PREFILTER_CLIENT_NAME)
         except Exception as e:
             print(f"[Step 1] Slot 5 ERROR (continuing): {e}", flush=True)
             import traceback
@@ -741,17 +757,18 @@ def _run_single_slot(slot_num: int) -> dict:
                     return 0
             return 0
 
-        # Initialize Gemini client
-        gemini = GeminiClient()
+        # Initialize prefilter client (TEMPORARY: Claude instead of Gemini)
+        print(f"[Slot {slot_num}] PREFILTER_MODEL={PREFILTER_MODEL} → Using {PREFILTER_CLIENT_NAME}", flush=True)
+        prefilter_client = PrefilterClient()
         batch = slot_batches[slot_num]
         print(f"[Slot {slot_num}] Input batch size: {len(batch)} articles", flush=True)
 
-        # Run slot-specific Gemini call
+        # Run slot-specific AI call (TEMPORARY: Claude instead of Gemini)
         if slot_num == 1:
-            print(f"[Slot {slot_num}] Running Gemini batch prefilter...", flush=True)
-            matches = gemini.prefilter_batch_slot_1(batch, yesterday_data['headlines'])
+            print(f"[Slot {slot_num}] Running {PREFILTER_CLIENT_NAME} batch prefilter...", flush=True)
+            matches = prefilter_client.prefilter_batch_slot_1(batch, yesterday_data['headlines'])
             results["matches"] = len(matches)
-            results["written"] += write_records(matches, "Gemini")
+            results["written"] += write_records(matches, PREFILTER_CLIENT_NAME)
 
             # Also run company filter for Slot 1
             print(f"[Slot {slot_num}] Running Company Filter...", flush=True)
@@ -761,28 +778,28 @@ def _run_single_slot(slot_num: int) -> dict:
             results["written"] += write_records(company_match_dicts, "CompanyFilter")
 
         elif slot_num == 2:
-            print(f"[Slot {slot_num}] Running Gemini batch prefilter...", flush=True)
-            matches = gemini.prefilter_batch_slot_2(batch, yesterday_data['headlines'])
+            print(f"[Slot {slot_num}] Running {PREFILTER_CLIENT_NAME} batch prefilter...", flush=True)
+            matches = prefilter_client.prefilter_batch_slot_2(batch, yesterday_data['headlines'])
             results["matches"] = len(matches)
-            results["written"] += write_records(matches, "Gemini")
+            results["written"] += write_records(matches, PREFILTER_CLIENT_NAME)
 
         elif slot_num == 3:
-            print(f"[Slot {slot_num}] Running Gemini batch prefilter...", flush=True)
-            matches = gemini.prefilter_batch_slot_3(batch, yesterday_data['headlines'])
+            print(f"[Slot {slot_num}] Running {PREFILTER_CLIENT_NAME} batch prefilter...", flush=True)
+            matches = prefilter_client.prefilter_batch_slot_3(batch, yesterday_data['headlines'])
             results["matches"] = len(matches)
-            results["written"] += write_records(matches, "Gemini")
+            results["written"] += write_records(matches, PREFILTER_CLIENT_NAME)
 
         elif slot_num == 4:
-            print(f"[Slot {slot_num}] Running Gemini batch prefilter...", flush=True)
-            matches = gemini.prefilter_batch_slot_4(batch, yesterday_data['headlines'])
+            print(f"[Slot {slot_num}] Running {PREFILTER_CLIENT_NAME} batch prefilter...", flush=True)
+            matches = prefilter_client.prefilter_batch_slot_4(batch, yesterday_data['headlines'])
             results["matches"] = len(matches)
-            results["written"] += write_records(matches, "Gemini")
+            results["written"] += write_records(matches, PREFILTER_CLIENT_NAME)
 
         elif slot_num == 5:
-            print(f"[Slot {slot_num}] Running Gemini batch prefilter...", flush=True)
-            matches = gemini.prefilter_batch_slot_5(batch, yesterday_data['headlines'])
+            print(f"[Slot {slot_num}] Running {PREFILTER_CLIENT_NAME} batch prefilter...", flush=True)
+            matches = prefilter_client.prefilter_batch_slot_5(batch, yesterday_data['headlines'])
             results["matches"] = len(matches)
-            results["written"] += write_records(matches, "Gemini")
+            results["written"] += write_records(matches, PREFILTER_CLIENT_NAME)
 
         print(f"[Slot {slot_num}] ========== COMPLETE ==========", flush=True)
         print(f"[Slot {slot_num}] Matches: {results['matches']}, Written: {results['written']}", flush=True)
