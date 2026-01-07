@@ -80,13 +80,12 @@ export async function GET() {
     // Newsletter Issues Final table fields:
     // issue_id, newsletter_id, status, send_date, subject_line, summary, html,
     // scheduled_send_time, scheduled_at, Stories
+    // Fetch multiple records and sort client-side to get the most recently created one
+    // (Airtable doesn't allow sorting by system fields like createdTime)
     const records = await fetchAirtable(AI_EDITOR_BASE_ID, NEWSLETTER_ISSUES_FINAL_TABLE, {
-      maxRecords: 1,
+      maxRecords: 10,
       filterByFormula: `OR({status}="next-send", {status}="scheduled", {status}="compiled")`,
-      sort: [
-        { field: "issue_id", direction: "desc" },
-        { field: "Created Time", direction: "desc" }
-      ],
+      sort: [{ field: "issue_id", direction: "desc" }],
       fields: [
         "issue_id",
         "subject_line",
@@ -104,7 +103,13 @@ export async function GET() {
       );
     }
 
-    const record = records[0];
+    // Sort by createdTime descending to get the most recently created record
+    // This ensures we get the newest record when multiple exist with the same issue_id
+    const sortedRecords = [...records].sort((a, b) => {
+      return new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime();
+    });
+
+    const record = sortedRecords[0];
     const fields = record.fields;
 
     // Extract and return the preview data
