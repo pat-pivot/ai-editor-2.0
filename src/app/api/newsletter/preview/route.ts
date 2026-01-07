@@ -91,8 +91,6 @@ export async function GET() {
         "status",
         "html",
         "send_date",
-        "scheduled_send_time",
-        "scheduled_at",
       ],
     });
 
@@ -114,8 +112,8 @@ export async function GET() {
       issue_id: (fields.issue_id as string) || record.id,
       send_date: (fields.send_date as string) || "",
       status: (fields.status as string) || "unknown",
-      scheduled_send_time: (fields.scheduled_send_time as string) || null,
-      scheduled_at: (fields.scheduled_at as string) || null,
+      scheduled_send_time: null, // Field not yet created in Airtable
+      scheduled_at: null, // Field not yet created in Airtable
       record_id: record.id,
     };
 
