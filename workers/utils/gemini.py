@@ -59,6 +59,10 @@ SLOT_CRITERIA = {
 class GeminiClient:
     """Gemini API wrapper for AI Editor 2.0"""
 
+    # Request timeout in seconds (5 minutes = 300s)
+    # Prevents infinite hangs, allows retry on 504 Deadline Exceeded
+    REQUEST_TIMEOUT = 300
+
     def __init__(self):
         self.api_key = os.environ.get('GEMINI_API_KEY')
         if not self.api_key:
@@ -304,9 +308,9 @@ ARTICLE:
             logger.info("[Gemini slot_1] Using prompt from database")
 
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
-        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
+        # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=75)
+        chunks = self._chunk_articles(articles, chunk_size=50)
         print(f"[Gemini slot_1] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -378,9 +382,9 @@ If no stories match, return: {{"matches": []}}"""
             logger.info("[Gemini slot_2] Using prompt from database")
 
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
-        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
+        # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=75)
+        chunks = self._chunk_articles(articles, chunk_size=50)
         print(f"[Gemini slot_2] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -452,9 +456,9 @@ If no stories match, return: {{"matches": []}}"""
             logger.info("[Gemini slot_3] Using prompt from database")
 
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
-        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
+        # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=75)
+        chunks = self._chunk_articles(articles, chunk_size=50)
         print(f"[Gemini slot_3] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -534,9 +538,9 @@ If no stories match, return: {{"matches": []}}"""
             logger.info("[Gemini slot_4] Using prompt from database")
 
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
-        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
+        # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=75)
+        chunks = self._chunk_articles(articles, chunk_size=50)
         print(f"[Gemini slot_4] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -611,9 +615,9 @@ If no stories match, return: {{"matches": []}}"""
             logger.info("[Gemini slot_5] Using prompt from database")
 
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
-        # Reduced to 50 per chunk (1/5/26) - 100 caused JSON truncation in Slot 2
+        # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=75)
+        chunks = self._chunk_articles(articles, chunk_size=50)
         print(f"[Gemini slot_5] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -673,6 +677,8 @@ If no stories match, return: {{"matches": []}}"""
 
         Returns:
             List of matching articles: [{story_id, headline}]
+
+        Updated 1/7/26: Added explicit timeout and better 504 error handling
         """
         import time
 
@@ -680,13 +686,15 @@ If no stories match, return: {{"matches": []}}"""
         print(f"[Gemini {slot_name}] Prompt length: {len(prompt)} chars", flush=True)
 
         try:
+            # Added request_options with timeout (1/7/26) to prevent 504 Deadline Exceeded
             response = self.flash_model.generate_content(
                 prompt,
                 generation_config=genai.GenerationConfig(
                     temperature=0.3,
                     max_output_tokens=65536,  # Increased to full 64K to prevent truncation (1/1/26)
                     response_mime_type="application/json"
-                )
+                ),
+                request_options={"timeout": self.REQUEST_TIMEOUT}
             )
 
             response_len = len(response.text)
@@ -757,11 +765,30 @@ If no stories match, return: {{"matches": []}}"""
                 return self._execute_batch_prefilter(prompt, slot_name, retry_count + 1)
             return []
         except Exception as e:
-            print(f"[Gemini {slot_name}] ✗ Error: {type(e).__name__}: {e}", flush=True)
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+
+            # Check if this is a 504/timeout error - use longer retry waits
+            is_timeout_error = (
+                "504" in error_str or
+                "deadline" in error_str or
+                "timeout" in error_str or
+                "timed out" in error_str
+            )
+
+            print(f"[Gemini {slot_name}] ✗ Error: {error_type}: {e}", flush=True)
             logger.error(f"[Gemini {slot_name}] Error: {e}")
-            # Retry on generic errors too
+
+            # Retry on errors with appropriate wait times
             if retry_count < 2:
-                wait_time = (retry_count + 1) * 2
+                # Use longer waits for timeout errors (10s, 20s, 30s)
+                # Regular errors use shorter waits (2s, 4s, 6s)
+                if is_timeout_error:
+                    wait_time = (retry_count + 1) * 10  # 10s, 20s, 30s
+                    print(f"[Gemini {slot_name}] ⏱ TIMEOUT detected, using extended wait...", flush=True)
+                else:
+                    wait_time = (retry_count + 1) * 2   # 2s, 4s, 6s
+
                 print(f"[Gemini {slot_name}] Retrying in {wait_time}s (attempt {retry_count + 2}/3)...", flush=True)
                 time.sleep(wait_time)
                 return self._execute_batch_prefilter(prompt, slot_name, retry_count + 1)
