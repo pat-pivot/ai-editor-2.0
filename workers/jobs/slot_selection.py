@@ -252,19 +252,39 @@ def select_slots() -> dict:
                 source_id = selection.get("selected_source", "")  # n8n uses selected_source
 
                 # Look up pivotId from candidates (not returned by Claude, but we have it)
+                # FIX 1/7/26: Claude sometimes returns truncated/invalid storyIDs
+                # Added headline-based fallback when storyID lookup fails
                 selected_pivot_id = ""
+                matched_candidate = None
                 candidate_story_ids = [c.get('fields', {}).get('storyID') for c in available_candidates]
                 print(f"[Step 2] Slot {slot}: Looking for storyID '{selected_story_id}' in {len(available_candidates)} candidates")
 
+                # Step 1: Try exact storyID match
                 for c in available_candidates:
                     candidate_sid = c.get('fields', {}).get('storyID')
                     if candidate_sid == selected_story_id:
+                        matched_candidate = c
                         selected_pivot_id = c.get('fields', {}).get('pivotId', '')
-                        print(f"[Step 2] Slot {slot}: MATCH FOUND - pivotId='{selected_pivot_id}'")
+                        print(f"[Step 2] Slot {slot}: MATCH by storyID - pivotId='{selected_pivot_id}'")
                         break
 
-                if not selected_pivot_id:
-                    print(f"[Step 2] Slot {slot}: WARNING - No pivotId found! storyID '{selected_story_id}' not in candidates")
+                # Step 2: FALLBACK - Try headline match if storyID lookup failed
+                if not matched_candidate and selected_headline:
+                    print(f"[Step 2] Slot {slot}: storyID '{selected_story_id}' not found, trying headline match...")
+                    selected_headline_lower = selected_headline.lower().strip()
+                    for c in available_candidates:
+                        candidate_headline = (c.get('fields', {}).get('headline', '') or '').lower().strip()
+                        if candidate_headline == selected_headline_lower:
+                            matched_candidate = c
+                            # CORRECT the storyID to the actual valid one
+                            selected_story_id = c.get('fields', {}).get('storyID', '')
+                            selected_pivot_id = c.get('fields', {}).get('pivotId', '')
+                            print(f"[Step 2] Slot {slot}: MATCH by headline - corrected storyID='{selected_story_id}', pivotId='{selected_pivot_id}'")
+                            break
+
+                if not matched_candidate:
+                    print(f"[Step 2] Slot {slot}: WARNING - No match by storyID or headline!")
+                    print(f"[Step 2] Slot {slot}: Claude returned storyID='{selected_story_id}', headline='{selected_headline[:80]}...'")
                     print(f"[Step 2] Slot {slot}: Candidate storyIDs: {candidate_story_ids[:10]}...")  # First 10
 
                 print(f"[Step 2] Slot {slot} selected: {selected_headline[:50]}...")
