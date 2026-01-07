@@ -126,6 +126,54 @@ interface RenderLogEntry {
   labels: Array<{ name: string; value: string }>;
 }
 
+/**
+ * Patterns that indicate BUILD logs (pip install, package downloads, etc.)
+ * These should be filtered out to show only EXECUTION logs.
+ *
+ * NOTE: Render's API returns type="app" for BOTH build and execution logs,
+ * so we must filter by message content instead of the type label.
+ */
+const BUILD_LOG_PATTERNS = [
+  // pip/package installation
+  /^Using cached .+\.whl/i,
+  /^Downloading .+\.whl/i,
+  /^Collecting [a-z]/i,
+  /^Installing collected packages/i,
+  /^Successfully installed/i,
+  /^Requirement already satisfied/i,
+  /^\[notice\] A new release of pip/i,
+  /^\[notice\] To update, run: pip install/i,
+  // Build process messages (with ANSI codes)
+  /==> (Cloning|Building|Uploading|Build successful|Uploaded)/i,
+  /==>\s+\x1b\[\d+m.*?(Cloning|Building|Uploading|Build successful|Uploaded)/i,
+  // npm/node build
+  /^npm (WARN|notice|info)/i,
+  /^added \d+ packages/i,
+  // General build indicators
+  /^Preparing build/i,
+  /^Build started/i,
+  /^Fetching .* repository/i,
+];
+
+/**
+ * Filter out build logs, keeping only execution logs.
+ * Execution logs typically start with prefixes like:
+ * [Pipeline], [Step 1], [Ingest], [Airtable], [Prefilter], etc.
+ */
+function isExecutionLog(message: string): boolean {
+  // Empty messages pass through
+  if (!message || message.trim() === "") return true;
+
+  // Check if it matches any build pattern
+  for (const pattern of BUILD_LOG_PATTERNS) {
+    if (pattern.test(message)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 interface FetchResult {
   logs: RenderLog[];
   fromCache: boolean;
@@ -219,14 +267,17 @@ async function fetchRenderLogsWithCache(
 
     const data = await response.json();
 
-    const logs: RenderLog[] = data.logs.map((log: RenderLogEntry) => ({
-      id: log.id,
-      timestamp: log.timestamp,
-      message: log.message,
-      level: log.labels.find((l) => l.name === "level")?.value || "info",
-      type: log.labels.find((l) => l.name === "type")?.value || "app",
-      service: log.labels.find((l) => l.name === "service")?.value || "unknown",
-    }));
+    // Map and filter logs: exclude build logs, keep only execution logs
+    const logs: RenderLog[] = data.logs
+      .map((log: RenderLogEntry) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        message: log.message,
+        level: log.labels.find((l) => l.name === "level")?.value || "info",
+        type: log.labels.find((l) => l.name === "type")?.value || "app",
+        service: log.labels.find((l) => l.name === "service")?.value || "unknown",
+      }))
+      .filter((log: RenderLog) => isExecutionLog(log.message));
 
     // Cache the results
     setCachedLogs(serviceIds, logs, rateLimitRemaining, rateLimitReset);
