@@ -140,7 +140,15 @@ AI Editor 2.0:      appglKSJZxmA9iHpl
 P5 Social Posts:    appRUgK44hQnXH1PM
 ```
 
-**Each step skill documents the exact field names for Airtable writes.** Common gotchas:
-- `storyID` / `pivotId` (camelCase)
+**⚠️ CRITICAL: Field names vary by table! Check before querying:**
+
+| Table | Story ID Field | Notes |
+|-------|---------------|-------|
+| Pre-Filter Log | `storyID` | camelCase |
+| Newsletter Issue Stories (Decoration) | `story_id` | snake_case |
+| Selected Slots | `slot_X_storyId` | mixed |
+
+Other gotchas:
+- `pivotId` vs `pivot_id` (varies by table)
 - `core_url` vs `original_url` (varies by table)
 - `Order` with capital O (P5 Social Posts)
