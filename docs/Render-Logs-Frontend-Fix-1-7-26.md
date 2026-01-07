@@ -176,9 +176,92 @@ Successfully installed anthropic-0.44.0
 
 ---
 
-## Future Improvements
+## Session 2 Fixes (Same Day)
 
-1. **Step-specific filtering**: Parse log prefixes (`[Step 0]`, `[Step 1]`) to show only logs for selected step
-2. **Cron job detection**: Detect which cron is currently running and focus on that resource
-3. **Log level filtering**: Allow filtering by level (info, warn, error)
-4. **Persistent caching**: Consider Redis for cache if multiple dashboard instances
+### Issue 4: HTTP Request Logs Instead of Execution Logs
+
+**Problem:** Dashboard showed HTTP access logs like `GET /jobs/status/...` instead of pipeline execution logs.
+
+**Root Cause:** Blacklist approach filtered build logs but let HTTP request/access logs through.
+
+**Solution:** Changed to **whitelist approach** - ONLY show logs matching execution patterns:
+
+```typescript
+const EXECUTION_LOG_PATTERNS = [
+  /^\[Pipeline\]/i,
+  /^\[Step \d/i,
+  /^\[Ingest/i,
+  /^\[FreshRSS/i,
+  /^\[Google News/i,
+  /^\[Direct Feed/i,
+  /^\[AI Scoring/i,
+  /^\[Claude/i,
+  /^\[Pre-?[Ff]ilter/i,
+  /^\[Gemini/i,
+  /^\[Slot \d/i,
+  /^\[Airtable/i,
+  /^  (Ingest|Direct Feeds|AI Scoring|Pre-Filter):/i,
+  /^  → /,
+  /Worker .+ \[PID/i,
+  /^Starting worker/i,
+  /^Registering jobs/i,
+];
+
+function isExecutionLog(message: string): boolean {
+  if (!message || message.trim() === "") return false;
+  for (const pattern of EXECUTION_LOG_PATTERNS) {
+    if (pattern.test(message)) return true;
+  }
+  return false; // Doesn't match = filter out
+}
+```
+
+### Issue 5: 24-Hour Timestamp Format
+
+**Problem:** Timestamps showed as "13:08:42" instead of "1:08:42 PM".
+
+**Solution:** Changed `hour12: false` to `hour12: true` in `formatLogTime()`.
+
+---
+
+## Future Improvements (Phase 2)
+
+### 1. Step-Specific Log Filtering
+
+**Goal:** When user selects Step 0 tab, only show logs from Ingest/AI Scoring. When Step 1 tab, only show Pre-Filter logs.
+
+**Implementation Plan:**
+```typescript
+// Add step-specific patterns
+const STEP_0_PATTERNS = [
+  /^\[Ingest/i,
+  /^\[FreshRSS/i,
+  /^\[Google News/i,
+  /^\[Direct Feed/i,
+  /^\[AI Scoring/i,
+  /^\[Claude/i,
+];
+
+const STEP_1_PATTERNS = [
+  /^\[Pre-?[Ff]ilter/i,
+  /^\[Gemini/i,
+  /^\[Slot \d/i,
+];
+
+function filterLogsByStep(logs: RenderLog[], stepId: string): RenderLog[] {
+  if (stepId === "all") return logs;
+  const patterns = stepId === "0" ? STEP_0_PATTERNS : STEP_1_PATTERNS;
+  return logs.filter(log => patterns.some(p => p.test(log.message)));
+}
+```
+
+**When to implement:** After confirming whitelist approach works well in production.
+
+### 2. Cron Job Detection
+Detect which pipeline cron is currently running and highlight its logs.
+
+### 3. Log Level UI Filtering
+Add dropdown to filter by level (info, warn, error) in the frontend.
+
+### 4. Persistent Caching
+Consider Redis for cache if running multiple dashboard instances.
