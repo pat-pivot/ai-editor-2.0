@@ -292,76 +292,57 @@ Colors: Vibrant but corporate-appropriate."""
         """
         Upload image to Cloudflare Images
 
+        Matches n8n workflow HCbd2g852rkQgSqr exactly:
+        - Uses binary file upload (multipart/form-data)
+        - Does NOT pass custom 'id' parameter (Cloudflare generates UUID)
+        - Returns custom domain URL: img.pivotnews.com/cdn-cgi/imagedelivery/{account_hash}/{image_id}/newsletter
+
         Args:
             image_bytes: Image bytes to upload
-            filename: Desired filename
+            filename: Desired filename (used only for Content-Disposition)
 
         Returns:
-            Public URL of uploaded image, or None if failed
+            Public URL on img.pivotnews.com domain, or None if failed
         """
         if not self.cloudflare_account_id or not self.cloudflare_api_key:
             print("[ImageClient] Cloudflare not configured, skipping upload")
             return None
 
+        # Cloudflare account hash for URL construction (from n8n workflow)
+        cloudflare_account_hash = "KXy14RehLGC3ziMxzD_shA"
+
         headers = {
             "Authorization": f"Bearer {self.cloudflare_api_key}"
         }
 
-        # Add timestamp to ID to avoid 409 conflicts on re-runs
-        timestamp = int(time.time())
-        unique_id = f"{filename.replace('.', '-')}-{timestamp}"
-
+        # Match n8n workflow exactly: binary file upload with NO custom ID
+        # Cloudflare will generate a UUID-style ID like "6708edfc-1ba9-4d41-4ab3-209135084600"
         files = {
             "file": (filename, BytesIO(image_bytes), "image/jpeg")
         }
 
-        data = {
-            "id": unique_id  # Cloudflare-friendly unique ID with timestamp
-        }
-
         try:
-            print(f"[ImageClient] Uploading to Cloudflare with ID: {unique_id}")
+            print(f"[ImageClient] Uploading to Cloudflare (letting Cloudflare generate ID)...")
             response = requests.post(
                 self.cloudflare_images_url,
                 headers=headers,
                 files=files,
-                data=data,
                 timeout=30
             )
 
             if response.status_code == 200:
                 result = response.json()
                 if result.get("success"):
-                    # Return the public URL variant
-                    variants = result.get("result", {}).get("variants", [])
-                    if variants:
-                        print(f"[ImageClient] ✓ Cloudflare upload success: {variants[0]}")
-                        return variants[0]
-
-            # Handle 409 conflict - resource already exists
-            if response.status_code == 409:
-                print(f"[ImageClient] ⚠️ Cloudflare 409 conflict - ID already exists, trying with new timestamp")
-                # Try again with a different timestamp
-                new_timestamp = int(time.time() * 1000)  # Use milliseconds for uniqueness
-                new_unique_id = f"{filename.replace('.', '-')}-{new_timestamp}"
-                data = {"id": new_unique_id}
-                files = {"file": (filename, BytesIO(image_bytes), "image/jpeg")}
-
-                retry_response = requests.post(
-                    self.cloudflare_images_url,
-                    headers=headers,
-                    files=files,
-                    data=data,
-                    timeout=30
-                )
-
-                if retry_response.status_code == 200:
-                    result = retry_response.json()
-                    if result.get("success"):
-                        variants = result.get("result", {}).get("variants", [])
-                        if variants:
-                            print(f"[ImageClient] ✓ Cloudflare retry success: {variants[0]}")
-                            return variants[0]
+                    # Get the Cloudflare-generated image ID (UUID format)
+                    image_id = result.get("result", {}).get("id")
+                    if image_id:
+                        # Construct URL using custom domain (matches n8n Edit Fields node exactly)
+                        # Format: https://img.pivotnews.com/cdn-cgi/imagedelivery/{account_hash}/{image_id}/newsletter
+                        custom_url = f"https://img.pivotnews.com/cdn-cgi/imagedelivery/{cloudflare_account_hash}/{image_id}/newsletter"
+                        print(f"[ImageClient] ✓ Cloudflare upload success")
+                        print(f"[ImageClient]   Image ID: {image_id}")
+                        print(f"[ImageClient]   Custom URL: {custom_url}")
+                        return custom_url
 
             print(f"[ImageClient] Cloudflare upload error: {response.status_code} - {response.text[:200]}")
 
