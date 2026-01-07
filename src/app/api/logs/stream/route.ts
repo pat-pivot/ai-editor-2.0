@@ -126,6 +126,60 @@ interface RenderLogEntry {
   labels: Array<{ name: string; value: string }>;
 }
 
+/**
+ * Patterns that indicate EXECUTION logs from our pipeline.
+ * We use a whitelist approach to ONLY show logs that match these patterns.
+ * This filters out HTTP request logs, access logs, build logs, etc.
+ */
+const EXECUTION_LOG_PATTERNS = [
+  // Pipeline orchestration
+  /^\[Pipeline\]/i,
+  /^\[Step \d/i,
+  // Ingest step
+  /^\[Ingest/i,
+  /^\[FreshRSS/i,
+  /^\[Google News/i,
+  /^\[Direct Feed/i,
+  // AI Scoring
+  /^\[AI Scoring/i,
+  /^\[Claude/i,
+  /^\[Anthropic/i,
+  // Pre-filter
+  /^\[Pre-?[Ff]ilter/i,
+  /^\[Gemini/i,
+  /^\[Slot \d/i,
+  // Airtable operations
+  /^\[Airtable/i,
+  // Generic step markers
+  /^  (Ingest|Direct Feeds|AI Scoring|Pre-Filter):/i,
+  // Summary lines (indented stats)
+  /^  → /,
+  // Worker messages
+  /Worker .+ \[PID/i,
+  /^Starting worker/i,
+  /^Registering jobs/i,
+];
+
+/**
+ * Filter to ONLY show execution logs from our pipeline.
+ * This uses a whitelist approach - only logs matching our patterns are shown.
+ * This filters out: HTTP request logs, access logs, build logs, etc.
+ */
+function isExecutionLog(message: string): boolean {
+  // Empty messages are filtered out
+  if (!message || message.trim() === "") return false;
+
+  // Check if it matches any execution pattern (whitelist)
+  for (const pattern of EXECUTION_LOG_PATTERNS) {
+    if (pattern.test(message)) {
+      return true;
+    }
+  }
+
+  // Does not match any execution pattern - filter it out
+  return false;
+}
+
 interface FetchResult {
   logs: RenderLog[];
   fromCache: boolean;
@@ -219,14 +273,17 @@ async function fetchRenderLogsWithCache(
 
     const data = await response.json();
 
-    const logs: RenderLog[] = data.logs.map((log: RenderLogEntry) => ({
-      id: log.id,
-      timestamp: log.timestamp,
-      message: log.message,
-      level: log.labels.find((l) => l.name === "level")?.value || "info",
-      type: log.labels.find((l) => l.name === "type")?.value || "app",
-      service: log.labels.find((l) => l.name === "service")?.value || "unknown",
-    }));
+    // Map and filter logs: exclude build logs, keep only execution logs
+    const logs: RenderLog[] = data.logs
+      .map((log: RenderLogEntry) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        message: log.message,
+        level: log.labels.find((l) => l.name === "level")?.value || "info",
+        type: log.labels.find((l) => l.name === "type")?.value || "app",
+        service: log.labels.find((l) => l.name === "service")?.value || "unknown",
+      }))
+      .filter((log: RenderLog) => isExecutionLog(log.message));
 
     // Cache the results
     setCachedLogs(serviceIds, logs, rateLimitRemaining, rateLimitReset);

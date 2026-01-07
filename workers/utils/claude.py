@@ -72,6 +72,37 @@ class ClaudeClient:
         except json.JSONDecodeError:
             return self._parse_slot_response(response.content[0].text, candidates)
 
+    def _format_story_summaries_for_prompt(self, story_summaries: List[dict]) -> str:
+        """
+        Format story summaries for inclusion in Claude prompt.
+
+        Added 1/7/26: For semantic deduplication to catch same news events
+        with different headlines/IDs.
+
+        Args:
+            story_summaries: List of story summary dicts with headline, bullets, dek, company
+
+        Returns:
+            Formatted string to append to system prompt
+        """
+        if not story_summaries:
+            return ""
+
+        output = "\n\n## RECENT STORY SUMMARIES (for semantic deduplication)\n"
+        output += "**CRITICAL:** Do NOT select stories about the SAME NEWS EVENT as these, even if headlines differ:\n\n"
+
+        for i, summary in enumerate(story_summaries[:20], 1):  # Limit to 20
+            output += f"### Recent Story {i}\n"
+            output += f"- Headline: {summary.get('headline', 'N/A')}\n"
+            bullets = [b for b in summary.get('bullets', []) if b]
+            if bullets:
+                output += f"- Key Points: {'; '.join(bullets)}\n"
+            if summary.get('company'):
+                output += f"- Company: {summary.get('company')}\n"
+            output += "\n"
+
+        return output
+
     def _build_slot_system_prompt(self, slot: int, recent_data: dict, cumulative_state: dict, candidate_count: int = 0) -> str:
         """
         Build slot-specific system prompt from database with Python variable substitution.
@@ -144,6 +175,11 @@ class ClaudeClient:
                 if recent_story_ids:
                     prompt += f"\n\nSTORY IDs TO AVOID (already sent in last 14 days): {', '.join(recent_story_ids[:30])}{'...' if len(recent_story_ids) > 30 else ''}"
 
+                # NEW 1/7/26: Add story summaries for semantic deduplication
+                story_summaries = recent_data.get('story_summaries', [])
+                if story_summaries:
+                    prompt += self._format_story_summaries_for_prompt(story_summaries)
+
                 return prompt
             except KeyError as e:
                 logger.warning(f"Missing variable in {prompt_key} prompt: {e}, using fallback")
@@ -206,6 +242,11 @@ Return ONLY valid JSON with no additional text:
   "selected_company": "primary company featured or null",
   "reasoning": "1-2 sentence explanation"
 }"""
+
+        # NEW 1/7/26: Add story summaries for semantic deduplication (fallback path)
+        story_summaries = recent_data.get('story_summaries', [])
+        if story_summaries:
+            context += self._format_story_summaries_for_prompt(story_summaries)
 
         return context
 

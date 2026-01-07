@@ -134,8 +134,15 @@ def select_slots() -> dict:
         # 1. Get recent issues for diversity rules (14-day lookback)
         print(f"[Step 2] Fetching recent issues (last {DUPLICATE_LOOKBACK_DAYS} days)...")
         recent_issues = airtable.get_recent_sent_issues(DUPLICATE_LOOKBACK_DAYS)
-        recent_data = _extract_recent_issues_data(recent_issues)
-        print(f"[Step 2] Recent issues found: {len(recent_issues)}, total storyIds: {len(recent_data['storyIds'])}")
+
+        # 1b. Get decorated stories for semantic deduplication (added 1/7/26)
+        print(f"[Step 2] Fetching decorated stories for semantic deduplication...")
+        decorated_stories = airtable.get_recent_decorated_stories(DUPLICATE_LOOKBACK_DAYS)
+        print(f"[Step 2] Found {len(decorated_stories)} decorated stories for semantic context")
+
+        # Pass decorated_stories to extraction function for semantic context
+        recent_data = _extract_recent_issues_data(recent_issues, decorated_stories)
+        print(f"[Step 2] Recent issues found: {len(recent_issues)}, total storyIds: {len(recent_data['storyIds'])}, story_summaries: {len(recent_data.get('story_summaries', []))}")
 
         # 2. Initialize cumulative state for tracking across slots
         # Updated 12/31/25: selectedSources is now a dict with counts per n8n audit
@@ -326,22 +333,44 @@ def select_slots() -> dict:
         raise
 
 
-def _extract_recent_issues_data(issues: List[dict]) -> dict:
+def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict] = None) -> dict:
     """
     Extract headlines, storyIds, pivotIds from recent issues (14-day lookback)
     for diversity rule enforcement.
 
     Updated 12/30/25: Changed from single-day to 14-day lookback to match n8n workflow.
     This prevents the same story from appearing in the newsletter within a 2-week window.
+
+    Updated 1/7/26: Now includes semantic context from decorated stories for Claude comparison.
+    This enables semantic deduplication to catch same news events with different headlines/IDs.
     """
     data = {
         "headlines": [],
         "storyIds": [],
         "pivotIds": [],
-        "slot1Headline": None  # Yesterday's Slot 1 headline for two-day company rotation
+        "slot1Headline": None,  # Yesterday's Slot 1 headline for two-day company rotation
+        "story_summaries": []   # NEW: For semantic deduplication
     }
 
     if not issues:
+        # Still process decorated_stories even if no issues
+        if decorated_stories:
+            for story in decorated_stories[:30]:  # Limit to most recent 30
+                fields = story.get('fields', {})
+                summary = {
+                    "headline": fields.get('headline', ''),
+                    "bullets": [
+                        fields.get('b1', ''),
+                        fields.get('b2', ''),
+                        fields.get('b3', '')
+                    ],
+                    "dek": fields.get('ai_dek', ''),
+                    "company": fields.get('company', ''),
+                    "storyId": fields.get('storyID', '')
+                }
+                # Only add if has content
+                if summary["headline"] and any(summary["bullets"]):
+                    data["story_summaries"].append(summary)
         return data
 
     for idx, issue in enumerate(issues):
@@ -363,6 +392,25 @@ def _extract_recent_issues_data(issues: List[dict]) -> dict:
         # Claude will infer the company name from the headline (e.g., "Nvidia Eyes $3B..." → Nvidia)
         if idx == 0:
             data["slot1Headline"] = fields.get('slot_1_headline')
+
+    # NEW: Add semantic context from decorated stories
+    if decorated_stories:
+        for story in decorated_stories[:30]:  # Limit to most recent 30
+            fields = story.get('fields', {})
+            summary = {
+                "headline": fields.get('headline', ''),
+                "bullets": [
+                    fields.get('b1', ''),
+                    fields.get('b2', ''),
+                    fields.get('b3', '')
+                ],
+                "dek": fields.get('ai_dek', ''),
+                "company": fields.get('company', ''),
+                "storyId": fields.get('storyID', '')
+            }
+            # Only add if has content
+            if summary["headline"] and any(summary["bullets"]):
+                data["story_summaries"].append(summary)
 
     return data
 
