@@ -384,7 +384,7 @@ class AirtableClient:
             sort=['-issue_id'],  # Most recent issues first
             max_records=max_records,
             fields=[
-                'storyID', 'headline',
+                'story_id', 'headline',  # Note: Newsletter Issue Stories uses snake_case
                 'b1', 'b2', 'b3',
                 'ai_dek', 'company',
                 'issue_id'

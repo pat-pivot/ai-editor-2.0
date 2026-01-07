@@ -366,7 +366,7 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
                     ],
                     "dek": fields.get('ai_dek', ''),
                     "company": fields.get('company', ''),
-                    "storyId": fields.get('storyID', '')
+                    "storyId": fields.get('story_id', '')  # Newsletter Issue Stories uses snake_case
                 }
                 # Only add if has content
                 if summary["headline"] and any(summary["bullets"]):
@@ -406,7 +406,7 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
                 ],
                 "dek": fields.get('ai_dek', ''),
                 "company": fields.get('company', ''),
-                "storyId": fields.get('storyID', '')
+                "storyId": fields.get('story_id', '')  # Newsletter Issue Stories uses snake_case
             }
             # Only add if has content
             if summary["headline"] and any(summary["bullets"]):
