@@ -269,18 +269,60 @@ def select_slots() -> dict:
                         break
 
                 # Step 2: FALLBACK - Try headline match if storyID lookup failed
+                # FIX 1/7/26: Claude often strips source suffix (e.g., " - Mashable")
+                # Use startswith/contains matching instead of exact equality
                 if not matched_candidate and selected_headline:
                     print(f"[Step 2] Slot {slot}: storyID '{selected_story_id}' not found, trying headline match...")
                     selected_headline_lower = selected_headline.lower().strip()
+
+                    # First try exact match
                     for c in available_candidates:
                         candidate_headline = (c.get('fields', {}).get('headline', '') or '').lower().strip()
                         if candidate_headline == selected_headline_lower:
                             matched_candidate = c
-                            # CORRECT the storyID to the actual valid one
                             selected_story_id = c.get('fields', {}).get('storyID', '')
                             selected_pivot_id = c.get('fields', {}).get('pivotId', '')
-                            print(f"[Step 2] Slot {slot}: MATCH by headline - corrected storyID='{selected_story_id}', pivotId='{selected_pivot_id}'")
+                            print(f"[Step 2] Slot {slot}: MATCH by exact headline - storyID='{selected_story_id}', pivotId='{selected_pivot_id}'")
                             break
+
+                    # FIX 1/7/26: Try startswith match (Claude strips source suffix like " - Mashable")
+                    if not matched_candidate:
+                        for c in available_candidates:
+                            candidate_headline = (c.get('fields', {}).get('headline', '') or '').lower().strip()
+                            # Check if candidate headline STARTS with Claude's returned headline
+                            # e.g., "Meta lays off 600... - Mashable" starts with "Meta lays off 600..."
+                            if candidate_headline.startswith(selected_headline_lower):
+                                matched_candidate = c
+                                selected_story_id = c.get('fields', {}).get('storyID', '')
+                                selected_pivot_id = c.get('fields', {}).get('pivotId', '')
+                                print(f"[Step 2] Slot {slot}: MATCH by headline startswith - storyID='{selected_story_id}', pivotId='{selected_pivot_id}'")
+                                break
+
+                    # FIX 1/7/26: Try reverse startswith (selected headline might have extra text)
+                    if not matched_candidate:
+                        for c in available_candidates:
+                            candidate_headline = (c.get('fields', {}).get('headline', '') or '').lower().strip()
+                            # Check if Claude's headline STARTS with candidate headline (without source)
+                            if selected_headline_lower.startswith(candidate_headline):
+                                matched_candidate = c
+                                selected_story_id = c.get('fields', {}).get('storyID', '')
+                                selected_pivot_id = c.get('fields', {}).get('pivotId', '')
+                                print(f"[Step 2] Slot {slot}: MATCH by reverse startswith - storyID='{selected_story_id}', pivotId='{selected_pivot_id}'")
+                                break
+
+                    # FIX 1/7/26: Last resort - significant substring match (at least 50 chars)
+                    # Claude may have slightly modified the headline
+                    if not matched_candidate and len(selected_headline_lower) >= 50:
+                        # Extract first 50 chars (before potential source suffix)
+                        search_text = selected_headline_lower[:50]
+                        for c in available_candidates:
+                            candidate_headline = (c.get('fields', {}).get('headline', '') or '').lower().strip()
+                            if search_text in candidate_headline:
+                                matched_candidate = c
+                                selected_story_id = c.get('fields', {}).get('storyID', '')
+                                selected_pivot_id = c.get('fields', {}).get('pivotId', '')
+                                print(f"[Step 2] Slot {slot}: MATCH by substring (50 chars) - storyID='{selected_story_id}', pivotId='{selected_pivot_id}'")
+                                break
 
                 if not matched_candidate:
                     print(f"[Step 2] Slot {slot}: WARNING - No match by storyID or headline!")
