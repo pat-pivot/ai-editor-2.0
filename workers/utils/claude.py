@@ -97,8 +97,8 @@ class ClaudeClient:
             bullets = [b for b in summary.get('bullets', []) if b]
             if bullets:
                 output += f"- Key Points: {'; '.join(bullets)}\n"
-            if summary.get('company'):
-                output += f"- Company: {summary.get('company')}\n"
+            if summary.get('label'):  # FIXED 1/7/26: 'company' doesn't exist, use 'label'
+                output += f"- Label: {summary.get('label')}\n"
             output += "\n"
 
         return output

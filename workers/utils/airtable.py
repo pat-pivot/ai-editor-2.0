@@ -386,7 +386,7 @@ class AirtableClient:
             fields=[
                 'story_id', 'headline',  # Note: Newsletter Issue Stories uses snake_case
                 'b1', 'b2', 'b3',
-                'ai_dek', 'company',
+                'ai_dek', 'label',  # FIXED 1/7/26: 'company' field doesn't exist, use 'label' instead
                 'issue_id'
             ]
         )

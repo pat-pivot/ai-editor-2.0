@@ -365,7 +365,7 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
                         fields.get('b3', '')
                     ],
                     "dek": fields.get('ai_dek', ''),
-                    "company": fields.get('company', ''),
+                    "label": fields.get('label', ''),  # FIXED 1/7/26: 'company' doesn't exist, use 'label'
                     "storyId": fields.get('story_id', '')  # Newsletter Issue Stories uses snake_case
                 }
                 # Only add if has content
@@ -405,7 +405,7 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
                     fields.get('b3', '')
                 ],
                 "dek": fields.get('ai_dek', ''),
-                "company": fields.get('company', ''),
+                "label": fields.get('label', ''),  # FIXED 1/7/26: 'company' doesn't exist, use 'label'
                 "storyId": fields.get('story_id', '')  # Newsletter Issue Stories uses snake_case
             }
             # Only add if has content
