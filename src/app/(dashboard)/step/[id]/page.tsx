@@ -8,11 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { LiveExecutionLogs } from "@/components/step/live-execution-logs";
 import { SystemPrompts } from "@/components/step/system-prompts";
 import { StepData } from "@/components/step/step-data";
 import { Progress } from "@/components/ui/progress";
 import { ZeroinIngestPanel } from "@/components/step/zeroin-ingest-panel";
+import { HtmlPreview } from "@/components/step/html-preview";
+import { ScheduleModal, SchedulingStatusBanner } from "@/components/step/schedule-modal";
 import { formatDateET, formatDuration } from "@/lib/date-utils";
 
 function MaterialIcon({ name, className }: { name: string; className?: string }) {
@@ -76,7 +79,8 @@ export default function StepPage({ params }: PageProps) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [showCompletion, setShowCompletion] = useState(false);
   const [lastResult, setLastResult] = useState<{ processed: number; elapsed: number } | null>(null);
-  const [activeTab, setActiveTab] = useState("logs");
+  // Step 4 defaults to "preview" tab, others to "logs"
+  const [activeTab, setActiveTab] = useState(() => stepId === 4 ? "preview" : "logs");
 
   // Step 0 specific: Track AI Scoring job separately
   const [isAiScoringRunning, setIsAiScoringRunning] = useState(false);
@@ -103,6 +107,24 @@ export default function StepPage({ params }: PageProps) {
   const [gmailSendJobId, setGmailSendJobId] = useState<string | null>(null);
   const [gmailSendJobStatus, setGmailSendJobStatus] = useState<"queued" | "started" | "finished" | "failed" | null>(null);
   const [gmailSendElapsedTime, setGmailSendElapsedTime] = useState(0);
+
+  // Step 4 specific: Schedule modal, newsletter preview data, Gmail recipient
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [isCancellingSchedule, setIsCancellingSchedule] = useState(false);
+  const [gmailRecipient, setGmailRecipient] = useState("patsimmons21@gmail.com");
+  interface NewsletterPreviewData {
+    html: string;
+    subject_line: string;
+    summary: string;
+    issue_id: string;
+    send_date: string;
+    status: string;
+    scheduled_send_time?: string;
+    scheduled_at?: string;
+    record_id: string;
+  }
+  const [newsletterData, setNewsletterData] = useState<NewsletterPreviewData | null>(null);
 
   // Step 1 specific: Track individual slot jobs
   const [slotStates, setSlotStates] = useState<Record<number, SlotState>>({
@@ -257,6 +279,134 @@ export default function StepPage({ params }: PageProps) {
       toast.error("Failed to cancel job");
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  // Step 4: Handle scheduling newsletter
+  const handleSchedule = async (scheduledTime: Date) => {
+    if (!newsletterData) {
+      toast.error("No newsletter data available");
+      return;
+    }
+
+    setIsScheduling(true);
+    try {
+      const response = await fetch("/api/newsletter/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issue_id: newsletterData.issue_id,
+          record_id: newsletterData.record_id,
+          scheduled_time: scheduledTime.toISOString(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast.success("Newsletter Scheduled", {
+          description: data.message,
+        });
+        // Update local state to reflect scheduled status
+        setNewsletterData({
+          ...newsletterData,
+          status: "scheduled",
+          scheduled_send_time: scheduledTime.toISOString(),
+          scheduled_at: new Date().toISOString(),
+        });
+      } else {
+        throw new Error(data.error || "Failed to schedule newsletter");
+      }
+    } catch (error) {
+      console.error("Error scheduling newsletter:", error);
+      toast.error("Scheduling Failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+      throw error; // Re-throw so modal knows to stay open
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  // Step 4: Handle cancelling scheduled newsletter
+  const handleCancelSchedule = async () => {
+    if (!newsletterData) return;
+
+    setIsCancellingSchedule(true);
+    try {
+      const response = await fetch("/api/newsletter/schedule", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          record_id: newsletterData.record_id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast.success("Schedule Cancelled", {
+          description: "Newsletter scheduling has been cancelled",
+        });
+        // Update local state
+        setNewsletterData({
+          ...newsletterData,
+          status: "next-send",
+          scheduled_send_time: undefined,
+          scheduled_at: undefined,
+        });
+      } else {
+        throw new Error(data.error || "Failed to cancel schedule");
+      }
+    } catch (error) {
+      console.error("Error cancelling schedule:", error);
+      toast.error("Cancellation Failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsCancellingSchedule(false);
+    }
+  };
+
+  // Step 4: Handle Gmail send with recipient
+  const handleGmailSend = async () => {
+    if (!gmailRecipient || !gmailRecipient.includes("@")) {
+      toast.error("Invalid email address");
+      return;
+    }
+
+    setIsGmailSendRunning(true);
+    setGmailSendElapsedTime(0);
+    setCurrentJobType("gmail_send");
+    setShowCompletion(false);
+
+    try {
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "gmail_send",
+          params: { recipient: gmailRecipient },
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setGmailSendJobId(data.job_id);
+        setGmailSendJobStatus("queued");
+        toast.success("Test Email Started", {
+          description: `Sending test email to ${gmailRecipient}`,
+        });
+      } else {
+        setIsGmailSendRunning(false);
+        throw new Error(data.error || "Failed to start Gmail send");
+      }
+    } catch (error) {
+      setIsGmailSendRunning(false);
+      toast.error("Error", {
+        description: error instanceof Error ? error.message : "Failed to start Gmail send",
+      });
     }
   };
 
@@ -836,8 +986,8 @@ export default function StepPage({ params }: PageProps) {
                 </Button>
               </div>
             ) : stepId === 4 ? (
-              /* Step 4: Three buttons for Compile, Mautic Send, Gmail Send */
-              <div className="flex gap-2">
+              /* Step 4: Compile, Schedule, and Gmail Test buttons */
+              <div className="flex items-center gap-2">
                 <Button
                   className="gap-2"
                   onClick={() => handleRunNow("html_compile")}
@@ -852,27 +1002,33 @@ export default function StepPage({ params }: PageProps) {
                 <Button
                   className="gap-2"
                   variant="secondary"
-                  onClick={() => handleRunNow("mautic_send")}
-                  disabled={isRunning || isMauticSendRunning || isGmailSendRunning}
+                  onClick={() => setScheduleModalOpen(true)}
+                  disabled={isRunning || isMauticSendRunning || isGmailSendRunning || !newsletterData}
                 >
-                  <MaterialIcon
-                    name={isMauticSendRunning ? "sync" : "send"}
-                    className={`text-lg ${isMauticSendRunning ? "animate-spin" : ""}`}
-                  />
-                  {isMauticSendRunning ? `Sending... ${mauticSendElapsedTime}s` : "Send via Mautic"}
+                  <MaterialIcon name="schedule" className="text-lg" />
+                  Schedule via Mautic
                 </Button>
-                <Button
-                  className="gap-2"
-                  variant="outline"
-                  onClick={() => handleRunNow("gmail_send")}
-                  disabled={isRunning || isMauticSendRunning || isGmailSendRunning}
-                >
-                  <MaterialIcon
-                    name={isGmailSendRunning ? "sync" : "mail"}
-                    className={`text-lg ${isGmailSendRunning ? "animate-spin" : ""}`}
+                <div className="flex items-center gap-1 border rounded-md pl-2">
+                  <Input
+                    type="email"
+                    placeholder="Test email"
+                    value={gmailRecipient}
+                    onChange={(e) => setGmailRecipient(e.target.value)}
+                    className="h-9 w-48 border-0 focus-visible:ring-0 text-sm"
                   />
-                  {isGmailSendRunning ? `Testing... ${gmailSendElapsedTime}s` : "Test via Gmail"}
-                </Button>
+                  <Button
+                    className="gap-2 h-9"
+                    variant="outline"
+                    onClick={handleGmailSend}
+                    disabled={isRunning || isMauticSendRunning || isGmailSendRunning || !newsletterData}
+                  >
+                    <MaterialIcon
+                      name={isGmailSendRunning ? "sync" : "mail"}
+                      className={`text-lg ${isGmailSendRunning ? "animate-spin" : ""}`}
+                    />
+                    {isGmailSendRunning ? `${gmailSendElapsedTime}s` : "Test"}
+                  </Button>
+                </div>
               </div>
             ) : stepId === 1 ? (
               /* Step 1: No single run button - slot cards shown below */
@@ -913,9 +1069,24 @@ export default function StepPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
+      {/* Step 4: Scheduling Status Banner */}
+      {stepId === 4 && newsletterData?.status === "scheduled" && newsletterData.scheduled_send_time && (
+        <SchedulingStatusBanner
+          scheduledTime={newsletterData.scheduled_send_time}
+          onCancel={handleCancelSchedule}
+          isCancelling={isCancellingSchedule}
+        />
+      )}
+
       {/* Tabs Section - Directly after header */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="bg-zinc-100">
+          {/* Step 4: Preview tab first */}
+          {stepId === 4 && (
+            <TabsTrigger value="preview" className="data-[state=active]:bg-white">
+              Email Preview
+            </TabsTrigger>
+          )}
           <TabsTrigger value="logs" className="data-[state=active]:bg-white">
             Execution Logs
           </TabsTrigger>
@@ -1142,7 +1313,25 @@ export default function StepPage({ params }: PageProps) {
             />
           </TabsContent>
         )}
+
+        {/* Step 4: Email Preview Tab */}
+        {stepId === 4 && (
+          <TabsContent value="preview">
+            <HtmlPreview onPreviewLoad={setNewsletterData} />
+          </TabsContent>
+        )}
       </Tabs>
+
+      {/* Step 4: Schedule Modal */}
+      {stepId === 4 && newsletterData && (
+        <ScheduleModal
+          open={scheduleModalOpen}
+          onOpenChange={setScheduleModalOpen}
+          issueId={newsletterData.issue_id}
+          onSchedule={handleSchedule}
+          isScheduling={isScheduling}
+        />
+      )}
     </div>
   );
 }

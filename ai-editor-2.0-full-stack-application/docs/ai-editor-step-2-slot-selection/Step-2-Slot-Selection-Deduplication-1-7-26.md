@@ -8,17 +8,31 @@
 
 ## Status
 
-**Status:** ✅ IMPLEMENTED - Pending Pat's test/approval
+**Status:** ✅ FIX V2 LIVE - Ready for testing
 
-**Deployed:** January 7, 2026
-**Commit:** `06de29f` - "Add semantic deduplication to Step 2 Slot Selection"
+**Latest Deploy:** January 7, 2026, 21:03 UTC
+**Commit:** `5886584` - "Fix semantic deduplication: include headlines without bullets + slot-specific history"
 **Services Updated:**
-- ai-editor-worker (live)
-- ai-editor-trigger (live)
+- ai-editor-worker ✅ LIVE
+- ai-editor-trigger ✅ LIVE
+
+### ACTUAL Root Cause Found (Jan 7 evening)
+
+The initial implementation failed because:
+1. **Stories without bullets were SKIPPED** - The `_extract_recent_issues_data()` function had `if not any(bullets): continue` which filtered out stories that didn't have b1/b2/b3 populated
+2. **No slot-specific history** - All slots saw the same generic pool of recent stories, not what was specifically selected for THAT slot
+
+### Fix V2 Changes
+1. Include ALL stories with headlines in semantic context (bullets optional)
+2. Added `slot_history` dict mapping each slot to its past 14 days of selections
+3. Claude now sees "SLOT X SPECIFIC HISTORY" section when selecting for that slot
 
 ### To Test
 1. Go to AI Editor Dashboard → Step 2: Slot Selection → Click "Run Now"
-2. Check logs for: `[Step 2] Fetching decorated stories for semantic deduplication...`
+2. Check logs for:
+   - `[Step 2] Story summaries built: X added, Y skipped (no headline), Z without bullets (included anyway)`
+   - `[Step 2] Slot 3 history: N past selections`
+   - `[Claude] Slot 3: Added N slot-specific history items`
 3. Verify no duplicate stories appear in next newsletter issue
 
 ---

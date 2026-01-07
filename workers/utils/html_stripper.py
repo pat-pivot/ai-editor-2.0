@@ -74,12 +74,15 @@ def strip_html_for_deliverability(stories: List[Dict[str, Any]], subject_line: s
                 f'<div style="font-size: 16px; font-weight: 600; color: #111; margin-bottom: 12px;">{_escape_html(headline)}</div>'
             )
 
-        # Bullet points (b1, b2, b3)
-        for bullet_key in ['b1', 'b2', 'b3']:
-            bullet = fields.get(bullet_key, '')
+        # Bullet points - check both field naming conventions:
+        # - Decoration table uses: b1, b2, b3
+        # - Some code references: ai_bullet_1, ai_bullet_2, ai_bullet_3
+        for idx in range(1, 4):
+            # Try b1/b2/b3 first (Decoration table), then ai_bullet_X fallback
+            bullet = fields.get(f'b{idx}', '') or fields.get(f'ai_bullet_{idx}', '')
             if bullet:
-                # Clean bullet text
-                bullet_clean = _escape_html(bullet.strip())
+                # Clean bullet text (preserve bold tags from decoration)
+                bullet_clean = _escape_html(bullet.strip(), preserve_bold=True)
                 output_parts.append(
                     f'<div style="margin-bottom: 10px; padding-left: 16px;">\u2022 {bullet_clean}</div>'
                 )
@@ -111,11 +114,27 @@ def strip_html_for_deliverability(stories: List[Dict[str, Any]], subject_line: s
     return html
 
 
-def _escape_html(text: str) -> str:
-    """Escape HTML special characters."""
+def _escape_html(text: str, preserve_bold: bool = True) -> str:
+    """
+    Escape HTML special characters, optionally preserving bold tags.
+
+    Args:
+        text: Text to escape
+        preserve_bold: If True, preserve <b> and </b> tags (default True)
+
+    Returns:
+        HTML-escaped text with bold tags preserved if requested
+    """
     if not text:
         return ""
-    return (
+
+    if preserve_bold:
+        # Temporarily replace bold tags with placeholders
+        text = text.replace('<b>', '___BOLD_OPEN___')
+        text = text.replace('</b>', '___BOLD_CLOSE___')
+
+    # Escape HTML special characters
+    text = (
         text
         .replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -123,6 +142,13 @@ def _escape_html(text: str) -> str:
         .replace('"', "&quot;")
         .replace("'", "&#39;")
     )
+
+    if preserve_bold:
+        # Restore bold tags
+        text = text.replace('___BOLD_OPEN___', '<b>')
+        text = text.replace('___BOLD_CLOSE___', '</b>')
+
+    return text
 
 
 def build_full_html_email(
@@ -157,24 +183,27 @@ def build_full_html_email(
         fields = story.get('fields', {})
 
         # Image block
+        # IMPORTANT: Image is placed inside td, so use div wrapper not tr/td
+        # The outer structure already has <tr><td>, so we just need content
         image_html = ""
         if include_images:
             image_url = fields.get('image_url', '')
             if image_url:
                 image_html = f'''
-                <tr>
-                  <td style="padding:0 0 12px 0;">
-                    <img src="{image_url}" alt="" style="width:100%; height:auto; border-radius:6px; display:block;" />
-                  </td>
-                </tr>'''
+    <div style="padding:0 0 12px 0;">
+      <img src="{image_url}" alt="" style="width:100%; height:auto; border-radius:6px; display:block;" />
+    </div>'''
 
-        # Bullets HTML
+        # Bullets HTML - check both field naming conventions:
+        # - Decoration table uses: b1, b2, b3
+        # - Some code references: ai_bullet_1, ai_bullet_2, ai_bullet_3
         bullets_parts = []
-        for bullet_key in ['b1', 'b2', 'b3']:
-            bullet = fields.get(bullet_key, '')
+        for idx in range(1, 4):
+            # Try b1/b2/b3 first (Decoration table), then ai_bullet_X fallback
+            bullet = fields.get(f'b{idx}', '') or fields.get(f'ai_bullet_{idx}', '')
             if bullet:
                 bullets_parts.append(
-                    f'<div style="margin-bottom:10px; padding-left:12px; font-size:14px; line-height:1.6; color:#4b5563;">\u2022 {_escape_html(bullet)}</div>'
+                    f'<div style="margin-bottom:10px; padding-left:12px; font-size:14px; line-height:1.6; color:#4b5563;">\u2022 {_escape_html(bullet, preserve_bold=True)}</div>'
                 )
         bullets_html = "\n".join(bullets_parts)
 

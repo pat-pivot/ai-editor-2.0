@@ -26,6 +26,7 @@ const VALID_STEPS = [
   "images",
   "html_compile",
   "mautic_send",
+  "gmail_send",  // Test email send via Gmail (accepts recipient param)
   "social_sync",
   // Sandbox jobs (FreshRSS-based pipeline)
   "ingest_sandbox",
@@ -72,7 +73,7 @@ interface QueueStatus {
  *
  * Request Body:
  * {
- *   "step": "prefilter" | "slot_selection" | "decoration" | "images" | "html_compile" | "mautic_send" | "social_sync",
+ *   "step": "prefilter" | "slot_selection" | "decoration" | "images" | "html_compile" | "mautic_send" | "gmail_send" | "social_sync",
  *   "params": { ... optional parameters ... }
  * }
  *
@@ -82,8 +83,14 @@ interface QueueStatus {
  *       Newsletter style variant for decoration prompts.
  *       Default: "pivot_ai"
  *
- * Example:
+ *   gmail_send:
+ *     "recipient": string
+ *       Email address to send the test newsletter to.
+ *       Default: "patsimmons21@gmail.com"
+ *
+ * Examples:
  *   { "step": "decoration", "params": { "newsletter": "pivot_build" } }
+ *   { "step": "gmail_send", "params": { "recipient": "test@example.com" } }
  */
 export async function POST(request: NextRequest) {
   try {
