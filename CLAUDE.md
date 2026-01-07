@@ -1,5 +1,7 @@
 # AI Editor 2.0
 
+> **Git Push:** Always push from `ai-editor-2.0-full-stack-application/` (not the parent `pivot-5-website` folder).
+
 ## What This Is
 
 A full-stack application that **replaces n8n workflows** for the Pivot 5 AI newsletter pipeline. Python workers with Redis Queue handle the automated pipeline; prompts are stored in PostgreSQL and editable via a Next.js dashboard.
