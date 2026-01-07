@@ -196,6 +196,16 @@ class ClaudeClient:
                 else:
                     logger.warning(f"[Claude] Slot {slot}: NO story_summaries found in recent_data!")
 
+                # NEW 1/7/26: Add slot-specific history (what THIS slot selected in past 14 days)
+                slot_history = recent_data.get('slot_history', {}).get(slot, [])
+                if slot_history:
+                    prompt += f"\n\n## SLOT {slot} SPECIFIC HISTORY (CRITICAL)\n"
+                    prompt += f"Stories that were specifically selected for SLOT {slot} in recent issues:\n"
+                    for i, entry in enumerate(slot_history[:10], 1):  # Limit to 10 most recent
+                        prompt += f"\n{i}. [{entry.get('date', '?')}] {entry.get('headline', 'N/A')}"
+                    prompt += f"\n\n**Do NOT select stories about the same topic/event as ANY of these Slot {slot} past selections.**"
+                    logger.info(f"[Claude] Slot {slot}: Added {len(slot_history)} slot-specific history items")
+
                 return prompt
             except KeyError as e:
                 logger.warning(f"Missing variable in {prompt_key} prompt: {e}, using fallback")

@@ -349,7 +349,8 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
         "storyIds": [],
         "pivotIds": [],
         "slot1Headline": None,  # Yesterday's Slot 1 headline for two-day company rotation
-        "story_summaries": []   # NEW: For semantic deduplication
+        "story_summaries": [],   # For semantic deduplication
+        "slot_history": {1: [], 2: [], 3: [], 4: [], 5: []}  # NEW: Slot-specific history
     }
 
     if not issues:
@@ -368,13 +369,14 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
                     "label": fields.get('label', ''),  # FIXED 1/7/26: 'company' doesn't exist, use 'label'
                     "storyId": fields.get('story_id', '')  # Newsletter Issue Stories uses snake_case
                 }
-                # Only add if has content
-                if summary["headline"] and any(summary["bullets"]):
+                # Add ALL stories with headlines (bullets optional for semantic dedup)
+                if summary["headline"]:
                     data["story_summaries"].append(summary)
         return data
 
     for idx, issue in enumerate(issues):
         fields = issue.get('fields', {})
+        issue_date = fields.get('issue_date', 'unknown')
 
         for i in range(1, 6):
             headline = fields.get(f'slot_{i}_headline', '')
@@ -383,6 +385,13 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
 
             if headline:
                 data["headlines"].append(headline)
+                # NEW: Build slot-specific history (each slot sees its own past selections)
+                # This helps Claude avoid selecting same story for same slot
+                data["slot_history"][i].append({
+                    "headline": headline,
+                    "storyId": story_id,
+                    "date": issue_date
+                })
             if story_id:
                 data["storyIds"].append(story_id)
             if pivot_id:
@@ -392,6 +401,10 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
         # Claude will infer the company name from the headline (e.g., "Nvidia Eyes $3B..." → Nvidia)
         if idx == 0:
             data["slot1Headline"] = fields.get('slot_1_headline')
+
+    # Log slot history counts
+    for slot_num in range(1, 6):
+        print(f"[Step 2] Slot {slot_num} history: {len(data['slot_history'][slot_num])} past selections")
 
     # NEW: Add semantic context from decorated stories
     if decorated_stories:
@@ -413,16 +426,19 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
                 "label": fields.get('label', ''),  # FIXED 1/7/26: 'company' doesn't exist, use 'label'
                 "storyId": fields.get('story_id', '')  # Newsletter Issue Stories uses snake_case
             }
-            # Only add if has content
+            # Add ALL stories with headlines for semantic deduplication
+            # FIXED 1/7/26: Previously skipped stories without bullets, but this caused
+            # semantic duplicates to slip through (e.g., Utah AI story)
+            # Headlines alone are sufficient for Claude to detect semantic duplicates
             if not headline:
                 skipped_no_headline += 1
                 continue
+            # Track but don't skip stories without bullets
             if not any(bullets):
                 skipped_no_bullets += 1
-                continue
             data["story_summaries"].append(summary)
 
-        print(f"[Step 2] Story summaries built: {len(data['story_summaries'])} added, {skipped_no_headline} skipped (no headline), {skipped_no_bullets} skipped (no bullets)")
+        print(f"[Step 2] Story summaries built: {len(data['story_summaries'])} added, {skipped_no_headline} skipped (no headline), {skipped_no_bullets} without bullets (included anyway)")
         # Log first 3 summaries for debugging
         for i, s in enumerate(data["story_summaries"][:3]):
             print(f"[Step 2] Summary {i+1}: '{s['headline'][:60]}...' bullets={len([b for b in s['bullets'] if b])}")
