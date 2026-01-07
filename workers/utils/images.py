@@ -85,12 +85,12 @@ Colors: Vibrant but corporate-appropriate."""
             "Content-Type": "application/json"
         }
 
-        # GPT Image 1.5 API
+        # GPT Image 1.5 API (matches n8n workflow)
         payload = {
-            "model": "gpt-image-1",
+            "model": "gpt-image-1.5",
             "prompt": enhanced_prompt,
             "n": 1,
-            "size": "1024x1024",
+            "size": "1536x1024",  # 16:9 aspect ratio to match Gemini
             "response_format": "b64_json"
         }
 
@@ -137,7 +137,7 @@ Colors: Vibrant but corporate-appropriate."""
                 }]
             }],
             "generationConfig": {
-                "responseModalities": ["image"],
+                "responseModalities": ["IMAGE"],  # Match n8n workflow exactly (uppercase)
                 # Use aspectRatio like n8n workflow instead of imageDimensions
                 "imageConfig": {
                     "aspectRatio": "16:9"

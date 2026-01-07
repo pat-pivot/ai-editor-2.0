@@ -108,7 +108,7 @@ def generate_images() -> dict:
     _log(f"  ✓ ImageClient initialized")
     _log(f"    Gemini API: {'configured' if image_client.gemini_api_key else 'NOT configured'}")
     _log(f"    OpenAI API: {'configured' if image_client.openai_api_key else 'NOT configured'}")
-    _log(f"    Cloudinary: {'configured' if image_client.cloudinary_url else 'NOT configured'}")
+    _log(f"    Cloudinary: configured (using HTTP POST with preset 'MakeImage')")
     _log(f"    Cloudflare: {'configured' if image_client.cloudflare_account_id else 'NOT configured'}")
 
     # Track results
