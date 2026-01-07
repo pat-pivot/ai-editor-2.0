@@ -48,13 +48,13 @@ function inferLogLevel(message: string, level: string): string {
   return level || "info";
 }
 
-// Format timestamp for display (ET timezone)
+// Format timestamp for display (ET timezone, 12-hour format)
 function formatLogTime(timestamp: string): string {
   const d = new Date(timestamp);
   return d.toLocaleTimeString("en-US", {
     timeZone: "America/New_York",
-    hour12: false,
-    hour: "2-digit",
+    hour12: true,
+    hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
   });

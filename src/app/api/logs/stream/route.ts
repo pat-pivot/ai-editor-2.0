@@ -127,51 +127,57 @@ interface RenderLogEntry {
 }
 
 /**
- * Patterns that indicate BUILD logs (pip install, package downloads, etc.)
- * These should be filtered out to show only EXECUTION logs.
- *
- * NOTE: Render's API returns type="app" for BOTH build and execution logs,
- * so we must filter by message content instead of the type label.
+ * Patterns that indicate EXECUTION logs from our pipeline.
+ * We use a whitelist approach to ONLY show logs that match these patterns.
+ * This filters out HTTP request logs, access logs, build logs, etc.
  */
-const BUILD_LOG_PATTERNS = [
-  // pip/package installation
-  /^Using cached .+\.whl/i,
-  /^Downloading .+\.whl/i,
-  /^Collecting [a-z]/i,
-  /^Installing collected packages/i,
-  /^Successfully installed/i,
-  /^Requirement already satisfied/i,
-  /^\[notice\] A new release of pip/i,
-  /^\[notice\] To update, run: pip install/i,
-  // Build process messages (with ANSI codes)
-  /==> (Cloning|Building|Uploading|Build successful|Uploaded)/i,
-  /==>\s+\x1b\[\d+m.*?(Cloning|Building|Uploading|Build successful|Uploaded)/i,
-  // npm/node build
-  /^npm (WARN|notice|info)/i,
-  /^added \d+ packages/i,
-  // General build indicators
-  /^Preparing build/i,
-  /^Build started/i,
-  /^Fetching .* repository/i,
+const EXECUTION_LOG_PATTERNS = [
+  // Pipeline orchestration
+  /^\[Pipeline\]/i,
+  /^\[Step \d/i,
+  // Ingest step
+  /^\[Ingest/i,
+  /^\[FreshRSS/i,
+  /^\[Google News/i,
+  /^\[Direct Feed/i,
+  // AI Scoring
+  /^\[AI Scoring/i,
+  /^\[Claude/i,
+  /^\[Anthropic/i,
+  // Pre-filter
+  /^\[Pre-?[Ff]ilter/i,
+  /^\[Gemini/i,
+  /^\[Slot \d/i,
+  // Airtable operations
+  /^\[Airtable/i,
+  // Generic step markers
+  /^  (Ingest|Direct Feeds|AI Scoring|Pre-Filter):/i,
+  // Summary lines (indented stats)
+  /^  → /,
+  // Worker messages
+  /Worker .+ \[PID/i,
+  /^Starting worker/i,
+  /^Registering jobs/i,
 ];
 
 /**
- * Filter out build logs, keeping only execution logs.
- * Execution logs typically start with prefixes like:
- * [Pipeline], [Step 1], [Ingest], [Airtable], [Prefilter], etc.
+ * Filter to ONLY show execution logs from our pipeline.
+ * This uses a whitelist approach - only logs matching our patterns are shown.
+ * This filters out: HTTP request logs, access logs, build logs, etc.
  */
 function isExecutionLog(message: string): boolean {
-  // Empty messages pass through
-  if (!message || message.trim() === "") return true;
+  // Empty messages are filtered out
+  if (!message || message.trim() === "") return false;
 
-  // Check if it matches any build pattern
-  for (const pattern of BUILD_LOG_PATTERNS) {
+  // Check if it matches any execution pattern (whitelist)
+  for (const pattern of EXECUTION_LOG_PATTERNS) {
     if (pattern.test(message)) {
-      return false;
+      return true;
     }
   }
 
-  return true;
+  // Does not match any execution pattern - filter it out
+  return false;
 }
 
 interface FetchResult {
