@@ -375,6 +375,8 @@ export async function getPreFilterLog(skipCache: boolean = false): Promise<PreFi
 
   const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.prefilterLog, {
     maxRecords: 10000,
+    // 7-day lookback filter - only fetch articles from past 7 days
+    filterByFormula: "IS_AFTER({date_og_published}, DATEADD(TODAY(), -7, 'days'))",
     sort: [{ field: "date_prefiltered", direction: "desc" }],
     fields: ["storyID", "pivotId", "headline", "core_url", "source_id", "date_og_published", "date_prefiltered", "slot"],
     skipCache,
@@ -635,6 +637,8 @@ export async function getNewsletterSelectsList(
   const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.newsletterSelects, {
     maxRecords: limit,
     view: "viwCHRKh65VlPQYf0", // Use the specific Airtable view
+    // 7-day lookback filter - only fetch articles from past 7 days
+    filterByFormula: "IS_AFTER({date_og_published}, DATEADD(TODAY(), -7, 'days'))",
     sort: [{ field: "date_og_published", direction: "desc" }],
     fields: [
       "headline",

@@ -143,7 +143,7 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
     return counts;
   }, [preFilterData]);
 
-  // Filter Pre-Filter data by slot and search (Step 1)
+  // Filter Pre-Filter data by slot only (Step 1) - search bar removed
   const filteredPreFilterData = useMemo(() => {
     let data = preFilterData;
 
@@ -151,17 +151,8 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
       data = data.filter((entry) => entry.slot === selectedSlot);
     }
 
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      data = data.filter((entry) =>
-        entry.headline.toLowerCase().includes(query) ||
-        entry.storyId.toLowerCase().includes(query) ||
-        entry.sourceId.toLowerCase().includes(query)
-      );
-    }
-
     return data;
-  }, [preFilterData, selectedSlot, searchQuery]);
+  }, [preFilterData, selectedSlot]);
 
   // Filter Newsletter Stories by search (Step 0)
   const filteredNewsletterStories = useMemo(() => {
@@ -195,7 +186,7 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedSlot, searchQuery]);
+  }, [selectedSlot, searchQuery, stepId]);
 
   const formatLastSync = () => {
     if (!lastSync) return "Never";
@@ -241,17 +232,19 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        {/* Filters */}
+        {/* Filters - Only show search bar for Step 0 */}
         <div className="flex items-center gap-4 mb-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search headlines, story IDs..."
-              className="pl-10"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          {stepId === 0 && (
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search headlines, story IDs..."
+                className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          )}
           {stepId === 1 && (
             <div className="flex gap-2">
               <Badge
@@ -299,7 +292,7 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
         {/* Subheader for Step 1 */}
         {stepId === 1 && (
           <p className="text-sm text-muted-foreground mb-4 -mt-2">
-            Stories prefiltered today. Click any row to view in Airtable.
+            Stories prefiltered in the past 7 days. Click any row to view in Airtable.
           </p>
         )}
 
@@ -366,8 +359,9 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
         const diff = a.slot - b.slot;
         return sortDirection === "asc" ? diff : -diff;
       } else {
-        const dateA = new Date(a.datePrefiltered || a.datePublished || 0).getTime();
-        const dateB = new Date(b.datePrefiltered || b.datePublished || 0).getTime();
+        // Sort by date_og_published field
+        const dateA = new Date(a.datePublished || 0).getTime();
+        const dateB = new Date(b.datePublished || 0).getTime();
         const diff = dateA - dateB;
         return sortDirection === "asc" ? diff : -diff;
       }
@@ -406,7 +400,7 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
         <Inbox className="h-10 w-10 mb-2" />
-        <p>No pre-filter records found</p>
+        <p>No pre-filter records found (past 7 days)</p>
       </div>
     );
   }
@@ -426,11 +420,10 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-28">Story ID</TableHead>
-          <TableHead>Headline</TableHead>
-          <TableHead className="w-24">Source</TableHead>
+          <TableHead className="border-r border-zinc-200">Headline</TableHead>
+          <TableHead className="w-28 border-r border-zinc-200">Source</TableHead>
           <TableHead
-            className="w-20 text-center cursor-pointer hover:bg-muted/50 select-none"
+            className="w-20 text-center cursor-pointer hover:bg-muted/50 select-none border-r border-zinc-200"
             onClick={() => handleSort("slot")}
           >
             <div className="flex items-center justify-center gap-1">
@@ -439,11 +432,11 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
             </div>
           </TableHead>
           <TableHead
-            className="w-32 cursor-pointer hover:bg-muted/50 select-none"
+            className="w-44 cursor-pointer hover:bg-muted/50 select-none"
             onClick={() => handleSort("date")}
           >
             <div className="flex items-center gap-1">
-              Date
+              Date Original Published
               <SortIndicator field="date" />
             </div>
           </TableHead>
@@ -456,20 +449,17 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
             className="cursor-pointer hover:bg-muted/50"
             onClick={() => openInAirtable(row.id)}
           >
-            <TableCell className="font-mono text-xs text-muted-foreground">
-              {row.storyId || row.pivotId || "—"}
-            </TableCell>
-            <TableCell className="font-medium">{row.headline}</TableCell>
-            <TableCell className="text-xs text-muted-foreground">
+            <TableCell className="font-medium border-r border-zinc-200">{row.headline}</TableCell>
+            <TableCell className="text-xs text-muted-foreground border-r border-zinc-200">
               {row.sourceId || "—"}
             </TableCell>
-            <TableCell className="text-center">
+            <TableCell className="text-center border-r border-zinc-200">
               <Badge variant="outline" className="font-mono">
                 {row.slot}
               </Badge>
             </TableCell>
             <TableCell className="text-muted-foreground text-sm">
-              {formatDate(row.datePrefiltered || row.datePublished)}
+              {formatDate(row.datePublished)}
             </TableCell>
           </TableRow>
         ))}
