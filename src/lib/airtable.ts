@@ -19,6 +19,7 @@ const TABLES = {
   decoration: process.env.AI_EDITOR_DECORATION_TABLE || "tbla16LJCf5Z6cRn3",
   sourceScores: process.env.AI_EDITOR_SOURCE_SCORES_TABLE || "tbl3Zkdl1No2edDLK",
   articlesAllIngested: "tblMfRgSNSyoRIhx1",
+  newsletterSelects: "tblKhICCdWnyuqgry",
 };
 
 interface AirtableRecord {
@@ -612,81 +613,45 @@ export async function getArticles(
   }));
 }
 
-// Newsletter Selects List (multiple issues for dashboard display)
-// Returns flattened list of selected stories across recent issues
+// Newsletter Selects List (from Newsletter Selects table tblKhICCdWnyuqgry)
+// Direct mirror of the Airtable Newsletter Selects view
 export interface NewsletterSelect {
   id: string;
-  issueId: string;
-  issueDate: string;
-  slot: number;
   headline: string;
-  storyId: string;
+  sourceName: string;
+  dateOgPublished: string;
   pivotId: string;
+  originalUrl: string;
 }
 
 export async function getNewsletterSelectsList(
-  limit: number = 50,
+  limit: number = 100,
   skipCache: boolean = false
 ): Promise<NewsletterSelect[]> {
-  if (!AI_EDITOR_BASE_ID || !TABLES.selectedSlots) {
-    throw new Error("AI Editor base ID or selected slots table not configured");
+  if (!AI_EDITOR_BASE_ID || !TABLES.newsletterSelects) {
+    throw new Error("AI Editor base ID or newsletter selects table not configured");
   }
 
-  const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.selectedSlots, {
-    maxRecords: 10,
-    sort: [{ field: "issue_date", direction: "desc" }],
+  const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.newsletterSelects, {
+    maxRecords: limit,
+    view: "viwCHRKh65VlPQYf0", // Use the specific Airtable view
+    sort: [{ field: "date_OG_published", direction: "desc" }],
     fields: [
-      "issue_id",
-      "issue_date",
-      "slot_1_storyId",
-      "slot_1_pivotId",
-      "slot_1_headline",
-      "slot_2_storyId",
-      "slot_2_pivotId",
-      "slot_2_headline",
-      "slot_3_storyId",
-      "slot_3_pivotId",
-      "slot_3_headline",
-      "slot_4_storyId",
-      "slot_4_pivotId",
-      "slot_4_headline",
-      "slot_5_storyId",
-      "slot_5_pivotId",
-      "slot_5_headline",
+      "headline",
+      "source_name",
+      "date_OG_published",
+      "pivot_id",
+      "original_url",
     ],
     skipCache,
   });
 
-  // Flatten the slots into individual entries
-  const selects: NewsletterSelect[] = [];
-
-  for (const record of records) {
-    const fields = record.fields;
-    const issueId = (fields.issue_id as string) || "";
-    const issueDate = (fields.issue_date as string) || "";
-
-    for (let slot = 1; slot <= 5; slot++) {
-      const headline = (fields[`slot_${slot}_headline`] as string) || "";
-      const storyId = (fields[`slot_${slot}_storyId`] as string) || "";
-      const pivotId = (fields[`slot_${slot}_pivotId`] as string) || "";
-
-      // Only include slots that have content
-      if (headline || storyId) {
-        selects.push({
-          id: `${record.id}-slot-${slot}`,
-          issueId,
-          issueDate,
-          slot,
-          headline,
-          storyId,
-          pivotId,
-        });
-      }
-    }
-
-    // Stop if we've reached the limit
-    if (selects.length >= limit) break;
-  }
-
-  return selects.slice(0, limit);
+  return records.map((record) => ({
+    id: record.id,
+    headline: (record.fields.headline as string) || "Untitled",
+    sourceName: (record.fields.source_name as string) || "Unknown",
+    dateOgPublished: (record.fields.date_OG_published as string) || "",
+    pivotId: (record.fields.pivot_id as string) || "",
+    originalUrl: (record.fields.original_url as string) || "",
+  }));
 }
