@@ -217,7 +217,10 @@ class AirtableClient:
 
         formula = None
         if since_date:
-            formula = f"IS_AFTER({{date_og_published}}, '{since_date}')"
+            # Changed 1/8/26: Use date_ai_process instead of date_og_published
+            # This catches all newly AI-processed articles regardless of original publish date
+            # Slot eligibility still uses date_og_published for freshness rules
+            formula = f"IS_AFTER({{date_ai_process}}, '{since_date}')"
 
         records = table.all(formula=formula)
 
