@@ -1,272 +1,318 @@
-# Step 2 Slot Selection - pivotId Not Being Saved Investigation
+# Step 2 Slot Selection - Deduplication Investigation
 
-**Date:** January 7, 2026
-**Issue:** pivotId is NOT being saved to Selected Slots table even though it EXISTS in Pre-Filter Log candidate data.
-
----
-
-## Executive Summary
-
-**ROOT CAUSE FOUND:** The architecture was fundamentally wrong. Claude IS shown both storyID and pivotId for each candidate, but Claude was ONLY asked to return storyID. The code then tried to LOOK UP the pivotId by matching Claude's returned storyID against candidates. When Claude returned truncated/invalid storyIDs, the lookup failed.
-
-**FIX V3 IMPLEMENTED:** Now Claude returns `selected_pivotId` directly instead of relying on storyID lookup. Falls back to headline matching only if Claude doesn't return pivotId.
+**Last Updated:** January 8, 2026
+**Investigation Status:** COMPLETE - Root cause confirmed, fix NEVER IMPLEMENTED
 
 ---
 
-## What Was ACTUALLY Happening
+## EXECUTIVE SUMMARY
 
-### The Architecture Problem
+**The within-issue headline deduplication logic WAS NEVER CODED.**
 
-```
-Claude sees:                    Claude returns:           Code tries:
-┌─────────────────────────┐    ┌────────────────────┐    ┌──────────────────────────┐
-│ Story 1:                │    │ selected_id: rec37 │    │ for c in candidates:     │
-│ - storyID: rec...ULlNV  │ →  │ selected_headline  │ →  │   if c.storyID == rec37  │
-│ - pivotId: p_mw7feg     │    │ (NO pivotId!)      │    │     get pivotId from c   │
-│ - headline: Meta...     │    └────────────────────┘    │ # FAILS - no match!      │
-└─────────────────────────┘                              └──────────────────────────┘
-```
+The user's assumption that this was "coded weeks ago" is incorrect. After a thorough investigation of the git history and codebase, I can confirm:
 
-Claude WAS given the pivotId but was never asked to return it!
+1. **`selectedHeadlinesToday` was NEVER added to `cumulative_state`** - It only exists as a proposed fix in this documentation file
+2. **Claude NEVER receives today's selected headlines** - Only storyIDs are tracked in `cumulative_state`
+3. **The deduplication that WAS implemented** only covers the 14-day historical lookback, NOT within-issue duplicates
+4. **Git history confirms** - No commit has ever added headline tracking for within-issue deduplication
 
-### Why It Got Worse Today
+---
 
-Today's semantic deduplication fix (commit `5886584`) added ~2500+ tokens to the prompt:
-- 20 story summaries with headlines, bullets, deks
-- 10 slot-specific history items per slot
+## CRITICAL FINDING: The Code Gap
 
-This longer context caused Claude to truncate/hallucinate storyIDs.
+### What cumulative_state ACTUALLY Contains (Current Code)
 
-### The V3 Fix (Correct Approach)
+**File:** `/workers/jobs/slot_selection.py` (lines 147-153)
 
-Now Claude is asked to return pivotId directly:
-
-```json
-{
-  "selected_id": "storyID (COPY EXACTLY)",
-  "selected_pivotId": "pivotId (COPY EXACTLY)",  // ← NEW!
-  "selected_headline": "...",
-  ...
+```python
+cumulative_state = {
+    "selectedToday": [],       # storyIDs selected today
+    "selectedCompanies": [],   # companies featured today
+    "selectedSources": {}      # sources used today {source: count}
 }
 ```
 
-Code now uses Claude's returned pivotId first:
+**MISSING:** `selectedHeadlinesToday` was NEVER added!
+
+### What Gets Updated After Each Slot (Current Code)
+
+**File:** `/workers/jobs/slot_selection.py` (lines 339-346)
+
 ```python
-selected_pivot_id = selection.get("selected_pivotId", "")
-if selected_pivot_id:
-    # Use it directly!
-else:
-    # Fallback to storyID/headline lookup
+# Update cumulative state
+if selected_story_id:
+    cumulative_state["selectedToday"].append(selected_story_id)
+if company:
+    cumulative_state["selectedCompanies"].append(company)
+if source_id:
+    cumulative_state["selectedSources"][source_id] = \
+        cumulative_state["selectedSources"].get(source_id, 0) + 1
 ```
+
+**MISSING:** No code adds `selected_headline` to cumulative_state!
+
+### What Claude ACTUALLY Receives for Slot 3 Selection
+
+**File:** `/workers/utils/claude.py` (lines 117-208)
+
+When Claude selects Slot 3, the prompt contains:
+
+1. **Recent headlines (14-day lookback)** - From database, does NOT include today's Slot 1 or Slot 2 headlines
+2. **Story summaries (14-day)** - Decorated stories from database, does NOT include today's selections
+3. **Slot history (14-day)** - Past selections for this specific slot, does NOT include today
+4. **`selected_stories`** - Only storyIDs: `"ABC, DEF"` (NOT the actual headline text!)
+5. **`selected_companies`** - Company names from today's selections
+6. **`selected_sources`** - Source names with counts
+
+**Claude NEVER sees:**
+- The headline text "JPMorgan Replaces Proxy Advisers With AI for Voting US Shares" (Slot 2)
+- Any way to semantically compare candidates with today's previous selections
 
 ---
 
-## Previous Fix Attempts (V1, V2)
+## GIT HISTORY INVESTIGATION
 
-### V1 - Headline Fallback (7c3eabf) - WRONG APPROACH
-Added multi-tier headline matching when storyID lookup failed. This was masking the real problem instead of fixing it.
+### Commits Related to Slot Selection Deduplication
 
-### V2 - Semantic Deduplication (5886584) - CAUSED THE ISSUE
-Added more context to prompt which made Claude's responses worse.
+| Date | Commit | Description | Added `selectedHeadlinesToday`? |
+|------|--------|-------------|--------------------------------|
+| Dec 23 | 1fb6b56 | Initial commit | NO - only `selectedToday` (storyIDs) |
+| Dec 30 | 8f34ddb | UTC to EST fix | NO |
+| Dec 30 | fbd00d6 | CRITICAL: Add recent headlines to Claude | NO - only 14-day lookback |
+| Dec 31 | 2459355 | Fix 4 critical gaps from n8n audit | NO |
+| Dec 31 | 2fa0ced | Fix Step 2 to match n8n workflow exactly | NO |
+| Dec 31 | 6f98e5e | Fix Slot 1 two-day company rotation | NO |
+| Dec 31 | 9892155 | Remove Source Scores table references | NO |
+| Jan 7 | 06de29f | Add semantic deduplication | NO - only 14-day summaries |
+| Jan 7 | 5886584 | Fix semantic deduplication | NO - added slot-specific history (past issues only) |
+| Jan 7 | 5a0f81e | Fix pivotId | NO |
+
+### Search Results
+
+```bash
+# Searched for any commit with "selectedHeadlines"
+git log -p --all -S "selectedHeadlinesToday" -- .
+# Result: NO COMMITS FOUND
+
+# Searched for "headlines_today" variable
+git log -p --all -S "headlines_today" -- .
+# Result: NO COMMITS FOUND
+
+# Searched current codebase
+grep -rn "selectedHeadlines" workers/
+# Result: NO MATCHES IN CODE
+```
+
+**CONCLUSION: The within-issue headline tracking was NEVER implemented. It only exists as a proposed fix in this documentation file.**
 
 ---
 
-## Tables Investigated
+## DETAILED CODE FLOW ANALYSIS
 
-### 1. Pre-Filter Log (tbl72YMsm9iRHj3sp)
+### Slot 2 Selection (Example)
 
-**Actual Airtable Field Names:**
-```json
-{
-  "headline": "Meta lays off 600 in AI division despite billion-dollar AI push - Mashable",
-  "date_og_published": "2026-01-07T06:26:20.000Z",
-  "date_prefiltered": "2026-01-07T16:54:38.000Z",
-  "slot": "2",
-  "pivotId": "p_mw7feg",           // camelCase - CORRECT
-  "storyID": "recSCfGfRRaBycgpc",  // camelCase - CORRECT
-  "core_url": "https://mashable.com/article/meta-lay-off-600-ai",
-  "source_id": "Mashable"
-}
-```
-
-**Code Field Name Usage (airtable.py:496):**
 ```python
-fields=['storyID', 'pivotId', 'headline', 'core_url', 'source_id', 'date_og_published', 'slot']
-```
-**VERDICT: FIELD NAMES MATCH**
-
----
-
-### 2. Selected Slots (tblzt2z7r512Kto3O)
-
-**Actual Airtable Field Names:**
-```json
-{
-  "issue_date": "2026-01-08",
-  "issue_id": "Pivot 5 - Jan 08",
-  "status": "pending",
-  "slot_1_storyId": "rec37",        // NOTE: Truncated/invalid!
-  "slot_1_headline": "Meta lays off 600 in AI division despite billion-dollar AI push",
-  "slot_1_pivotId": null,           // MISSING!
-  "slot_2_storyId": "rec19CYYLGp6hQtNs",
-  "slot_2_pivotId": null,           // ALSO MISSING!
-  "slot_3_storyId": "rec0NRh8kapnRmtIH",
-  "slot_3_pivotId": "p_apfdrk",     // Present
-  "slot_4_storyId": "reccrgt00PzjlgXPF",
-  "slot_4_pivotId": "p_11x5l9",     // Present
-  "slot_5_storyId": "recWY5ki51LAG6gTq",
-  "slot_5_pivotId": "p_1mnb9yv"     // Present
-}
-```
-
-**Code Field Name Usage (slot_selection.py:303-305):**
-```python
-issue_data[f"slot_{slot}_headline"] = selected_headline
-issue_data[f"slot_{slot}_storyId"] = selected_story_id
-issue_data[f"slot_{slot}_pivotId"] = selected_pivot_id
-```
-**VERDICT: FIELD NAMES MATCH** (camelCase: storyId, pivotId)
-
----
-
-### 3. Newsletter Issue Stories / Decoration (tbla16LJCf5Z6cRn3)
-
-**Actual Airtable Field Names:**
-```json
-{
-  "issue_id": "Pivot 5 - Dec 31",
-  "slot_order": 2,
-  "story_id": "recKR43IErhpDsrar",  // snake_case! Different from other tables
-  "headline": "AI Workloads Force Data Centers...",
-  "label": "INFRASTRUCTURE",
-  "b1": "...",
-  "b2": "...",
-  "b3": "...",
-  "ai_dek": "...",
-  "image_url": "...",
-  "pivotnews_url": "..."
-}
-```
-
-**Code Field Name Usage (airtable.py:387-391):**
-```python
-fields=[
-    'story_id', 'headline',  # Note: Newsletter Issue Stories uses snake_case
-    'b1', 'b2', 'b3',
-    'ai_dek', 'label',
-    'issue_id'
+# Step 1: Candidates loaded (includes JPMorgan story from Bloomberg)
+candidates = [
+    {"storyID": "ABC", "headline": "JPMorgan Replaces Proxy Advisers With AI...", "source": "Bloomberg"},
+    # ... other candidates
 ]
+
+# Step 2: Claude selects
+selection = claude.select_slot(slot=2, candidates=candidates, ...)
+# Returns: {"selected_id": "ABC", "selected_headline": "JPMorgan Replaces Proxy Advisers..."}
+
+# Step 3: Update cumulative_state
+cumulative_state["selectedToday"].append("ABC")  # Only storyID!
+cumulative_state["selectedCompanies"].append("JPMorgan")
+cumulative_state["selectedSources"]["Bloomberg"] = 1
+
+# NOTE: selected_headline is NOT added anywhere!
 ```
-**VERDICT: FIELD NAMES MATCH** (snake_case: story_id)
 
----
+### Slot 3 Selection (Example - THE BUG)
 
-## Root Cause Analysis
-
-### The Problem Flow
-
-1. **Claude returns selection:**
-   ```json
-   {
-     "selected_id": "rec37",  // TRUNCATED/INVALID storyID!
-     "selected_headline": "Meta lays off 600 in AI division despite billion-dollar AI push"
-     // Note: NO source suffix " - Mashable"
-   }
-   ```
-
-2. **Code tries storyID match (FAILS):**
-   ```python
-   for c in available_candidates:
-       if c.get('fields', {}).get('storyID') == "rec37":  # No match!
-           # storyID in Pre-Filter Log is "recSCfGfRRaBycgpc"
-   ```
-
-3. **Code tries headline match (FAILS):**
-   ```python
-   selected_headline_lower = "meta lays off 600 in ai division despite billion-dollar ai push"
-   candidate_headline = "meta lays off 600 in ai division despite billion-dollar ai push - mashable"
-
-   if candidate_headline == selected_headline_lower:  # FALSE! Different strings
-   ```
-
-4. **Result: No match found, pivotId = ""**
-
-### Evidence from Jan 08 Issue
-
-| Slot | storyId | pivotId | Analysis |
-|------|---------|---------|----------|
-| 1 | `rec37` (invalid!) | MISSING | Claude truncated storyID, headline missing source suffix |
-| 2 | `rec19CYYLGp6hQtNs` | MISSING | Likely same headline mismatch issue |
-| 3 | `rec0NRh8kapnRmtIH` | `p_apfdrk` | Match succeeded (storyID or headline matched) |
-| 4 | `reccrgt00PzjlgXPF` | `p_11x5l9` | Match succeeded |
-| 5 | `recWY5ki51LAG6gTq` | `p_1mnb9yv` | Match succeeded |
-
----
-
-## Fix Implemented
-
-**File:** `/workers/jobs/slot_selection.py`
-**Lines:** 271-325
-
-### Before (exact match only):
 ```python
-if candidate_headline == selected_headline_lower:
-    matched_candidate = c
+# Step 1: Candidates loaded (includes JPMorgan story from Morning Brew)
+candidates = [
+    {"storyID": "XYZ", "headline": "JPMorgan Chase is replacing its proxy advisors with AI...", "source": "Morning Brew"},
+    # ... other candidates
+]
+
+# Step 2: Code filters out already selected storyIDs
+excluded_ids = {"ABC"}  # From cumulative_state["selectedToday"]
+available_candidates = [c for c in candidates if c["storyID"] not in excluded_ids]
+# "XYZ" PASSES - different storyID from "ABC"
+
+# Step 3: Code filters out 14-day historical duplicates
+recent_headlines = ["Old headline 1", "Old headline 2", ...]  # From database
+# "JPMorgan Chase is replacing..." NOT in recent_headlines - it's brand new news
+# PASSES
+
+# Step 4: Claude selects from available_candidates
+# Claude's prompt contains:
+#   - recent_headlines: [14-day historical headlines] - NO JPMorgan proxy story
+#   - selected_stories: "ABC" (just the storyID, NOT "JPMorgan Replaces Proxy Advisers...")
+#   - story_summaries: [14-day decorated stories] - NO JPMorgan proxy story
+#
+# Claude has NO WAY to know Slot 2 already has a JPMorgan proxy story!
+# Claude selects "XYZ" - the Morning Brew version
+
+# Step 5: Issue now has DUPLICATE NEWS EVENT in Slot 2 and Slot 3
 ```
 
-### After (multi-tier matching):
+---
+
+## WHAT CLAUDE RECEIVES (EXACT PROMPT CONTENT)
+
+For Slot 3 selection, Claude's prompt includes these sections:
+
+### 1. Recent Headlines (14-day) - DOES NOT INCLUDE TODAY
+
+```
+### Rule 1: Recent Headlines (Last 14 Days) - CRITICAL SEMANTIC DEDUPLICATION
+Do NOT select any story about the same topic/event as these recent headlines:
+
+1. [14-day old headline 1]
+2. [14-day old headline 2]
+... (up to 30 headlines from past issues in database)
+```
+
+**PROBLEM:** Today's Slot 2 headline is NOT in this list because it's not in the database yet.
+
+### 2. Selected Today - ONLY STORYIDS, NOT HEADLINES
+
+```
+### Rule 2: Already Selected Today
+Do NOT select these storyIDs: ABC, DEF
+```
+
+**PROBLEM:** Claude sees "ABC" but has no way to know ABC is "JPMorgan Replaces Proxy Advisers With AI for Voting US Shares"
+
+### 3. Story Summaries (14-day) - DOES NOT INCLUDE TODAY
+
+```
+## RECENT STORY SUMMARIES (for semantic deduplication)
+**CRITICAL:** Do NOT select stories about the SAME NEWS EVENT as these:
+
+### Recent Story 1
+- Headline: [14-day old headline]
+- Key Points: [bullets from decorated story]
+...
+```
+
+**PROBLEM:** Today's Slot 2 selection is not decorated yet, so it's not in this list.
+
+### 4. Slot-Specific History - DOES NOT INCLUDE TODAY
+
+```
+## SLOT 3 SPECIFIC HISTORY (CRITICAL)
+Stories that were specifically selected for SLOT 3 in recent issues:
+
+1. [2026-01-07] Old Slot 3 headline
+2. [2026-01-06] Another old Slot 3 headline
+...
+```
+
+**PROBLEM:** This only shows PAST issues from the database, not today's in-progress selections.
+
+---
+
+## THE FIX THAT SHOULD HAVE BEEN IMPLEMENTED
+
+### In `slot_selection.py`
+
 ```python
-# 1. Exact match
-if candidate_headline == selected_headline_lower:
-    matched_candidate = c
+# Line 147-154: Initialize cumulative_state
+cumulative_state = {
+    "selectedToday": [],           # storyIDs selected today
+    "selectedHeadlinesToday": [],  # NEW: headlines selected today
+    "selectedCompanies": [],       # companies featured today
+    "selectedSources": {}          # sources used today {source: count}
+}
 
-# 2. Startswith match (Claude strips " - Source" suffix)
-if not matched_candidate:
-    if candidate_headline.startswith(selected_headline_lower):
-        matched_candidate = c
+# Lines 339-347: After selection, update cumulative state
+if selected_story_id:
+    cumulative_state["selectedToday"].append(selected_story_id)
+if selected_headline:  # NEW: Track headline
+    cumulative_state["selectedHeadlinesToday"].append(selected_headline)
+if company:
+    cumulative_state["selectedCompanies"].append(company)
+if source_id:
+    cumulative_state["selectedSources"][source_id] = \
+        cumulative_state["selectedSources"].get(source_id, 0) + 1
+```
 
-# 3. Reverse startswith (selected might have extra text)
-if not matched_candidate:
-    if selected_headline_lower.startswith(candidate_headline):
-        matched_candidate = c
+### In `claude.py` `_build_slot_system_prompt()`
 
-# 4. Substring match (50 char minimum for precision)
-if not matched_candidate and len(selected_headline_lower) >= 50:
-    search_text = selected_headline_lower[:50]
-    if search_text in candidate_headline:
-        matched_candidate = c
+```python
+# After existing prompt building, add:
+headlines_today = cumulative_state.get('selectedHeadlinesToday', [])
+if headlines_today:
+    prompt += "\n\n## HEADLINES ALREADY SELECTED FOR TODAY'S ISSUE (CRITICAL)"
+    prompt += "\n**Do NOT select any story about the SAME NEWS EVENT as these:**\n"
+    for i, h in enumerate(headlines_today, 1):
+        prompt += f"\n{i}. {h}"
+    prompt += "\n\n**Even if worded differently or from a different source, if it covers the same underlying news, REJECT IT.**"
 ```
 
 ---
 
-## Field Name Reference Summary
+## EVIDENCE: THE BUG IN ACTION
 
-| Table | Story ID Field | Pivot ID Field | Notes |
-|-------|---------------|----------------|-------|
-| Pre-Filter Log | `storyID` (camelCase) | `pivotId` (camelCase) | Source of candidates |
-| Selected Slots | `slot_X_storyId` | `slot_X_pivotId` | Destination for selections |
-| Newsletter Issue Stories | `story_id` (snake_case) | N/A | Used for decoration |
+### Jan 09 Newsletter Duplicate
 
-**KEY INSIGHT:** Field names ARE correct in the code. The bug was in the headline matching logic, not field naming.
+| Slot | Headline | Source | News Event |
+|------|----------|--------|------------|
+| 2 | "JPMorgan Replaces Proxy Advisers With AI for Voting US Shares" | Bloomberg | JPMorgan AI proxy voting |
+| 3 | "JPMorgan Chase is replacing its proxy advisors with AI" | Morning Brew | JPMorgan AI proxy voting |
 
----
+**Same news event, different sources, both selected because Claude had no way to compare.**
 
-## Testing Recommendations
+### Why This Happened
 
-1. **Verify fix works** - Run Step 2 and check logs for "MATCH by headline startswith" messages
-2. **Check existing records** - Update any records where pivotId is missing but should be present
-3. **Monitor Claude responses** - Log the exact `selected_id` Claude returns to track truncation issues
-
----
-
-## Files Modified
-
-- `/workers/jobs/slot_selection.py` - Added multi-tier headline matching fallback
+1. Slot 2 selected the Bloomberg version of the JPMorgan story
+2. cumulative_state only tracked `selectedToday: ["ABC"]` (storyID)
+3. Slot 3 candidate list included the Morning Brew version (storyID: "XYZ")
+4. Code filter passed: "XYZ" != "ABC"
+5. Claude's prompt had no mention of "JPMorgan Replaces Proxy Advisers With AI..."
+6. Claude selected the Morning Brew version, thinking it was unique
+7. Both stories ended up in the same issue
 
 ---
 
-## Related Documentation
+## RECOMMENDED FIX IMPLEMENTATION
 
-- `/docs/Step-2-SlotSelection-Cross-Reference-12-30-25.md`
+### Priority: HIGH - Should be implemented immediately
+
+### Files to Modify:
+
+1. **`/workers/jobs/slot_selection.py`**
+   - Add `selectedHeadlinesToday` to `cumulative_state` initialization
+   - Add headline tracking after each selection
+
+2. **`/workers/utils/claude.py`**
+   - Add "HEADLINES ALREADY SELECTED FOR TODAY'S ISSUE" section to prompt
+   - Include in both database-prompt path and fallback path
+
+### Testing:
+
+1. Run Step 2 manually and verify logs show headline tracking
+2. Check that Slot 3+ prompts include previous slot headlines
+3. Test with known duplicate news events (same story, different sources)
+
+---
+
+## RELATED DOCUMENTATION
+
 - `/.claude/skills/step-2-slot-selection.md`
 - `/.claude/skills/airtable-api.md`
+- `/docs/Step-2-SlotSelection-Cross-Reference-12-30-25.md`
+
+---
+
+## APPENDIX: Original pivotId Issue (Jan 7, 2026) - RESOLVED
+
+The original investigation was about pivotId not being saved. This was FIXED in commit `5a0f81e` by having Claude return `selected_pivotId` directly instead of relying on storyID lookup.
+
+This documentation was then updated to include the within-issue headline deduplication gap that was discovered during that investigation.

@@ -206,6 +206,16 @@ class ClaudeClient:
                     prompt += f"\n\n**Do NOT select stories about the same topic/event as ANY of these Slot {slot} past selections.**"
                     logger.info(f"[Claude] Slot {slot}: Added {len(slot_history)} slot-specific history items")
 
+                # NEW 1/8/26: Add within-issue headline deduplication
+                headlines_today = cumulative_state.get('selectedHeadlinesToday', [])
+                if headlines_today:
+                    prompt += "\n\n### CRITICAL: Headlines Already Selected for TODAY'S Issue\n"
+                    prompt += "Do NOT select any story about the SAME news event as these:\n"
+                    for i, h in enumerate(headlines_today, 1):
+                        prompt += f"\n{i}. {h}"
+                    prompt += "\n\n**Even if worded differently, if it's the same underlying news, REJECT IT.**\n"
+                    logger.info(f"[Claude] Slot {slot}: Added {len(headlines_today)} within-issue headlines for deduplication")
+
                 return prompt
             except KeyError as e:
                 logger.warning(f"Missing variable in {prompt_key} prompt: {e}, using fallback")
@@ -274,6 +284,15 @@ Return ONLY valid JSON with no additional text:
         story_summaries = recent_data.get('story_summaries', [])
         if story_summaries:
             context += self._format_story_summaries_for_prompt(story_summaries)
+
+        # NEW 1/8/26: Add within-issue headline deduplication (fallback path)
+        headlines_today = cumulative_state.get('selectedHeadlinesToday', [])
+        if headlines_today:
+            context += "\n\n### CRITICAL: Headlines Already Selected for TODAY'S Issue\n"
+            context += "Do NOT select any story about the SAME news event as these:\n"
+            for i, h in enumerate(headlines_today, 1):
+                context += f"\n{i}. {h}"
+            context += "\n\n**Even if worded differently, if it's the same underlying news, REJECT IT.**\n"
 
         return context
 

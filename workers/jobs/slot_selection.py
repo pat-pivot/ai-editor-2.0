@@ -146,10 +146,12 @@ def select_slots() -> dict:
 
         # 2. Initialize cumulative state for tracking across slots
         # Updated 12/31/25: selectedSources is now a dict with counts per n8n audit
+        # Updated 1/8/26: Added selectedHeadlinesToday for within-issue deduplication
         cumulative_state = {
-            "selectedToday": [],       # storyIDs selected today
-            "selectedCompanies": [],   # companies featured today
-            "selectedSources": {}      # sources used today {source: count} for max 2 rule
+            "selectedToday": [],           # storyIDs selected today
+            "selectedHeadlinesToday": [],  # headlines selected today (for within-issue dedup)
+            "selectedCompanies": [],       # companies featured today
+            "selectedSources": {}          # sources used today {source: count} for max 2 rule
         }
 
         # NOTE: Source credibility lookup removed 1/1/26
@@ -338,6 +340,8 @@ def select_slots() -> dict:
                 # Update cumulative state
                 if selected_story_id:
                     cumulative_state["selectedToday"].append(selected_story_id)
+                if selected_headline:  # Track headline for within-issue deduplication (1/8/26)
+                    cumulative_state["selectedHeadlinesToday"].append(selected_headline)
                 if company:
                     cumulative_state["selectedCompanies"].append(company)
                 if source_id:

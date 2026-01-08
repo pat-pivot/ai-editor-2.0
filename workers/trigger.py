@@ -112,6 +112,10 @@ def get_job_function(step_name: str):
         elif step_name == 'ingest_direct_feeds':
             from jobs.ingest_direct_feeds import ingest_direct_feeds
             JOB_FUNCTIONS[step_name] = ingest_direct_feeds
+        # Browserbase retry for paywalled sites (Step 0.6)
+        elif step_name == 'browserbase_retry':
+            from jobs.browserbase_retry import browserbase_retry
+            JOB_FUNCTIONS[step_name] = browserbase_retry
         # Individual slot prefilter jobs (for testing)
         elif step_name == 'prefilter_slot_1':
             from jobs.prefilter import prefilter_slot_1
@@ -156,6 +160,8 @@ QUEUE_MAPPING = {
     'repair_google_news': 'low',
     # Direct feed ingestion (non-Google News URLs)
     'ingest_direct_feeds': 'default',
+    # Browserbase retry for paywalled sites (Step 0.6)
+    'browserbase_retry': 'default',
     # Individual slot prefilter jobs (for testing)
     'prefilter_slot_1': 'default',
     'prefilter_slot_2': 'default',
@@ -169,6 +175,7 @@ QUEUE_MAPPING = {
 TIMEOUT_MAPPING = {
     'ai_scoring_sandbox': '60m',  # 60 minutes for AI scoring
     'ingest_sandbox': '2h',       # 2 hours for ingest (Google News decoding)
+    'browserbase_retry': '30m',   # 30 minutes for Browserbase paywalled site retry
     # All other jobs default to 2h
 }
 

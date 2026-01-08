@@ -789,3 +789,51 @@ class AirtableClient:
         table = self._get_table(self.p5_social_base_id, self.p5_social_posts_table_id)
         record = table.create(post_data)
         return record['id']
+
+    # =========================================================================
+    # STEP 0.6: BROWSERBASE RETRY (AI Editor 2.0 base)
+    # Added 1/8/26 for paywalled site scraping retry
+    # =========================================================================
+
+    def get_newsletter_selects_by_formula(self, formula: str) -> List[dict]:
+        """
+        Query Newsletter Selects table with a custom formula.
+
+        Used by browserbase_retry job to find articles needing re-extraction.
+
+        Args:
+            formula: Airtable filter formula
+
+        Returns:
+            List of matching records
+        """
+        table = self._get_table(self.ai_editor_base_id, self.newsletter_selects_table_id)
+
+        records = table.all(
+            formula=formula,
+            fields=[
+                'pivot_id', 'source_name', 'core_url', 'raw',
+                'headline', 'date_ai_process', 'interest_score'
+            ]
+        )
+
+        logger.info(f"[Airtable] get_newsletter_selects_by_formula: Found {len(records)} records")
+        return records
+
+    def update_newsletter_select(self, record_id: str, fields: dict) -> dict:
+        """
+        Update a Newsletter Selects record.
+
+        Used by browserbase_retry job to update raw content after re-extraction.
+
+        Args:
+            record_id: Airtable record ID
+            fields: Fields to update (e.g., {'raw': content, 'browserbase_extracted': True})
+
+        Returns:
+            Updated record
+        """
+        table = self._get_table(self.ai_editor_base_id, self.newsletter_selects_table_id)
+        record = table.update(record_id, fields)
+        logger.info(f"[Airtable] Updated Newsletter Select record: {record_id}")
+        return record
