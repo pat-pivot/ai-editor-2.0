@@ -635,13 +635,13 @@ export async function getNewsletterSelectsList(
   const records = await fetchAirtable(AI_EDITOR_BASE_ID, TABLES.newsletterSelects, {
     maxRecords: limit,
     view: "viwCHRKh65VlPQYf0", // Use the specific Airtable view
-    sort: [{ field: "date_OG_published", direction: "desc" }],
+    sort: [{ field: "date_og_published", direction: "desc" }],
     fields: [
       "headline",
       "source_name",
-      "date_OG_published",
+      "date_og_published",
       "pivot_id",
-      "original_url",
+      "core_url",
     ],
     skipCache,
   });
@@ -650,8 +650,8 @@ export async function getNewsletterSelectsList(
     id: record.id,
     headline: (record.fields.headline as string) || "Untitled",
     sourceName: (record.fields.source_name as string) || "Unknown",
-    dateOgPublished: (record.fields.date_OG_published as string) || "",
+    dateOgPublished: (record.fields.date_og_published as string) || "",
     pivotId: (record.fields.pivot_id as string) || "",
-    originalUrl: (record.fields.original_url as string) || "",
+    originalUrl: (record.fields.core_url as string) || "",
   }));
 }
