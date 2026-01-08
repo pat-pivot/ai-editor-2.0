@@ -187,16 +187,34 @@ interface FetchResult {
   wasRateLimited: boolean;
 }
 
+// Pagination configuration
+const MAX_PAGES = 5; // Maximum pages to fetch to stay under rate limits
+const MIN_EXECUTION_LOGS = 50; // Stop fetching once we have this many execution logs
+const PAGE_DELAY_MS = 200; // Delay between page requests to avoid rate limits
+
+interface RenderLogsApiResponse {
+  logs: RenderLogEntry[];
+  hasMore: boolean;
+  nextStartTime?: string;
+  nextEndTime?: string;
+}
+
 /**
- * Fetch logs from Render API with caching and rate limit awareness
+ * Fetch logs from Render API with caching, rate limit awareness, and PAGINATION.
+ *
+ * Key fix: The Render Logs API is time-window paginated. A single request only returns
+ * one page of results. We now:
+ * 1. Check `hasMore` in the response
+ * 2. Use `nextStartTime` and `nextEndTime` to fetch subsequent pages
+ * 3. Stop when we have enough execution logs OR no more pages OR hit max pages
  */
 async function fetchRenderLogsWithCache(
   serviceIds: string[],
   hours: number,
-  limit: number = 50
+  limit: number = 100
 ): Promise<FetchResult> {
-  // Check cache first
-  const cached = getCachedLogs(serviceIds);
+  // Check cache first (now includes hours in cache key)
+  const cached = getCachedLogs(serviceIds, hours);
   if (cached) {
     return {
       logs: cached.logs,
@@ -225,79 +243,127 @@ async function fetchRenderLogsWithCache(
 
   markFetchTime();
 
-  const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  // Initialize pagination state
+  let allLogs: RenderLog[] = [];
+  let currentStartTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  let currentEndTime: string | undefined = undefined;
+  let hasMore = true;
+  let pageCount = 0;
+  let lastRateLimitRemaining = 30;
+  let lastRateLimitReset = 0;
 
-  const params = new URLSearchParams();
-  // Render API requires ownerId parameter
-  params.append("ownerId", RENDER_OWNER_ID);
-  // Render API uses "resource" (not "resource[]") for array parameters
-  serviceIds.forEach((id) => params.append("resource", id));
-  params.append("startTime", startTime);
-  params.append("limit", limit.toString());
-  params.append("direction", "backward");
+  // Pagination loop
+  while (hasMore && pageCount < MAX_PAGES) {
+    const params = new URLSearchParams();
+    params.append("ownerId", RENDER_OWNER_ID);
+    serviceIds.forEach((id) => params.append("resource", id));
+    params.append("startTime", currentStartTime);
+    if (currentEndTime) params.append("endTime", currentEndTime);
+    params.append("limit", limit.toString());
+    params.append("direction", "backward");
 
-  try {
-    const response = await fetch(`${RENDER_API_URL}?${params}`, {
-      headers: {
-        Authorization: `Bearer ${RENDER_API_KEY}`,
-        Accept: "application/json",
-      },
-    });
+    try {
+      const response = await fetch(`${RENDER_API_URL}?${params}`, {
+        headers: {
+          Authorization: `Bearer ${RENDER_API_KEY}`,
+          Accept: "application/json",
+        },
+      });
 
-    // Extract rate limit headers
-    const rateLimitRemaining = parseInt(
-      response.headers.get("Ratelimit-Remaining") || "30",
-      10
-    );
-    const rateLimitReset = parseInt(
-      response.headers.get("Ratelimit-Reset") || "0",
-      10
-    );
+      // Extract rate limit headers
+      lastRateLimitRemaining = parseInt(
+        response.headers.get("Ratelimit-Remaining") || "30",
+        10
+      );
+      lastRateLimitReset = parseInt(
+        response.headers.get("Ratelimit-Reset") || "0",
+        10
+      );
 
-    // Handle rate limit
-    if (response.status === 429) {
-      console.warn("[SSE Stream] Rate limited by Render API (429)");
-      markRateLimited(rateLimitReset || Math.floor(Date.now() / 1000) + 60);
-      return { logs: [], fromCache: false, rateLimitRemaining: 0, wasRateLimited: true };
+      // Handle rate limit
+      if (response.status === 429) {
+        console.warn(`[SSE Stream] Rate limited by Render API (429) on page ${pageCount + 1}`);
+        markRateLimited(lastRateLimitReset || Math.floor(Date.now() / 1000) + 60);
+        // Return what we have so far
+        break;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[SSE Stream] Render API error:", response.status, errorText);
+        console.error("[SSE Stream] Request URL was:", `${RENDER_API_URL}?${params}`);
+        break;
+      }
+
+      // Clear rate limit on successful response
+      clearRateLimit();
+
+      const data: RenderLogsApiResponse = await response.json();
+
+      // Map and filter logs from this page
+      const pageLogs: RenderLog[] = (data.logs || [])
+        .map((log: RenderLogEntry) => ({
+          id: log.id,
+          timestamp: log.timestamp,
+          message: log.message,
+          level: log.labels.find((l) => l.name === "level")?.value || "info",
+          type: log.labels.find((l) => l.name === "type")?.value || "app",
+          service: log.labels.find((l) => l.name === "service")?.value || "unknown",
+        }))
+        .filter((log: RenderLog) => isExecutionLog(log.message));
+
+      // Add to accumulated logs
+      allLogs = [...allLogs, ...pageLogs];
+      pageCount++;
+
+      console.log(`[SSE Stream] Page ${pageCount}: fetched ${data.logs?.length || 0} raw logs, ${pageLogs.length} execution logs (total: ${allLogs.length})`);
+
+      // Check if we should continue fetching
+      hasMore = data.hasMore === true;
+
+      // Stop early if we have enough execution logs
+      if (allLogs.length >= MIN_EXECUTION_LOGS) {
+        console.log(`[SSE Stream] Stopping pagination: have ${allLogs.length} execution logs (minimum: ${MIN_EXECUTION_LOGS})`);
+        hasMore = false;
+      }
+
+      // Update pagination cursors for next request
+      if (hasMore && data.nextStartTime && data.nextEndTime) {
+        currentStartTime = data.nextStartTime;
+        currentEndTime = data.nextEndTime;
+
+        // Add delay between page requests to avoid hitting rate limits
+        await new Promise(resolve => setTimeout(resolve, PAGE_DELAY_MS));
+      } else {
+        hasMore = false;
+      }
+
+      // Log rate limit warning
+      if (lastRateLimitRemaining < 10) {
+        console.warn(`[SSE Stream] Low rate limit remaining: ${lastRateLimitRemaining} after page ${pageCount}`);
+      }
+
+    } catch (error) {
+      console.error(`[SSE Stream] Fetch error on page ${pageCount + 1}:`, error);
+      break;
     }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[SSE Stream] Render API error:", response.status, errorText);
-      console.error("[SSE Stream] Request URL was:", `${RENDER_API_URL}?${params}`);
-      return { logs: [], fromCache: false, rateLimitRemaining, wasRateLimited: false };
-    }
-
-    // Clear rate limit on successful response
-    clearRateLimit();
-
-    const data = await response.json();
-
-    // Map and filter logs: exclude build logs, keep only execution logs
-    const logs: RenderLog[] = data.logs
-      .map((log: RenderLogEntry) => ({
-        id: log.id,
-        timestamp: log.timestamp,
-        message: log.message,
-        level: log.labels.find((l) => l.name === "level")?.value || "info",
-        type: log.labels.find((l) => l.name === "type")?.value || "app",
-        service: log.labels.find((l) => l.name === "service")?.value || "unknown",
-      }))
-      .filter((log: RenderLog) => isExecutionLog(log.message));
-
-    // Cache the results
-    setCachedLogs(serviceIds, logs, rateLimitRemaining, rateLimitReset);
-
-    // Log rate limit info for monitoring
-    if (rateLimitRemaining < 10) {
-      console.warn(`[SSE Stream] Low rate limit remaining: ${rateLimitRemaining}`);
-    }
-
-    return { logs, fromCache: false, rateLimitRemaining, wasRateLimited: false };
-  } catch (error) {
-    console.error("[SSE Stream] Fetch error:", error);
-    return { logs: [], fromCache: false, rateLimitRemaining: 0, wasRateLimited: false };
   }
+
+  if (pageCount >= MAX_PAGES) {
+    console.log(`[SSE Stream] Reached max pages (${MAX_PAGES}), returning ${allLogs.length} logs`);
+  }
+
+  // Cache the results (with hours in key)
+  if (allLogs.length > 0) {
+    setCachedLogs(serviceIds, allLogs, lastRateLimitRemaining, lastRateLimitReset, hours);
+  }
+
+  return {
+    logs: allLogs,
+    fromCache: false,
+    rateLimitRemaining: lastRateLimitRemaining,
+    wasRateLimited: false
+  };
 }
 
 export async function GET(request: NextRequest) {

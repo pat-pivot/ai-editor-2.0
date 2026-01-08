@@ -30,7 +30,7 @@ Therefore, **both Step 0 and Step 1 logs come from the same cron job resources**
 
 ---
 
-## Issues Fixed
+## Issues Fixed (Session 1 & 2)
 
 ### Issue 1: 429 Rate Limit Errors
 
@@ -221,6 +221,201 @@ function isExecutionLog(message: string): boolean {
 **Problem:** Timestamps showed as "13:08:42" instead of "1:08:42 PM".
 
 **Solution:** Changed `hour12: false` to `hour12: true` in `formatLogTime()`.
+
+---
+
+## Session 3 Investigation (January 8, 2026)
+
+### Reported Issues
+
+1. **"Waiting for logs" when logs should exist** - Dashboard shows empty state even when pipeline has run
+2. **Only ~2 runs showing instead of historical data** - Time filters (1h, 12h, 24h) not returning proper history
+
+### Root Cause Analysis
+
+After researching the Render Logs API and reviewing the current implementation, I've identified **two critical bugs**:
+
+#### Bug 1: NO PAGINATION - Only fetching first page of results
+
+**Current Code (route.ts lines 228-237):**
+```typescript
+const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+const params = new URLSearchParams();
+params.append("ownerId", RENDER_OWNER_ID);
+serviceIds.forEach((id) => params.append("resource", id));
+params.append("startTime", startTime);
+params.append("limit", limit.toString());  // limit = 50 or 100
+params.append("direction", "backward");
+```
+
+**Problem:** The Render Logs API is **time-window paginated**. When you request 24 hours of logs:
+- Render returns only ONE PAGE of results (up to `limit` entries)
+- Response includes `hasMore: true/false`, `nextStartTime`, `nextEndTime`
+- **We NEVER check `hasMore` or make follow-up requests**
+
+**Result:** For a 24-hour filter, we're only getting the MOST RECENT ~100 logs, which might be just 1-2 pipeline runs. All older logs within the time window are silently ignored.
+
+#### Bug 2: Aggressive whitelist filtering AFTER pagination truncation
+
+**Current Flow:**
+1. Request 24h of logs with limit=100
+2. Render returns 100 most recent logs (might span only 2 hours)
+3. **Then** we apply whitelist filter (`isExecutionLog()`)
+4. If 80 of those 100 logs are HTTP/build logs, we show only 20 execution logs
+
+**Problem:** We filter AFTER fetching, so if the first page is mostly noise, we get very few execution logs. We should either:
+- Fetch more pages to accumulate enough execution logs
+- OR use Render's `type` filter in the API request (if supported)
+
+#### Bug 3: Cache key doesn't include time filter
+
+**Current Code (render-logs-cache.ts line 40-42):**
+```typescript
+export function getCacheKey(serviceIds: string[]): string {
+  return serviceIds.sort().join(",");
+}
+```
+
+**Problem:** Cache key is ONLY based on service IDs. If user:
+1. Views "Live" (0.1h) -> cache stores ~6 min of logs
+2. Switches to "24h" -> cache hit returns same 6 min of logs!
+
+The cache TTL of 5 seconds helps, but there's still a race condition where stale data from a different filter could be served.
+
+### Why "Waiting for logs" appears
+
+1. User selects "24h" filter
+2. API fetches first page (limit=100) of last 24 hours
+3. Due to `direction: backward`, this is the MOST RECENT 100 logs
+4. If there hasn't been a pipeline run in the last few hours, most logs are HTTP requests
+5. Whitelist filter removes all HTTP logs
+6. Result: 0 execution logs -> "Waiting for logs" displayed
+7. **Meanwhile, pipeline runs from 6-12 hours ago exist but are on page 2, 3, 4, etc.**
+
+### Why only ~2 runs show
+
+1. Pipeline runs every ~8 hours (2 AM, 9:30 AM, 5 PM)
+2. Each run generates ~200-500 log lines
+3. With limit=100 and direction=backward, we get only the most recent logs
+4. After whitelist filtering, we're left with logs from just the last 1-2 runs
+5. **Older runs within the 24h window are never fetched**
+
+---
+
+## Implementation Plan
+
+### Phase 1: Fix Pagination (Critical)
+
+**File:** `src/app/api/logs/stream/route.ts`
+
+**Changes:**
+
+1. **Add pagination loop to `fetchRenderLogsWithCache()`:**
+```typescript
+async function fetchRenderLogsWithCache(
+  serviceIds: string[],
+  hours: number,
+  limit: number = 100,
+  maxPages: number = 5  // Safety limit to prevent infinite loops
+): Promise<FetchResult> {
+  // ... existing cache check ...
+
+  let allLogs: RenderLog[] = [];
+  let currentStartTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  let currentEndTime: string | undefined = undefined;
+  let hasMore = true;
+  let pageCount = 0;
+
+  while (hasMore && pageCount < maxPages) {
+    const params = new URLSearchParams();
+    params.append("ownerId", RENDER_OWNER_ID);
+    serviceIds.forEach((id) => params.append("resource", id));
+    params.append("startTime", currentStartTime);
+    if (currentEndTime) params.append("endTime", currentEndTime);
+    params.append("limit", limit.toString());
+    params.append("direction", "backward");
+
+    const response = await fetch(`${RENDER_API_URL}?${params}`, { ... });
+    const data = await response.json();
+
+    // Process this page of logs
+    const pageLogs = data.logs.map(...).filter(isExecutionLog);
+    allLogs = [...allLogs, ...pageLogs];
+
+    // Check pagination
+    hasMore = data.hasMore === true;
+    if (hasMore && data.nextStartTime && data.nextEndTime) {
+      currentStartTime = data.nextStartTime;
+      currentEndTime = data.nextEndTime;
+    } else {
+      hasMore = false;
+    }
+
+    pageCount++;
+
+    // Rate limit protection: small delay between pages
+    if (hasMore) await new Promise(r => setTimeout(r, 200));
+  }
+
+  return { logs: allLogs, ... };
+}
+```
+
+2. **Adjust page limits by filter:**
+```typescript
+const PAGE_LIMITS: Record<string, number> = {
+  "live": 1,   // Live only needs latest
+  "1h": 2,     // 1 hour: up to 2 pages
+  "12h": 4,    // 12 hours: up to 4 pages
+  "24h": 6,    // 24 hours: up to 6 pages
+};
+```
+
+### Phase 2: Fix Cache Key
+
+**File:** `src/lib/render-logs-cache.ts`
+
+**Change:**
+```typescript
+export function getCacheKey(serviceIds: string[], hours: number): string {
+  return `${serviceIds.sort().join(",")}_${hours}h`;
+}
+```
+
+Update all callers to pass the `hours` parameter.
+
+### Phase 3: Optimize Filtering (Optional)
+
+**Option A: Filter during pagination**
+- Stop fetching more pages once we have enough execution logs (e.g., 200)
+- Prevents over-fetching when recent pages have good data
+
+**Option B: Request type filter from API**
+- Check if Render API supports `type=app` filter to exclude request logs at source
+- Would reduce payload size and improve performance
+
+### Phase 4: Rate Limit Awareness for Pagination
+
+**Considerations:**
+- Current rate limit: 30 req/min
+- With 5 services and 6 pages per service = 30 requests for a single 24h load
+- **This could exhaust the entire rate limit!**
+
+**Mitigation:**
+- Fetch all services in ONE request (current approach, correct)
+- But pagination adds multiple requests per filter change
+- Add inter-page delay (200ms suggested above)
+- Consider reducing maxPages or increasing per-page limit
+
+### Estimated Impact
+
+| Filter | Current Behavior | After Fix |
+|--------|-----------------|-----------|
+| Live | Works (last 6 min) | No change |
+| 1h | ~100 logs, 1-2 runs | ~200 logs, all runs in hour |
+| 12h | ~100 logs, 1-2 runs | ~400 logs, all runs in 12h |
+| 24h | ~100 logs, 1-2 runs | ~600 logs, all runs in 24h |
 
 ---
 

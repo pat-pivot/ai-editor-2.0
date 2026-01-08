@@ -181,8 +181,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Check cache first
-  const cached = getCachedLogs(serviceIds);
+  // Check cache first (now includes hours in cache key)
+  const cached = getCachedLogs(serviceIds, hours);
   if (cached) {
     // Transform cached logs to include instance field
     const logs = cached.logs.map((log) => ({
@@ -222,113 +222,179 @@ export async function GET(request: NextRequest) {
 
   markFetchTime();
 
-  const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  // Pagination configuration
+  const MAX_PAGES = 5;
+  const MIN_EXECUTION_LOGS = 50;
+  const PAGE_DELAY_MS = 200;
+
+  // Initialize pagination state
+  let allLogs: Array<{
+    id: string;
+    timestamp: string;
+    message: string;
+    level: string;
+    type: string;
+    service: string;
+    instance?: string;
+  }> = [];
+  let currentStartTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  let currentEndTime: string | undefined = undefined;
+  let hasMore = true;
+  let pageCount = 0;
+  let lastRateLimitRemaining = 30;
+  let lastRateLimitReset = 0;
+  let finalHasMore = false;
+  let finalNextEndTime: string | undefined = undefined;
 
   try {
-    // Build query params for Render API
-    const params = new URLSearchParams();
-    // Render API requires ownerId parameter
-    params.append("ownerId", RENDER_OWNER_ID);
-    // Render API uses "resource" (not "resource[]") for array parameters
-    serviceIds.forEach((id) => params.append("resource", id));
-    params.append("startTime", startTime);
-    params.append("limit", limit.toString());
-    params.append("direction", "backward"); // Most recent first
-    if (level) params.append("level", level);
+    // Pagination loop
+    while (hasMore && pageCount < MAX_PAGES) {
+      const params = new URLSearchParams();
+      params.append("ownerId", RENDER_OWNER_ID);
+      serviceIds.forEach((id) => params.append("resource", id));
+      params.append("startTime", currentStartTime);
+      if (currentEndTime) params.append("endTime", currentEndTime);
+      params.append("limit", limit.toString());
+      params.append("direction", "backward");
+      if (level) params.append("level", level);
 
-    const response = await fetch(`${RENDER_API_URL}?${params}`, {
-      headers: {
-        Authorization: `Bearer ${RENDER_API_KEY}`,
-        Accept: "application/json",
-      },
-    });
+      const response = await fetch(`${RENDER_API_URL}?${params}`, {
+        headers: {
+          Authorization: `Bearer ${RENDER_API_KEY}`,
+          Accept: "application/json",
+        },
+      });
 
-    // Extract rate limit headers
-    const rateLimitRemaining = parseInt(
-      response.headers.get("Ratelimit-Remaining") || "30",
-      10
-    );
-    const rateLimitReset = parseInt(
-      response.headers.get("Ratelimit-Reset") || "0",
-      10
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[Render Logs API] Error from Render:", response.status, errorText);
-
-      if (response.status === 401) {
-        return NextResponse.json(
-          { error: "Invalid Render API key", logs: [] },
-          { status: 401 }
-        );
-      }
-      if (response.status === 429) {
-        // Mark rate limited in cache
-        markRateLimited(rateLimitReset || Math.floor(Date.now() / 1000) + 60);
-        const waitTime = getTimeUntilReset();
-
-        return NextResponse.json(
-          {
-            error: "Rate limited by Render API",
-            message: `Please wait ${Math.ceil(waitTime / 1000)} seconds before retrying.`,
-            logs: [],
-            retryAfter: Math.ceil(waitTime / 1000),
-          },
-          {
-            status: 429,
-            headers: {
-              "Retry-After": Math.ceil(waitTime / 1000).toString(),
-            },
-          }
-        );
-      }
-
-      return NextResponse.json(
-        { error: `Render API error: ${response.status}`, logs: [] },
-        { status: response.status }
+      // Extract rate limit headers
+      lastRateLimitRemaining = parseInt(
+        response.headers.get("Ratelimit-Remaining") || "30",
+        10
       );
+      lastRateLimitReset = parseInt(
+        response.headers.get("Ratelimit-Reset") || "0",
+        10
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[Render Logs API] Error from Render:", response.status, errorText);
+
+        if (response.status === 401) {
+          return NextResponse.json(
+            { error: "Invalid Render API key", logs: [] },
+            { status: 401 }
+          );
+        }
+        if (response.status === 429) {
+          markRateLimited(lastRateLimitReset || Math.floor(Date.now() / 1000) + 60);
+          const waitTime = getTimeUntilReset();
+
+          // Return what we have so far if rate limited mid-pagination
+          if (allLogs.length > 0) {
+            break;
+          }
+
+          return NextResponse.json(
+            {
+              error: "Rate limited by Render API",
+              message: `Please wait ${Math.ceil(waitTime / 1000)} seconds before retrying.`,
+              logs: [],
+              retryAfter: Math.ceil(waitTime / 1000),
+            },
+            {
+              status: 429,
+              headers: {
+                "Retry-After": Math.ceil(waitTime / 1000).toString(),
+              },
+            }
+          );
+        }
+
+        // Return what we have on other errors
+        if (allLogs.length > 0) {
+          break;
+        }
+
+        return NextResponse.json(
+          { error: `Render API error: ${response.status}`, logs: [] },
+          { status: response.status }
+        );
+      }
+
+      // Clear rate limit on success
+      clearRateLimit();
+
+      const data: RenderLogsResponse = await response.json();
+
+      // Transform Render logs to our format
+      const pageLogs = (data.logs || []).map((log) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        message: log.message,
+        level: log.labels.find((l) => l.name === "level")?.value || "info",
+        type: log.labels.find((l) => l.name === "type")?.value || "app",
+        service: log.labels.find((l) => l.name === "service")?.value || "unknown",
+        instance: log.labels.find((l) => l.name === "instance")?.value,
+      }));
+
+      allLogs = [...allLogs, ...pageLogs];
+      pageCount++;
+
+      console.log(`[Render Logs API] Page ${pageCount}: fetched ${data.logs?.length || 0} logs (total: ${allLogs.length})`);
+
+      // Check if we should continue fetching
+      hasMore = data.hasMore === true;
+      finalHasMore = hasMore;
+      finalNextEndTime = data.nextEndTime;
+
+      // Stop early if we have enough logs
+      if (allLogs.length >= MIN_EXECUTION_LOGS) {
+        console.log(`[Render Logs API] Stopping pagination: have ${allLogs.length} logs (minimum: ${MIN_EXECUTION_LOGS})`);
+        hasMore = false;
+      }
+
+      // Update pagination cursors for next request
+      if (hasMore && data.nextStartTime && data.nextEndTime) {
+        currentStartTime = data.nextStartTime;
+        currentEndTime = data.nextEndTime;
+
+        // Add delay between page requests
+        await new Promise(resolve => setTimeout(resolve, PAGE_DELAY_MS));
+      } else {
+        hasMore = false;
+      }
+
+      // Log rate limit warning
+      if (lastRateLimitRemaining < 10) {
+        console.warn(`[Render Logs API] Low rate limit remaining: ${lastRateLimitRemaining} after page ${pageCount}`);
+      }
     }
 
-    // Clear rate limit on success
-    clearRateLimit();
+    if (pageCount >= MAX_PAGES) {
+      console.log(`[Render Logs API] Reached max pages (${MAX_PAGES}), returning ${allLogs.length} logs`);
+    }
 
-    const data: RenderLogsResponse = await response.json();
-
-    // Transform Render logs to our simpler format
-    const logs = data.logs.map((log) => ({
-      id: log.id,
-      timestamp: log.timestamp,
-      message: log.message,
-      level: log.labels.find((l) => l.name === "level")?.value || "info",
-      type: log.labels.find((l) => l.name === "type")?.value || "app",
-      service: log.labels.find((l) => l.name === "service")?.value || "unknown",
-      instance: log.labels.find((l) => l.name === "instance")?.value,
-    }));
-
-    // Cache the results (without instance field for cache)
-    const logsForCache: RenderLog[] = logs.map((log) => ({
-      id: log.id,
-      timestamp: log.timestamp,
-      message: log.message,
-      level: log.level,
-      type: log.type,
-      service: log.service,
-    }));
-    setCachedLogs(serviceIds, logsForCache, rateLimitRemaining, rateLimitReset);
-
-    // Log warning if running low on quota
-    if (rateLimitRemaining < 10) {
-      console.warn(`[Render Logs API] Low rate limit remaining: ${rateLimitRemaining}`);
+    // Cache the results (without instance field, with hours in key)
+    if (allLogs.length > 0) {
+      const logsForCache: RenderLog[] = allLogs.map((log) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        message: log.message,
+        level: log.level,
+        type: log.type,
+        service: log.service,
+      }));
+      setCachedLogs(serviceIds, logsForCache, lastRateLimitRemaining, lastRateLimitReset, hours);
     }
 
     return NextResponse.json({
-      logs,
-      hasMore: data.hasMore,
-      nextEndTime: data.nextEndTime,
+      logs: allLogs,
+      hasMore: finalHasMore,
+      nextEndTime: finalNextEndTime,
+      pagesFetched: pageCount,
       rateLimitInfo: {
-        remaining: rateLimitRemaining,
-        resetAt: rateLimitReset,
+        remaining: lastRateLimitRemaining,
+        resetAt: lastRateLimitReset,
       },
       serviceIds,
       query: {

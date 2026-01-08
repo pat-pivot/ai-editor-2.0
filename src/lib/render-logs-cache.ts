@@ -37,12 +37,18 @@ const MIN_FETCH_INTERVAL_MS = 2000; // 2 seconds minimum between fetches
 let isRateLimited = false;
 let rateLimitResetTime = 0;
 
-export function getCacheKey(serviceIds: string[]): string {
-  return serviceIds.sort().join(",");
+/**
+ * Generate cache key including hours to prevent different time filters from sharing cache.
+ * This fixes the bug where switching from "Live" (0.1h) to "24h" would return stale 6-minute data.
+ */
+export function getCacheKey(serviceIds: string[], hours?: number): string {
+  const serviceKey = serviceIds.sort().join(",");
+  // Include hours in cache key so different time filters don't share cache
+  return hours !== undefined ? `${serviceKey}_${hours}h` : serviceKey;
 }
 
-export function getCachedLogs(serviceIds: string[]): CachedLogs | null {
-  const key = getCacheKey(serviceIds);
+export function getCachedLogs(serviceIds: string[], hours?: number): CachedLogs | null {
+  const key = getCacheKey(serviceIds, hours);
   const cached = logCache.get(key);
 
   if (!cached) return null;
@@ -59,9 +65,10 @@ export function setCachedLogs(
   serviceIds: string[],
   logs: RenderLog[],
   rateLimitRemaining: number,
-  rateLimitReset: number
+  rateLimitReset: number,
+  hours?: number
 ): void {
-  const key = getCacheKey(serviceIds);
+  const key = getCacheKey(serviceIds, hours);
   logCache.set(key, {
     logs,
     timestamp: Date.now(),
@@ -109,9 +116,10 @@ export function clearRateLimit(): void {
 }
 
 export function getRateLimitInfo(
-  serviceIds: string[]
+  serviceIds: string[],
+  hours?: number
 ): { remaining: number; resetAt: number } | null {
-  const cached = logCache.get(getCacheKey(serviceIds));
+  const cached = logCache.get(getCacheKey(serviceIds, hours));
   if (!cached) return null;
   return {
     remaining: cached.rateLimitRemaining,
