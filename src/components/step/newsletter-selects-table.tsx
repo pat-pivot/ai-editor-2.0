@@ -39,7 +39,7 @@ export function NewsletterSelectsTable() {
       else setLoading(true);
       setError(null);
 
-      const url = `/api/airtable/newsletter-selects?limit=500${skipCache ? "&refresh=true" : ""}`;
+      const url = `/api/airtable/newsletter-selects?limit=2000${skipCache ? "&refresh=true" : ""}`;
       const response = await fetch(url);
       const data = await response.json();
 

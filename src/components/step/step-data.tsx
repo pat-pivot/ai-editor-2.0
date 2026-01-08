@@ -79,6 +79,10 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50; // Show 50 records per page
 
+  // Pre-Filter sorting state (moved here from PreFilterTable to sort BEFORE pagination)
+  const [preFilterSortField, setPreFilterSortField] = useState<"slot" | "date" | null>("date");
+  const [preFilterSortDirection, setPreFilterSortDirection] = useState<"asc" | "desc">("desc");
+
   // Fetch data from API based on step
   const fetchData = async (forceRefresh: boolean = false) => {
     // Only fetch for Step 0 (Newsletter Stories) and Step 1 (Pre-Filter)
@@ -154,6 +158,35 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
     return data;
   }, [preFilterData, selectedSlot]);
 
+  // Sort Pre-Filter data BEFORE pagination (fixes sorting across all pages)
+  const sortedPreFilterData = useMemo(() => {
+    if (!preFilterSortField) return filteredPreFilterData;
+
+    return [...filteredPreFilterData].sort((a, b) => {
+      if (preFilterSortField === "slot") {
+        const diff = a.slot - b.slot;
+        return preFilterSortDirection === "asc" ? diff : -diff;
+      } else {
+        // Sort by date
+        const dateA = new Date(a.datePublished || 0).getTime();
+        const dateB = new Date(b.datePublished || 0).getTime();
+        const diff = dateA - dateB;
+        return preFilterSortDirection === "asc" ? diff : -diff;
+      }
+    });
+  }, [filteredPreFilterData, preFilterSortField, preFilterSortDirection]);
+
+  // Handler for Pre-Filter sort
+  const handlePreFilterSort = (field: "slot" | "date") => {
+    if (preFilterSortField === field) {
+      setPreFilterSortDirection(preFilterSortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setPreFilterSortField(field);
+      setPreFilterSortDirection(field === "slot" ? "asc" : "desc");
+    }
+    setCurrentPage(1); // Reset to first page when sorting changes
+  };
+
   // Filter Newsletter Stories by search (Step 0)
   const filteredNewsletterStories = useMemo(() => {
     let data = newsletterStories;
@@ -171,8 +204,8 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
     return data;
   }, [newsletterStories, searchQuery]);
 
-  // Get active data based on step
-  const activeData = stepId === 0 ? filteredNewsletterStories : filteredPreFilterData;
+  // Get active data based on step (use sortedPreFilterData for Step 1)
+  const activeData = stepId === 0 ? filteredNewsletterStories : sortedPreFilterData;
 
   // Paginate filtered data
   const paginatedData = useMemo(() => {
@@ -298,7 +331,15 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
 
         {/* Data Table - varies by step */}
         {stepId === 0 && <NewsletterStoriesTable data={paginatedData as NewsletterStory[]} loading={loading} baseId={baseId} tableId={tableId} />}
-        {stepId === 1 && <PreFilterTable data={paginatedData as PreFilterEntry[]} loading={loading} baseId={baseId} tableId={tableId} />}
+        {stepId === 1 && <PreFilterTable
+          data={paginatedData as PreFilterEntry[]}
+          loading={loading}
+          baseId={baseId}
+          tableId={tableId}
+          sortField={preFilterSortField}
+          sortDirection={preFilterSortDirection}
+          onSort={handlePreFilterSort}
+        />}
         {stepId === 2 && <SelectedSlotsTable />}
         {stepId === 3 && <DecorationTable />}
         {stepId === 4 && <IssuesTable />}
@@ -338,35 +379,18 @@ export function StepData({ stepId, tableName, tableId, baseId }: StepDataProps) 
   );
 }
 
-function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEntry[]; loading: boolean; baseId: string; tableId: string }) {
-  const [sortField, setSortField] = useState<"slot" | "date" | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+interface PreFilterTableProps {
+  data: PreFilterEntry[];
+  loading: boolean;
+  baseId: string;
+  tableId: string;
+  sortField: "slot" | "date" | null;
+  sortDirection: "asc" | "desc";
+  onSort: (field: "slot" | "date") => void;
+}
 
-  const handleSort = (field: "slot" | "date") => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDirection(field === "slot" ? "asc" : "desc");
-    }
-  };
-
-  const sortedData = useMemo(() => {
-    if (!sortField) return data;
-
-    return [...data].sort((a, b) => {
-      if (sortField === "slot") {
-        const diff = a.slot - b.slot;
-        return sortDirection === "asc" ? diff : -diff;
-      } else {
-        // Sort by date_og_published field
-        const dateA = new Date(a.datePublished || 0).getTime();
-        const dateB = new Date(b.datePublished || 0).getTime();
-        const diff = dateA - dateB;
-        return sortDirection === "asc" ? diff : -diff;
-      }
-    });
-  }, [data, sortField, sortDirection]);
+function PreFilterTable({ data, loading, baseId, tableId, sortField, sortDirection, onSort }: PreFilterTableProps) {
+  // Sorting is now handled by parent component (StepData) - we just display the pre-sorted data
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "—";
@@ -424,7 +448,7 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
           <TableHead className="w-28 border-r border-zinc-200">Source</TableHead>
           <TableHead
             className="w-20 text-center cursor-pointer hover:bg-muted/50 select-none border-r border-zinc-200"
-            onClick={() => handleSort("slot")}
+            onClick={() => onSort("slot")}
           >
             <div className="flex items-center justify-center gap-1">
               Slot
@@ -433,7 +457,7 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
           </TableHead>
           <TableHead
             className="w-44 cursor-pointer hover:bg-muted/50 select-none"
-            onClick={() => handleSort("date")}
+            onClick={() => onSort("date")}
           >
             <div className="flex items-center gap-1">
               Date Original Published
@@ -443,7 +467,7 @@ function PreFilterTable({ data, loading, baseId, tableId }: { data: PreFilterEnt
         </TableRow>
       </TableHeader>
       <TableBody>
-        {sortedData.map((row) => (
+        {data.map((row) => (
           <TableRow
             key={row.id}
             className="cursor-pointer hover:bg-muted/50"
