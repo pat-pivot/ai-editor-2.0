@@ -179,38 +179,50 @@ def build_full_html_email(
 
     # Build story blocks
     story_blocks = []
-    for story in stories:
+    for story_num, story in enumerate(stories, start=1):
         fields = story.get('fields', {})
+
+        # Story URL (needed for image link wrapper)
+        url = fields.get('pivotnews_url', '#')
 
         # Image block
         # IMPORTANT: Image is placed inside td, so use div wrapper not tr/td
         # The outer structure already has <tr><td>, so we just need content
+        # Wrapped in <a> tag to match n8n output format
         image_html = ""
         if include_images:
             image_url = fields.get('image_url', '')
             if image_url:
                 image_html = f'''
-    <div style="padding:0 0 12px 0;">
-      <img src="{image_url}" alt="" style="width:100%; height:auto; border-radius:6px; display:block;" />
+    <div style="padding:10px 0 14px 0;">
+      <a href="{url}" style="text-decoration:none; border:none;">
+        <img src="{image_url}" alt="" style="width:100%; height:auto; border-radius:6px; display:block;" />
+      </a>
     </div>'''
 
-        # Bullets HTML - check both field naming conventions:
+        # Bullets HTML - use <ul><li> format to match n8n output
         # - Decoration table uses: b1, b2, b3
         # - Some code references: ai_bullet_1, ai_bullet_2, ai_bullet_3
-        bullets_parts = []
+        bullet_items = []
         for idx in range(1, 4):
             # Try b1/b2/b3 first (Decoration table), then ai_bullet_X fallback
             bullet = fields.get(f'b{idx}', '') or fields.get(f'ai_bullet_{idx}', '')
             if bullet:
-                bullets_parts.append(
-                    f'<div style="margin-bottom:10px; padding-left:12px; font-size:14px; line-height:1.6; color:#4b5563;">\u2022 {_escape_html(bullet, preserve_bold=True)}</div>'
+                bullet_items.append(
+                    f'<li style="padding-bottom:6px;">{_escape_html(bullet, preserve_bold=True)}</li>'
                 )
-        bullets_html = "\n".join(bullets_parts)
 
-        # Story URL
-        url = fields.get('pivotnews_url', '#')
+        # Wrap bullet items in <ul> if any exist
+        if bullet_items:
+            bullets_html = f'''<ul style="margin:0; padding-left:18px; font-size:14px; line-height:1.5; color:#4b5563;">
+      {"".join(bullet_items)}
+    </ul>'''
+        else:
+            bullets_html = ""
 
+        # Add <!-- Story X --> comment before each story block for n8n parsing
         story_block = f'''
+<!-- Story {story_num} -->
 <tr>
   <td style="padding:20px 22px; border-bottom:1px solid #e5e7eb;">
     <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:#9ca3af; padding-bottom:6px;">
