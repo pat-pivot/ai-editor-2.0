@@ -59,9 +59,9 @@ SLOT_CRITERIA = {
 class GeminiClient:
     """Gemini API wrapper for AI Editor 2.0"""
 
-    # Request timeout in seconds (5 minutes = 300s)
-    # Prevents infinite hangs, allows retry on 504 Deadline Exceeded
-    REQUEST_TIMEOUT = 300
+    # Request timeout in seconds (10 minutes = 600s)
+    # Increased from 300s on 1/8/26 to reduce 504 Deadline Exceeded timeouts
+    REQUEST_TIMEOUT = 600
 
     def __init__(self):
         self.api_key = os.environ.get('GEMINI_API_KEY')
@@ -310,7 +310,7 @@ ARTICLE:
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
         # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=50)
+        chunks = self._chunk_articles(articles, chunk_size=35)
         print(f"[Gemini slot_1] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -384,7 +384,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
         # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=50)
+        chunks = self._chunk_articles(articles, chunk_size=35)
         print(f"[Gemini slot_2] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -458,7 +458,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
         # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=50)
+        chunks = self._chunk_articles(articles, chunk_size=35)
         print(f"[Gemini slot_3] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -540,7 +540,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
         # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=50)
+        chunks = self._chunk_articles(articles, chunk_size=35)
         print(f"[Gemini slot_4] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -617,7 +617,7 @@ If no stories match, return: {{"matches": []}}"""
         # Chunk large batches - Gemini 3 Flash preview has ~8K char output limit (not 64K)
         # Reduced to 50 per chunk (1/7/26) - 75 caused 504 Deadline Exceeded timeouts
         all_matches = []
-        chunks = self._chunk_articles(articles, chunk_size=50)
+        chunks = self._chunk_articles(articles, chunk_size=35)
         print(f"[Gemini slot_5] Processing {len(articles)} articles in {len(chunks)} chunks...", flush=True)
 
         for i, chunk in enumerate(chunks):
@@ -692,7 +692,8 @@ If no stories match, return: {{"matches": []}}"""
                 generation_config=genai.GenerationConfig(
                     temperature=0.3,
                     max_output_tokens=65536,  # Increased to full 64K to prevent truncation (1/1/26)
-                    response_mime_type="application/json"
+                    response_mime_type="application/json",
+                    candidate_count=1  # Explicit single candidate (1/8/26) - reduces API processing time
                 ),
                 request_options={"timeout": self.REQUEST_TIMEOUT}
             )
