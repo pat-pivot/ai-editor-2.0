@@ -6,9 +6,15 @@
  *   POST /api/analytics/sync              - Trigger manual sync
  *
  * Fetches real analytics data from Mautic:
- *   - Subscriber count from List 21
+ *   - Subscriber count from List ID 21 (alias: warmup-2026---new-contacts)
  *   - Email stats (opens, clicks, bounces, unsubscribes)
  *   - Aggregated metrics for selected time period
+ *
+ * Mautic API Notes:
+ *   - Segment details: GET /segments/{id} → returns "list" object with alias
+ *   - Subscriber count: GET /contacts?search=segment:{alias}&limit=1 → read "total" field
+ *   - Email list: GET /emails?orderBy=dateAdded&orderByDir=DESC → returns object keyed by ID
+ *   - Email stats: GET /emails/{id} → readCount, sentCount, clickCount, bounceCount fields
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -18,8 +24,8 @@ const MAUTIC_BASE_URL = process.env.MAUTIC_BASE_URL || "https://app.pivotnews.co
 const MAUTIC_USERNAME = process.env.MAUTIC_USERNAME;
 const MAUTIC_PASSWORD = process.env.MAUTIC_PASSWORD;
 
-// List ID for subscriber count (Pivot 5 main list)
-const PIVOT5_LIST_ID = 21;
+// Segment alias for subscriber count (List ID 21 - Warmup 2026 New contacts)
+const PIVOT5_SEGMENT_ALIAS = "warmup-2026---new-contacts";
 
 interface EmailStats {
   id: number;
@@ -108,29 +114,37 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Analytics API] Fetching analytics for period: ${period} (since ${startDate})`);
 
-    // 1. Get subscriber count from List 21
+    // 1. Get subscriber count by querying contacts in the segment
+    // Mautic segments API doesn't return leadCount, so we query contacts with segment filter
     let subscriberCount = 0;
     try {
-      const segmentData = await mauticFetch(`segments/${PIVOT5_LIST_ID}`);
-      const list = segmentData.list as Record<string, unknown> | undefined;
-      subscriberCount = (list?.leadCount as number) || 0;
-      console.log(`[Analytics API] Subscriber count: ${subscriberCount}`);
+      const contactsData = await mauticFetch(
+        `contacts?search=segment:${PIVOT5_SEGMENT_ALIAS}&limit=1`
+      );
+      // Mautic returns total as a string
+      subscriberCount = parseInt(contactsData.total as string, 10) || 0;
+      console.log(`[Analytics API] Subscriber count from segment ${PIVOT5_SEGMENT_ALIAS}: ${subscriberCount}`);
     } catch (err) {
       console.error("[Analytics API] Failed to get subscriber count:", err);
     }
 
-    // 2. Get emails from date range
+    // 2. Get emails - Mautic search doesn't support dateAdded filter well, so we fetch recent and filter in code
     let emails: EmailStats[] = [];
     try {
       const emailsData = await mauticFetch(
-        `emails?search=dateAdded:>=${startDate}&orderBy=dateAdded&orderByDir=DESC&limit=50`
+        `emails?orderBy=dateAdded&orderByDir=DESC&limit=100`
       );
 
       const mauticEmails = emailsData.emails as Record<string, MauticEmail> | undefined;
 
       if (mauticEmails) {
         // Mautic returns emails as an object with numeric keys
-        const emailList = Object.values(mauticEmails);
+        // Filter to only include emails within the date range
+        const emailList = Object.values(mauticEmails).filter((email: MauticEmail) => {
+          const emailDate = new Date(email.dateAdded);
+          const startDateObj = new Date(startDate);
+          return emailDate >= startDateObj;
+        });
 
         // 3. Get detailed stats for each email
         emails = await Promise.all(
