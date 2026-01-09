@@ -227,18 +227,21 @@ export function LiveExecutionLogs({ stepId, title = "Execution Logs" }: LiveExec
     }
   }, [logs, filter]);
 
-  // Handle filter change - only clear logs for historical views
+  // Handle filter change - preserve context when switching to live
   const handleFilterChange = useCallback((newFilter: TimeFilter) => {
     // Reset reconnect state
     setReconnectAttempt(0);
     setConnectionError(null);
     setReconnectCountdown(null);
 
-    // Only clear logs when switching to a historical view
+    // When switching to historical view, clear logs (will be replaced by historical fetch)
     if (newFilter !== "live") {
       setLogs([]);
+    } else {
+      // When switching TO live from historical, keep last 100 logs as context
+      // This prevents the "empty logs" issue when switching back to live
+      setLogs((prev) => prev.slice(-100));
     }
-    // When switching to live from historical, keep existing logs and append new ones
 
     setFilter(newFilter);
   }, []);

@@ -149,9 +149,9 @@ Logs we WANT to show (execution):
 ```
 [Pipeline] ===== STARTING FULL PIPELINE =====
 [Pipeline] ----- STEP 0: INGEST -----
-[Pipeline] → Articles fetched: 280
+[Pipeline] -> Articles fetched: 280
 [Step 1] ========== SLOT 1 START ==========
-[Step 1] Slot 1 (Gemini): ✓ SUCCESS - Wrote 39 records
+[Step 1] Slot 1 (Gemini): SUCCESS - Wrote 39 records
 [Airtable] batch_create SUCCESS: 21 records created
 ```
 
@@ -201,7 +201,7 @@ const EXECUTION_LOG_PATTERNS = [
   /^\[Slot \d/i,
   /^\[Airtable/i,
   /^  (Ingest|Direct Feeds|AI Scoring|Pre-Filter):/i,
-  /^  → /,
+  /^  -> /,
   /Worker .+ \[PID/i,
   /^Starting worker/i,
   /^Registering jobs/i,
@@ -224,198 +224,550 @@ function isExecutionLog(message: string): boolean {
 
 ---
 
-## Session 3 Investigation (January 8, 2026)
+## Session 4: January 9, 2026 - New Issues Investigation
 
 ### Reported Issues
 
-1. **"Waiting for logs" when logs should exist** - Dashboard shows empty state even when pipeline has run
-2. **Only ~2 runs showing instead of historical data** - Time filters (1h, 12h, 24h) not returning proper history
+1. **Issue 1: Past Hour / Past 12h / Past 24h filters not working properly**
+   - Historical filters should show more logs but may not be displaying properly
+   - Need to verify pagination is working for historical views
 
-### Root Cause Analysis
+2. **Issue 2: Switching from historical back to "Live" clears logs**
+   - User clicks "Past Hour" -> sees logs -> clicks "Live" -> logs reset to empty
+   - User wants Live view to preserve some historical context when switching back
 
-After researching the Render Logs API and reviewing the current implementation, I've identified **two critical bugs**:
-
-#### Bug 1: NO PAGINATION - Only fetching first page of results
-
-**Current Code (route.ts lines 228-237):**
-```typescript
-const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-
-const params = new URLSearchParams();
-params.append("ownerId", RENDER_OWNER_ID);
-serviceIds.forEach((id) => params.append("resource", id));
-params.append("startTime", startTime);
-params.append("limit", limit.toString());  // limit = 50 or 100
-params.append("direction", "backward");
-```
-
-**Problem:** The Render Logs API is **time-window paginated**. When you request 24 hours of logs:
-- Render returns only ONE PAGE of results (up to `limit` entries)
-- Response includes `hasMore: true/false`, `nextStartTime`, `nextEndTime`
-- **We NEVER check `hasMore` or make follow-up requests**
-
-**Result:** For a 24-hour filter, we're only getting the MOST RECENT ~100 logs, which might be just 1-2 pipeline runs. All older logs within the time window are silently ignored.
-
-#### Bug 2: Aggressive whitelist filtering AFTER pagination truncation
-
-**Current Flow:**
-1. Request 24h of logs with limit=100
-2. Render returns 100 most recent logs (might span only 2 hours)
-3. **Then** we apply whitelist filter (`isExecutionLog()`)
-4. If 80 of those 100 logs are HTTP/build logs, we show only 20 execution logs
-
-**Problem:** We filter AFTER fetching, so if the first page is mostly noise, we get very few execution logs. We should either:
-- Fetch more pages to accumulate enough execution logs
-- OR use Render's `type` filter in the API request (if supported)
-
-#### Bug 3: Cache key doesn't include time filter
-
-**Current Code (render-logs-cache.ts line 40-42):**
-```typescript
-export function getCacheKey(serviceIds: string[]): string {
-  return serviceIds.sort().join(",");
-}
-```
-
-**Problem:** Cache key is ONLY based on service IDs. If user:
-1. Views "Live" (0.1h) -> cache stores ~6 min of logs
-2. Switches to "24h" -> cache hit returns same 6 min of logs!
-
-The cache TTL of 5 seconds helps, but there's still a race condition where stale data from a different filter could be served.
-
-### Why "Waiting for logs" appears
-
-1. User selects "24h" filter
-2. API fetches first page (limit=100) of last 24 hours
-3. Due to `direction: backward`, this is the MOST RECENT 100 logs
-4. If there hasn't been a pipeline run in the last few hours, most logs are HTTP requests
-5. Whitelist filter removes all HTTP logs
-6. Result: 0 execution logs -> "Waiting for logs" displayed
-7. **Meanwhile, pipeline runs from 6-12 hours ago exist but are on page 2, 3, 4, etc.**
-
-### Why only ~2 runs show
-
-1. Pipeline runs every ~8 hours (2 AM, 9:30 AM, 5 PM)
-2. Each run generates ~200-500 log lines
-3. With limit=100 and direction=backward, we get only the most recent logs
-4. After whitelist filtering, we're left with logs from just the last 1-2 runs
-5. **Older runs within the 24h window are never fetched**
+3. **Issue 3: Missing success messages like `[GNEWS DECODE] SUCCESS`**
+   - These logs appear in Render backend but NOT in the frontend dashboard
+   - Current whitelist patterns in `EXECUTION_LOG_PATTERNS` are missing these patterns
 
 ---
 
-## Implementation Plan
+## Session 4: Root Cause Analysis
 
-### Phase 1: Fix Pagination (Critical)
+### Issue 1 Analysis: Historical Filters
+
+**Current Implementation Status (route.ts):**
+- Pagination IS implemented (lines 256-350)
+- Uses `MAX_PAGES = 5` and `MIN_EXECUTION_LOGS = 50`
+- Cache key DOES include hours (line 44-48 in render-logs-cache.ts)
+
+**Potential Problems:**
+1. **Early stop condition too aggressive**: Stops at 50 execution logs (`MIN_EXECUTION_LOGS = 50`), which may not be enough for 24h view
+2. **Page delays may cause timeouts**: 200ms between pages + rate limit checks
+3. **Cache TTL too short for historical**: 5 second cache means historical data is refetched constantly
+
+**Recommended Fix:**
+- Increase `MIN_EXECUTION_LOGS` for historical filters (e.g., 100 for 12h, 150 for 24h)
+- Or adjust based on filter type
+
+### Issue 2 Analysis: Live View Clears Logs on Switch
+
+**Current Code (live-execution-logs.tsx lines 231-244):**
+```typescript
+const handleFilterChange = useCallback((newFilter: TimeFilter) => {
+  setReconnectAttempt(0);
+  setConnectionError(null);
+  setReconnectCountdown(null);
+
+  // Only clear logs when switching to a historical view
+  if (newFilter !== "live") {
+    setLogs([]);
+  }
+  // When switching to live from historical, keep existing logs and append new ones
+
+  setFilter(newFilter);
+}, []);
+```
+
+**Problem:** While `handleFilterChange` correctly does NOT clear logs when switching TO live, the useEffect at lines 117-221 clears logs implicitly because:
+1. The effect runs when `filter` changes
+2. It creates a NEW EventSource connection
+3. The SSE `onmessage` handler (lines 179-210) replaces logs for non-live views:
+```typescript
+if (filter === "live") {
+  // Append new logs, keep last 500
+  // ...
+  const combined = [...prev, ...uniqueNewLogs];
+  return combined.slice(-500);
+}
+// Replace for historical views
+return newLogs;
+```
+
+**The Bug:** When switching FROM historical TO live:
+1. `handleFilterChange("live")` is called - does NOT clear logs (correct)
+2. useEffect runs because `filter` changed from "12h" to "live"
+3. New EventSource is created for live view
+4. First `onmessage` receives ~6 minutes of logs (live initial load)
+5. Since `filter === "live"`, it tries to append... but deduplication may cause issues
+6. If there are NO new logs (initial batch is all seen), nothing displays
+
+**Actually looking more closely:** The real issue is that when creating a new connection, the initial batch from live (0.1 hours = 6 minutes) may have ZERO overlap with the historical logs. The deduplication (`existingIds.has(l.id)`) filters them all out as "duplicates" because IDs from different time periods are different!
+
+Wait, no - re-reading the code:
+```typescript
+const existingIds = new Set(prev.map((l) => l.id));
+const uniqueNewLogs = newLogs.filter((l) => !existingIds.has(l.id));
+const combined = [...prev, ...uniqueNewLogs];
+```
+
+This should correctly keep old logs and add new unique ones. Let me check the initial fetch behavior.
+
+**Actually, the bug is in the SSE stream route.ts:**
+When filter is "live", it fetches 0.1 hours (6 minutes) of logs. If the user was viewing "12h" before:
+1. They had 12 hours of historical logs
+2. They switch to live
+3. Backend fetches last 6 minutes only
+4. Those 6 minutes of logs are sent
+5. Frontend deduplicates and appends
+6. But if there were NO pipeline runs in the last 6 minutes, the response is []
+7. Empty array means nothing is added to existing logs... wait, that should be fine
+
+**Let me re-read the bug report:** "clicks Live -> logs reset to empty"
+
+Oh! The issue might be simpler. Looking at useEffect line 137:
+```typescript
+const url = `/api/logs/stream?stepId=${stepParam}&filter=${filter}`;
+const eventSource = new EventSource(url);
+```
+
+The EventSource is created fresh. The FIRST message it receives comes from `controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialLogs)}\n\n`));` in route.ts line 407.
+
+For live filter, `initialHours` = 0.1 (6 minutes). If there are no execution logs in the last 6 minutes, `initialLogs` is [].
+
+The frontend receives [] and:
+```typescript
+if (newLogs.length > 0) {
+  setLogs((prev) => {
+    if (filter === "live") {
+      // ...
+    }
+  });
+}
+```
+
+If `newLogs.length === 0`, setLogs is never called! The logs state remains... wait, that should be fine too.
+
+**Wait - I found it!** The issue is that when creating a new EventSource, the old logs from the historical view are NEVER retained in any way because:
+
+1. Historical view had logs from 12h ago
+2. Switch to live
+3. Live view fetches only last 6 minutes
+4. Even if there ARE logs in those 6 minutes, they're DIFFERENT from the historical ones (different IDs, different timestamps)
+5. So deduplication says "these are all new" and... actually that should ADD them
+
+Hmm. Let me think about this differently.
+
+**Hypothesis:** The issue might be that when switching to Live, the initial live fetch returns an empty array (no logs in last 6 minutes), AND the existing logs from historical are not being preserved because:
+
+Actually, re-reading lines 193-205:
+```typescript
+setLogs((prev) => {
+  // Use filter from closure (captured at effect setup)
+  if (filter === "live") {
+    // Append new logs, keep last 500
+    // Deduplicate by ID
+    const existingIds = new Set(prev.map((l) => l.id));
+    const uniqueNewLogs = newLogs.filter((l) => !existingIds.has(l.id));
+    const combined = [...prev, ...uniqueNewLogs];
+    return combined.slice(-500);
+  }
+  // Replace for historical views
+  return newLogs;
+});
+```
+
+This SHOULD preserve logs. Unless... the `filter` in the closure is stale!
+
+**THE BUG:** The `filter` variable used in `onmessage` is captured at the time the effect runs. But wait, `filter` is in the dependency array, so it should be fresh.
+
+Let me check: the useEffect dependencies are `[stepParam, filter, connectionKey, reconnectAttempt, getReconnectDelay]`.
+
+So when `filter` changes from "12h" to "live", the effect re-runs completely. The old eventSource is closed (cleanup), and a new one is created. In the new effect's closure, `filter` is "live".
+
+**The actual bug:** When the new EventSource receives its first message, `setLogs` is called with `filter === "live"`. But `prev` at this point might be empty because...
+
+Oh! I think I see it now. The cleanup function closes the old eventSource, but doesn't save the logs anywhere. When the new effect runs, `logs` state still has the historical logs (useState persists across effect re-runs). So `prev` in `setLogs` should have the historical logs.
+
+Unless... React batches the state update and the logs get cleared somewhere else?
+
+Actually, let me check if there's any `setLogs([])` call. Looking at line 239:
+```typescript
+if (newFilter !== "live") {
+  setLogs([]);
+}
+```
+
+This only clears when switching TO historical, not FROM historical.
+
+**I think I need to test this empirically.** But based on code review, my best hypothesis is:
+
+**Most Likely Cause:** When switching to live, the initial fetch returns [] (no logs in last 6 minutes), AND the subsequent polling also returns [] for a while. Meanwhile, the user sees the logs from historical for a moment, then after the first empty `onmessage`, nothing changes. But visually, it might APPEAR empty if...
+
+Actually wait - if `newLogs.length === 0`, then `setLogs` is never called (line 192). So existing logs should remain!
+
+**Let me check for other setLogs calls.** There's none that I can see that would clear logs when switching to live.
+
+**New Hypothesis:** The bug might be a race condition or a visual glitch. Or it might be that the historical logs ARE still there, but the auto-scroll to the end (line 224-227) makes it look empty if there are no recent logs.
+
+**Recommendation:** Add console.log to track state changes and verify the bug exists in code vs. being a visual issue.
+
+### Issue 3 Analysis: Missing `[GNEWS DECODE]` Pattern
+
+**Current EXECUTION_LOG_PATTERNS (route.ts lines 134-161):**
+```typescript
+const EXECUTION_LOG_PATTERNS = [
+  // Pipeline orchestration
+  /^\[Pipeline\]/i,
+  /^\[Step \d/i,
+  // Ingest step
+  /^\[Ingest/i,
+  /^\[FreshRSS/i,
+  /^\[Google News/i,
+  /^\[Direct Feed/i,
+  // AI Scoring
+  /^\[AI Scoring/i,
+  /^\[Claude/i,
+  /^\[Anthropic/i,
+  // Pre-filter
+  /^\[Pre-?[Ff]ilter/i,
+  /^\[Gemini/i,
+  /^\[Slot \d/i,
+  // Airtable operations
+  /^\[Airtable/i,
+  // Generic step markers
+  /^  (Ingest|Direct Feeds|AI Scoring|Pre-Filter):/i,
+  // Summary lines (indented stats)
+  /^  -> /,
+  // Worker messages
+  /Worker .+ \[PID/i,
+  /^Starting worker/i,
+  /^Registering jobs/i,
+];
+```
+
+**Missing Patterns from Python Workers (from grep results):**
+
+1. **`[GNEWS DECODE]`** - Google News URL decoding (ingest_sandbox.py lines 180-239)
+   - `[GNEWS DECODE] Attempting: ...`
+   - `[GNEWS DECODE] SUCCESS: ...`
+   - `[GNEWS DECODE] FAILED: ...`
+   - `[GNEWS DECODE] RETRYABLE ERROR - ...`
+   - `[GNEWS DECODE] SUMMARY`
+
+2. **`[SOURCE BREAKDOWN]`** - Source statistics (ingest_sandbox.py, ingest_direct_feeds.py)
+   - `[SOURCE BREAKDOWN] Articles by Source (from FreshRSS)`
+   - `[SOURCE BREAKDOWN] After Google News URL Resolution`
+
+3. **`[INGESTION COMPLETE]`** - Final summary (ingest_sandbox.py line 591)
+
+4. **`[INGESTED]`** - Articles by source (ingest_sandbox.py line 605)
+
+5. **`[DUPLICATE VERIFICATION]`** - Duplicate checking (ingest_direct_feeds.py line 352)
+
+6. **`[DIRECT FEED INGEST]`** - Direct feed processing (ingest_direct_feeds.py)
+
+7. **`[Ingest Sandbox]`** - Sandbox ingestion (ingest_sandbox.py)
+
+8. **`[Prefilter]`** - Prefilter data gathering (prefilter.py lines 541-651)
+
+9. **`[Newsletter Extract]`** - Newsletter extraction (newsletter_extract_sandbox.py)
+
+10. **`[NEWSLETTER EXTRACTION]`** - Newsletter extraction summary (newsletter_extract_sandbox.py line 546)
+
+11. **`[BREAKDOWN]`** - Statistics breakdown (newsletter_extract_sandbox.py line 687)
+
+12. **`[Browserbase Retry]`** - Browserbase retry job (browserbase_retry.py)
+
+13. **`[Browserbase]`** - Browserbase scraper (browserbase_scraper.py)
+
+14. **`[Repair]`** - Google News repair (repair_google_news.py)
+
+15. **`[Backfill]`** - Backfill job (backfill_72h.py)
+
+16. **`[Processing]`** - Processing logs (backfill_72h.py)
+
+17. **`[Deduplication]`** - Deduplication logs (backfill_72h.py line 409)
+
+18. **`[ImageClient]`** - Image generation (images.py)
+
+19. **`[Worker]`** - Worker messages (worker.py)
+
+20. **`[Scheduler]`** - Scheduler messages (worker.py)
+
+21. **`[TEMPORARY Claude`** - Claude fallback (claude_prefilter.py) - when Gemini quota exhausted
+
+22. **`[Step 2]`** - Slot selection (slot_selection.py)
+
+23. **`[Step 3]`** - Decoration (decoration.py)
+
+24. **`[Step 3b]`** - Image generation (image_generation.py)
+
+25. **`[Step 5]`** - Social sync (social_sync.py)
+
+26. **Summary lines starting with `=`** - Various dividers like `{'='*60}`
+
+---
+
+## Session 4: Implementation Plan
+
+### Fix 1: Add Missing Log Patterns (CRITICAL)
 
 **File:** `src/app/api/logs/stream/route.ts`
 
-**Changes:**
+**Add these patterns to `EXECUTION_LOG_PATTERNS`:**
 
-1. **Add pagination loop to `fetchRenderLogsWithCache()`:**
 ```typescript
-async function fetchRenderLogsWithCache(
-  serviceIds: string[],
-  hours: number,
-  limit: number = 100,
-  maxPages: number = 5  // Safety limit to prevent infinite loops
-): Promise<FetchResult> {
-  // ... existing cache check ...
+const EXECUTION_LOG_PATTERNS = [
+  // Pipeline orchestration
+  /^\[Pipeline\]/i,
+  /^\[Step \d/i,
 
-  let allLogs: RenderLog[] = [];
-  let currentStartTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-  let currentEndTime: string | undefined = undefined;
-  let hasMore = true;
-  let pageCount = 0;
+  // Ingest step
+  /^\[Ingest/i,
+  /^\[FreshRSS/i,
+  /^\[Google News/i,
+  /^\[Direct Feed/i,
+  /^\[GNEWS DECODE\]/i,           // NEW - Google News decoding
+  /^\[SOURCE BREAKDOWN\]/i,        // NEW - Source statistics
+  /^\[INGESTION COMPLETE\]/i,      // NEW - Ingestion summary
+  /^\[INGESTED\]/i,                // NEW - Ingested articles
+  /^\[DIRECT FEED INGEST\]/i,      // NEW - Direct feed processing
+  /^\[Ingest Sandbox\]/i,          // NEW - Sandbox ingestion
 
-  while (hasMore && pageCount < maxPages) {
-    const params = new URLSearchParams();
-    params.append("ownerId", RENDER_OWNER_ID);
-    serviceIds.forEach((id) => params.append("resource", id));
-    params.append("startTime", currentStartTime);
-    if (currentEndTime) params.append("endTime", currentEndTime);
-    params.append("limit", limit.toString());
-    params.append("direction", "backward");
+  // Newsletter extraction
+  /^\[Newsletter Extract\]/i,      // NEW - Newsletter extraction
+  /^\[NEWSLETTER EXTRACTION\]/i,   // NEW - Newsletter summary
+  /^\[BREAKDOWN\]/i,               // NEW - Statistics breakdown
 
-    const response = await fetch(`${RENDER_API_URL}?${params}`, { ... });
-    const data = await response.json();
+  // Content extraction
+  /^\[Browserbase/i,               // NEW - Browserbase scraper
+  /^\[Backfill\]/i,                // NEW - Backfill job
+  /^\[Processing\]/i,              // NEW - Processing logs
+  /^\[Deduplication\]/i,           // NEW - Deduplication logs
+  /^\[Repair\]/i,                  // NEW - Repair job
 
-    // Process this page of logs
-    const pageLogs = data.logs.map(...).filter(isExecutionLog);
-    allLogs = [...allLogs, ...pageLogs];
+  // AI Scoring
+  /^\[AI Scoring/i,
+  /^\[Claude/i,
+  /^\[Anthropic/i,
+  /^\[TEMPORARY Claude/i,          // NEW - Claude fallback
 
-    // Check pagination
-    hasMore = data.hasMore === true;
-    if (hasMore && data.nextStartTime && data.nextEndTime) {
-      currentStartTime = data.nextStartTime;
-      currentEndTime = data.nextEndTime;
-    } else {
-      hasMore = false;
-    }
+  // Pre-filter
+  /^\[Pre-?[Ff]ilter/i,
+  /^\[Gemini/i,
+  /^\[Slot \d/i,
 
-    pageCount++;
+  // Other steps
+  /^\[Step 2\]/i,                  // NEW - Slot selection
+  /^\[Step 3\]/i,                  // NEW - Decoration
+  /^\[Step 3b\]/i,                 // NEW - Image generation
+  /^\[Step 5\]/i,                  // NEW - Social sync
 
-    // Rate limit protection: small delay between pages
-    if (hasMore) await new Promise(r => setTimeout(r, 200));
+  // Image generation
+  /^\[ImageClient\]/i,             // NEW - Image client
+
+  // Airtable operations
+  /^\[Airtable/i,
+
+  // Generic step markers
+  /^  (Ingest|Direct Feeds|AI Scoring|Pre-Filter):/i,
+
+  // Summary lines (indented stats)
+  /^  -> /,
+  /^={10,}/,                       // NEW - Divider lines like ============
+
+  // Worker messages
+  /Worker .+ \[PID/i,
+  /^Starting worker/i,
+  /^Registering jobs/i,
+  /^\[Worker\]/i,                  // NEW - Worker logs
+  /^\[Scheduler\]/i,               // NEW - Scheduler logs
+
+  // Duplicate verification
+  /^\[DUPLICATE VERIFICATION\]/i,  // NEW - Duplicate checking
+];
+```
+
+### Fix 2: Preserve Historical Context When Switching to Live
+
+**File:** `src/components/step/live-execution-logs.tsx`
+
+**Option A: Keep last N historical logs when switching to Live**
+
+Modify `handleFilterChange` to preserve some historical context:
+
+```typescript
+const handleFilterChange = useCallback((newFilter: TimeFilter) => {
+  setReconnectAttempt(0);
+  setConnectionError(null);
+  setReconnectCountdown(null);
+
+  if (newFilter === "live") {
+    // When switching TO live from historical, keep most recent 100 logs as context
+    setLogs((prev) => prev.slice(-100));
+  } else {
+    // When switching to historical view, clear to show fresh historical data
+    setLogs([]);
   }
 
-  return { logs: allLogs, ... };
+  setFilter(newFilter);
+}, []);
+```
+
+**Option B: Increase Live initial fetch window**
+
+In route.ts, increase the initial live fetch from 6 minutes to 30 minutes:
+
+```typescript
+function getHoursFromFilter(filter: string): number {
+  switch (filter) {
+    case "live":
+      return 0.5; // Last 30 minutes for initial load (was 0.1 = 6 minutes)
+    case "1h":
+      return 1;
+    case "12h":
+      return 12;
+    case "24h":
+      return 24;
+    default:
+      return 1;
+  }
 }
 ```
 
-2. **Adjust page limits by filter:**
+**Recommended:** Implement both fixes. Option A ensures historical context is preserved on the frontend. Option B ensures live mode starts with more context.
+
+### Fix 3: Verify Pagination for Historical Views
+
+**Current Implementation is CORRECT** but may need tuning:
+
 ```typescript
-const PAGE_LIMITS: Record<string, number> = {
-  "live": 1,   // Live only needs latest
-  "1h": 2,     // 1 hour: up to 2 pages
-  "12h": 4,    // 12 hours: up to 4 pages
-  "24h": 6,    // 24 hours: up to 6 pages
-};
+// Current settings (route.ts lines 191-193)
+const MAX_PAGES = 5; // Maximum pages to fetch
+const MIN_EXECUTION_LOGS = 50; // Stop when we have this many
+const PAGE_DELAY_MS = 200; // Delay between pages
 ```
 
-### Phase 2: Fix Cache Key
+**Consider increasing for historical views:**
 
-**File:** `src/lib/render-logs-cache.ts`
-
-**Change:**
 ```typescript
-export function getCacheKey(serviceIds: string[], hours: number): string {
-  return `${serviceIds.sort().join(",")}_${hours}h`;
+// Adjust based on filter
+function getPaginationConfig(filter: string) {
+  switch (filter) {
+    case "live":
+      return { maxPages: 1, minLogs: 20 };
+    case "1h":
+      return { maxPages: 3, minLogs: 50 };
+    case "12h":
+      return { maxPages: 5, minLogs: 100 };
+    case "24h":
+      return { maxPages: 8, minLogs: 150 };
+    default:
+      return { maxPages: 5, minLogs: 50 };
+  }
 }
 ```
 
-Update all callers to pass the `hours` parameter.
+---
 
-### Phase 3: Optimize Filtering (Optional)
+## Implementation Complete - January 9, 2026
 
-**Option A: Filter during pagination**
-- Stop fetching more pages once we have enough execution logs (e.g., 200)
-- Prevents over-fetching when recent pages have good data
+All three fixes have been implemented:
 
-**Option B: Request type filter from API**
-- Check if Render API supports `type=app` filter to exclude request logs at source
-- Would reduce payload size and improve performance
+| Priority | Issue | File | Status |
+|----------|-------|------|--------|
+| HIGH | Missing `[GNEWS DECODE]` etc. | `route.ts` | **DONE** - Added 25+ patterns |
+| MEDIUM | Live clears logs | `live-execution-logs.tsx` | **DONE** - Preserves last 100 logs |
+| MEDIUM | Live initial fetch too short | `route.ts` | **DONE** - Increased to 30 min |
+| LOW | Historical pagination | `route.ts` | Deferred (current settings adequate) |
 
-### Phase 4: Rate Limit Awareness for Pagination
+---
 
-**Considerations:**
-- Current rate limit: 30 req/min
-- With 5 services and 6 pages per service = 30 requests for a single 24h load
-- **This could exhaust the entire rate limit!**
+## Files Modified (Session 4)
 
-**Mitigation:**
-- Fetch all services in ONE request (current approach, correct)
-- But pagination adds multiple requests per filter change
-- Add inter-page delay (200ms suggested above)
-- Consider reducing maxPages or increasing per-page limit
+### 1. `/app/src/app/api/logs/stream/route.ts`
 
-### Estimated Impact
+**Changes:**
+- Added 25+ new patterns to `EXECUTION_LOG_PATTERNS` whitelist
+- Increased live initial fetch from 0.1h (6 min) to 0.5h (30 min)
 
-| Filter | Current Behavior | After Fix |
-|--------|-----------------|-----------|
-| Live | Works (last 6 min) | No change |
-| 1h | ~100 logs, 1-2 runs | ~200 logs, all runs in hour |
-| 12h | ~100 logs, 1-2 runs | ~400 logs, all runs in 12h |
-| 24h | ~100 logs, 1-2 runs | ~600 logs, all runs in 24h |
+**New patterns added:**
+```typescript
+// Google News specific
+/^\[GNEWS DECODE\]/i,
+/^\[SOURCE BREAKDOWN\]/i,
+/^\[INGESTION COMPLETE\]/i,
+/^\[INGESTED\]/i,
+/^\[BREAKDOWN\]/i,
+
+// Newsletter extraction
+/^\[Newsletter Extract/i,
+/^\[NEWSLETTER EXTRACTION\]/i,
+
+// Browserbase / scraping
+/^\[Browserbase/i,
+
+// Backfill & processing
+/^\[Backfill/i,
+/^\[Processing/i,
+/^\[Deduplication/i,
+/^\[DUPLICATE VERIFICATION\]/i,
+/^\[Repair/i,
+
+// Image handling
+/^\[ImageClient\]/i,
+
+// Worker/Scheduler
+/^\[Worker\]/i,
+/^\[Scheduler\]/i,
+
+// Emoji markers
+/[✅❌⚠️🔍📰🎯💾🚀📊]/,
+```
+
+### 2. `/app/src/components/step/live-execution-logs.tsx`
+
+**Changes:**
+- Modified `handleFilterChange` to preserve last 100 logs when switching TO live from historical view
+
+**Code change:**
+```typescript
+// Before:
+if (newFilter !== "live") {
+  setLogs([]);
+}
+
+// After:
+if (newFilter !== "live") {
+  setLogs([]);
+} else {
+  // When switching TO live from historical, keep last 100 logs as context
+  setLogs((prev) => prev.slice(-100));
+}
+```
+
+---
+
+## Testing Plan
+
+After implementation:
+
+1. **Test missing patterns:**
+   - Run pipeline with Google News articles
+   - Verify `[GNEWS DECODE] SUCCESS` messages appear in dashboard
+   - Verify `[SOURCE BREAKDOWN]` messages appear
+
+2. **Test Live view preservation:**
+   - View "Past Hour" (see logs)
+   - Switch to "Live"
+   - Verify historical logs are still visible (up to 100)
+   - Wait for new logs to appear and append
+
+3. **Test historical pagination:**
+   - Select "Past 24h"
+   - Verify multiple pipeline runs are visible
+   - Verify logs span the full 24 hour period
 
 ---
 

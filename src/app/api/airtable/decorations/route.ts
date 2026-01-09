@@ -37,8 +37,7 @@ interface DecorationEntry {
   b3: string;
   imageStatus: string;
   imageUrl: string;
-  coreUrl: string;
-  pivotId: string;
+  pivotnewsUrl: string; // pivotnews_url field (NOT core_url)
 }
 
 interface AirtableRecord {
@@ -94,7 +93,9 @@ async function fetchDecorations(
     url.searchParams.set("sort[1][field]", "slot_order");
     url.searchParams.set("sort[1][direction]", "asc");
 
-    // Request required fields - using EXACT field names from documentation
+    // Request required fields - EXACT field names from Newsletter Issue Stories table
+    // See .claude/skills/step-3-decoration.md lines 118-149 for valid fields
+    // NOTE: core_url and pivotId do NOT exist in this table
     const fields = [
       "story_id",
       "issue_id",
@@ -107,8 +108,7 @@ async function fetchDecorations(
       "b3",
       "image_status",
       "image_url",
-      "core_url",
-      "pivotId",
+      "pivotnews_url", // This exists, NOT core_url
     ];
     fields.forEach((f) => url.searchParams.append("fields[]", f));
 
@@ -166,8 +166,7 @@ async function fetchDecorations(
       b3: (fields.b3 as string) || "",
       imageStatus: (fields.image_status as string) || "needs_image",
       imageUrl: (fields.image_url as string) || "",
-      coreUrl: (fields.core_url as string) || "",
-      pivotId: (fields.pivotId as string) || "",
+      pivotnewsUrl: (fields.pivotnews_url as string) || "",
     };
   });
 

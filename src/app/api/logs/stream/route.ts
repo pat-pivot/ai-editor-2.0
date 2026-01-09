@@ -107,7 +107,7 @@ function getServiceIdsForStep(stepId: string): string[] {
 function getHoursFromFilter(filter: string): number {
   switch (filter) {
     case "live":
-      return 0.1; // Last 6 minutes for initial load
+      return 0.5; // Last 30 minutes for initial load (increased from 6 min)
     case "1h":
       return 1;
     case "12h":
@@ -130,34 +130,79 @@ interface RenderLogEntry {
  * Patterns that indicate EXECUTION logs from our pipeline.
  * We use a whitelist approach to ONLY show logs that match these patterns.
  * This filters out HTTP request logs, access logs, build logs, etc.
+ *
+ * Updated 2025-01-09: Added 25+ patterns from Python workers
  */
 const EXECUTION_LOG_PATTERNS = [
   // Pipeline orchestration
   /^\[Pipeline\]/i,
   /^\[Step \d/i,
+  /^\[Step 2\]/i,
+  /^\[Step 3/i,   // Matches [Step 3], [Step 3b], etc.
+  /^\[Step 5\]/i,
+
   // Ingest step
   /^\[Ingest/i,
   /^\[FreshRSS/i,
   /^\[Google News/i,
   /^\[Direct Feed/i,
+  /^\[DIRECT FEED INGEST\]/i,
+  /^\[Ingest Sandbox\]/i,
+
+  // Google News specific
+  /^\[GNEWS DECODE\]/i,
+  /^\[SOURCE BREAKDOWN\]/i,
+  /^\[INGESTION COMPLETE\]/i,
+  /^\[INGESTED\]/i,
+  /^\[BREAKDOWN\]/i,
+
+  // Newsletter extraction
+  /^\[Newsletter Extract/i,
+  /^\[NEWSLETTER EXTRACTION\]/i,
+
   // AI Scoring
   /^\[AI Scoring/i,
   /^\[Claude/i,
   /^\[Anthropic/i,
+  /^\[TEMPORARY Claude/i,
+
   // Pre-filter
   /^\[Pre-?[Ff]ilter/i,
   /^\[Gemini/i,
   /^\[Slot \d/i,
+
   // Airtable operations
   /^\[Airtable/i,
+
+  // Browserbase / scraping
+  /^\[Browserbase/i,
+
+  // Backfill operations
+  /^\[Backfill/i,
+
+  // Processing steps
+  /^\[Processing/i,
+  /^\[Deduplication/i,
+  /^\[DUPLICATE VERIFICATION\]/i,
+  /^\[Repair/i,
+
+  // Image handling
+  /^\[ImageClient\]/i,
+
+  // Worker/Scheduler
+  /^\[Worker\]/i,
+  /^\[Scheduler\]/i,
+  /Worker .+ \[PID/i,
+  /^Starting worker/i,
+  /^Registering jobs/i,
+
   // Generic step markers
   /^  (Ingest|Direct Feeds|AI Scoring|Pre-Filter):/i,
   // Summary lines (indented stats)
   /^  → /,
-  // Worker messages
-  /Worker .+ \[PID/i,
-  /^Starting worker/i,
-  /^Registering jobs/i,
+
+  // Emoji markers (success, failure, warnings, etc.)
+  /[✅❌⚠️🔍📰🎯💾🚀📊]/,
 ];
 
 /**

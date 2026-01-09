@@ -51,6 +51,68 @@ interface AirtableResponse {
   offset?: string;
 }
 
+const NEWSLETTER_SELECTS_TABLE_ID = "tblKhICCdWnyuqgry";
+
+/**
+ * Batch lookup sources from Newsletter Selects table using pivotIds
+ * @param pivotIds - Array of pivotId values to look up
+ * @returns Map of pivotId -> source_name
+ */
+async function lookupSourcesByPivotIds(
+  pivotIds: string[]
+): Promise<Record<string, string>> {
+  if (!AIRTABLE_API_KEY || pivotIds.length === 0) return {};
+
+  // Filter out empty strings and deduplicate
+  const uniquePivotIds = [...new Set(pivotIds.filter((id) => id))];
+  if (uniquePivotIds.length === 0) return {};
+
+  // Build OR formula for batch lookup
+  const pivotIdClauses = uniquePivotIds
+    .map((id) => `{pivot_id}='${id}'`)
+    .join(",");
+
+  const formula = `OR(${pivotIdClauses})`;
+
+  const url = new URL(
+    `https://api.airtable.com/v0/${AI_EDITOR_BASE_ID}/${NEWSLETTER_SELECTS_TABLE_ID}`
+  );
+  url.searchParams.set("filterByFormula", formula);
+  url.searchParams.append("fields[]", "pivot_id");
+  url.searchParams.append("fields[]", "source_name");
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.error("Failed to lookup sources:", await response.text());
+      return {};
+    }
+
+    const data: AirtableResponse = await response.json();
+
+    // Create map of pivotId -> source_name
+    const sourceMap: Record<string, string> = {};
+    for (const record of data.records) {
+      const pivotId = record.fields.pivot_id as string;
+      const sourceName = record.fields.source_name as string;
+      if (pivotId && sourceName) {
+        sourceMap[pivotId] = sourceName;
+      }
+    }
+
+    return sourceMap;
+  } catch (error) {
+    console.error("Error looking up sources:", error);
+    return {};
+  }
+}
+
 async function fetchSelectedSlots(
   limit: number = 10,
   skipCache: boolean = false
@@ -109,11 +171,22 @@ async function fetchSelectedSlots(
 
   const data: AirtableResponse = await response.json();
 
+  // Collect all pivotIds for source lookup
+  const allPivotIds: string[] = [];
+  for (const record of data.records) {
+    for (let i = 1; i <= 5; i++) {
+      const pivotId = record.fields[`slot_${i}_pivotId`] as string;
+      if (pivotId) allPivotIds.push(pivotId);
+    }
+  }
+
+  // Batch lookup sources from Newsletter Selects table
+  const sourceMap = await lookupSourcesByPivotIds(allPivotIds);
+
   return data.records.map((record) => {
     const fields = record.fields;
 
     // Build slots array from individual slot fields
-    // Note: source field doesn't exist in Airtable Selected Slots table
     const slots: SlotData[] = [];
     for (let i = 1; i <= 5; i++) {
       const headline = (fields[`slot_${i}_headline`] as string) || "";
@@ -127,7 +200,7 @@ async function fetchSelectedSlots(
           headline,
           storyId,
           pivotId,
-          source: "", // Not stored in Airtable
+          source: sourceMap[pivotId] || "", // Lookup from Newsletter Selects
         });
       }
     }

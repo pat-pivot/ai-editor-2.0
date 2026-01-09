@@ -32,6 +32,8 @@ import {
   CheckCircle,
   Send,
   Clock,
+  Pencil,
+  Check,
 } from "lucide-react";
 
 interface StepDataProps {
@@ -656,8 +658,42 @@ interface DecorationEntry {
   b3: string;
   imageStatus: string;
   imageUrl: string;
-  coreUrl: string;
-  pivotId: string;
+  pivotnewsUrl: string;
+}
+
+/**
+ * Format issue date from ISO format to human-readable format
+ * e.g., "2026-01-12" -> "January 12th, 2026"
+ */
+function formatIssueDateHuman(dateString: string): string {
+  if (!dateString) return "—";
+
+  // Handle both "2026-01-12" ISO format and "Jan 12" short format
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    // If parsing fails, return as-is (might be "Jan 09" format already)
+    return dateString;
+  }
+
+  const day = date.getUTCDate();
+  const suffix =
+    day === 1 || day === 21 || day === 31
+      ? "st"
+      : day === 2 || day === 22
+      ? "nd"
+      : day === 3 || day === 23
+      ? "rd"
+      : "th";
+
+  const formatted = date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+
+  // Replace the day number with day + suffix
+  return formatted.replace(/(\d+)/, `$1${suffix}`);
 }
 
 function SelectedSlotsTable() {
@@ -666,6 +702,7 @@ function SelectedSlotsTable() {
   const [error, setError] = useState<string | null>(null);
   const [currentIssueIndex, setCurrentIssueIndex] = useState(0);
   const [editingSubject, setEditingSubject] = useState<string>("");
+  const [isEditingSubject, setIsEditingSubject] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
 
@@ -697,12 +734,22 @@ function SelectedSlotsTable() {
     fetchIssues();
   }, []);
 
-  // Update editing subject when changing issues
+  // Update editing subject when changing issues and reset edit mode
   useEffect(() => {
     if (issues[currentIssueIndex]) {
       setEditingSubject(issues[currentIssueIndex].subjectLine || "");
+      setIsEditingSubject(false); // Exit edit mode when switching issues
     }
   }, [currentIssueIndex, issues]);
+
+  // Clear pending save timeout when switching issues
+  useEffect(() => {
+    return () => {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+    };
+  }, [currentIssueIndex, saveTimeout]);
 
   // Debounced save for subject line
   const handleSubjectChange = (value: string) => {
@@ -796,44 +843,48 @@ function SelectedSlotsTable() {
 
   return (
     <div className="space-y-4">
-      {/* Issue Navigation & Subject Line Editor */}
-      <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentIssueIndex <= 0}
-            onClick={() => setCurrentIssueIndex((i) => Math.max(0, i - 1))}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm font-medium min-w-[100px] text-center">
-            {currentIssue?.issueDate || "—"}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentIssueIndex >= issues.length - 1}
-            onClick={() => setCurrentIssueIndex((i) => Math.min(issues.length - 1, i + 1))}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <span className="text-xs text-muted-foreground ml-2">
-            Issue {currentIssueIndex + 1} of {issues.length}
-          </span>
-        </div>
-
+      {/* Subject Line (TOP LEFT) */}
+      <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
         <div className="flex-1 flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Subject:</span>
-          <Input
-            value={editingSubject}
-            onChange={(e) => handleSubjectChange(e.target.value)}
-            onBlur={() => saveSubjectLine(editingSubject)}
-            placeholder="Enter subject line..."
-            className="flex-1"
-          />
-          {isSaving && (
-            <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
+          <span className="text-sm font-semibold whitespace-nowrap">Subject:</span>
+          {isEditingSubject ? (
+            <>
+              <Input
+                value={editingSubject}
+                onChange={(e) => setEditingSubject(e.target.value)}
+                placeholder="Enter subject line..."
+                className="flex-1"
+                autoFocus
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  saveSubjectLine(editingSubject);
+                  setIsEditingSubject(false);
+                }}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4 text-green-600" />
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className="flex-1 text-sm truncate">
+                {currentIssue?.subjectLine || "No subject line"}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsEditingSubject(true)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -882,16 +933,40 @@ function SelectedSlotsTable() {
         </TableBody>
       </Table>
 
-      {/* Link to Airtable */}
-      <div className="text-center pt-2">
-        <a
-          href={`https://airtable.com/${AI_EDITOR_BASE_ID}/${SELECTED_SLOTS_TABLE_ID}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-zinc-400 hover:text-zinc-600 transition-colors"
-        >
-          View full table in Airtable &rarr;
-        </a>
+      {/* Pagination (BOTTOM RIGHT) */}
+      <div className="flex items-center justify-end gap-4 pt-4 mt-4 border-t">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentIssueIndex <= 0}
+            onClick={() => {
+              // Clear any pending save when navigating
+              if (saveTimeout) clearTimeout(saveTimeout);
+              setCurrentIssueIndex((i) => Math.max(0, i - 1));
+            }}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm font-medium min-w-[180px] text-center">
+            {formatIssueDateHuman(currentIssue?.issueDate || "")}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentIssueIndex >= issues.length - 1}
+            onClick={() => {
+              // Clear any pending save when navigating
+              if (saveTimeout) clearTimeout(saveTimeout);
+              setCurrentIssueIndex((i) => Math.min(issues.length - 1, i + 1));
+            }}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <span className="text-xs text-muted-foreground ml-2">
+            Issue {currentIssueIndex + 1} of {issues.length}
+          </span>
+        </div>
       </div>
     </div>
   );
