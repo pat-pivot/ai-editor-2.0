@@ -171,12 +171,26 @@ async function fetchDecorations(
   });
 
   // Convert set to array, sorted with newest dates first
-  // Issue dates are like "Jan 09", "Jan 08" - we need to sort chronologically
+  // Issue dates are like "Jan 09", "Dec 31" - need smart year handling
   const uniqueIssueDates = Array.from(issueDateSet).sort((a, b) => {
-    // Parse dates for comparison (assuming current year)
-    const currentYear = new Date().getFullYear();
-    const dateA = new Date(`${a} ${currentYear}`);
-    const dateB = new Date(`${b} ${currentYear}`);
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed (Jan = 0)
+
+    // Parse date and assign correct year
+    const parseWithYear = (dateStr: string): Date => {
+      const date = new Date(`${dateStr} ${currentYear}`);
+      const dateMonth = date.getMonth();
+      // If date month is much later than current month (e.g., Dec when we're in Jan),
+      // it's likely from the previous year
+      if (dateMonth > currentMonth + 6) {
+        date.setFullYear(currentYear - 1);
+      }
+      return date;
+    };
+
+    const dateA = parseWithYear(a);
+    const dateB = parseWithYear(b);
     return dateB.getTime() - dateA.getTime(); // Descending (newest first)
   });
 
