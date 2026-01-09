@@ -164,7 +164,7 @@ def browserbase_retry() -> Dict:
         record_id = record.get("id")
         url = fields.get("core_url")
         source = fields.get("source_name", "Unknown")
-        pivot_id = fields.get("pivotId", "")
+        pivot_id = fields.get("pivot_id", "")
 
         if not url:
             print(f"[Browserbase Retry] Skipping record {record_id}: no core_url")

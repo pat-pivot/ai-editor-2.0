@@ -110,8 +110,11 @@ class BrowserbaseNewsScraper:
         if not api_key:
             raise ValueError("BROWSERBASE_API_KEY environment variable not set")
 
-        self.bb = Browserbase(api_key=api_key)
         self.project_id = os.environ.get("BROWSERBASE_PROJECT_ID")
+        if not self.project_id:
+            raise ValueError("BROWSERBASE_PROJECT_ID environment variable not set (required by SDK v1.4+)")
+
+        self.bb = Browserbase(api_key=api_key)
         self.contexts = self._load_contexts()
 
     def _load_contexts(self) -> Dict[str, str]:
@@ -142,15 +145,12 @@ class BrowserbaseNewsScraper:
     def _create_session(self, site_key: Optional[str] = None) -> object:
         """Create a Browserbase session with stealth settings."""
         session_settings = {
+            "project_id": self.project_id,  # Required by SDK v1.4+
             "browser_settings": {
                 "advanced_stealth": True,
             },
             "proxies": True,  # Enable proxy rotation
         }
-
-        # Add project_id if available
-        if self.project_id:
-            session_settings["project_id"] = self.project_id
 
         # Use authenticated context if available for this site
         if site_key and site_key in self.contexts:
@@ -179,20 +179,17 @@ class BrowserbaseNewsScraper:
         if not config.get("login_url"):
             raise ValueError(f"Site {site_key} does not require authentication")
 
-        # Create new context
-        context = self.bb.contexts.create(
-            project_id=self.project_id
-        ) if self.project_id else self.bb.contexts.create()
+        # Create new context (project_id required by SDK v1.4+)
+        context = self.bb.contexts.create(project_id=self.project_id)
 
         session_settings = {
+            "project_id": self.project_id,  # Required by SDK v1.4+
             "browser_settings": {
                 "context": {"id": context.id, "persist": True},
                 "advanced_stealth": True
             },
             "proxies": True
         }
-        if self.project_id:
-            session_settings["project_id"] = self.project_id
 
         session = self.bb.sessions.create(**session_settings)
 
