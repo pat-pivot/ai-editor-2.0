@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { formatDateET } from "@/lib/date-utils";
 import {
   RefreshCw,
   ExternalLink,
@@ -392,26 +393,6 @@ interface PreFilterTableProps {
 function PreFilterTable({ data, loading, baseId, tableId, sortField, sortDirection, onSort }: PreFilterTableProps) {
   // Sorting is now handled by parent component (StepData) - we just display the pre-sorted data
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "—";
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit"
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const openInAirtable = (recordId: string) => {
-    const url = `https://airtable.com/${baseId}/${tableId}/${recordId}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -447,7 +428,7 @@ function PreFilterTable({ data, loading, baseId, tableId, sortField, sortDirecti
           <TableHead className="border-r border-zinc-200">Headline</TableHead>
           <TableHead className="w-28 border-r border-zinc-200">Source</TableHead>
           <TableHead
-            className="w-20 text-center cursor-pointer hover:bg-muted/50 select-none border-r border-zinc-200"
+            className="w-20 text-center cursor-pointer hover:bg-muted/50 select-none"
             onClick={() => onSort("slot")}
           >
             <div className="flex items-center justify-center gap-1">
@@ -470,20 +451,29 @@ function PreFilterTable({ data, loading, baseId, tableId, sortField, sortDirecti
         {data.map((row) => (
           <TableRow
             key={row.id}
-            className="cursor-pointer hover:bg-muted/50"
-            onClick={() => openInAirtable(row.id)}
+            className="hover:bg-muted/50"
           >
-            <TableCell className="font-medium border-r border-zinc-200">{row.headline}</TableCell>
+            <TableCell className="border-r border-zinc-200">
+              <a
+                href={`https://airtable.com/${baseId}/${tableId}/${row.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:text-blue-800 hover:underline line-clamp-2 flex items-start gap-1"
+              >
+                {row.headline}
+                <ExternalLink className="h-3 w-3 flex-shrink-0 mt-1" />
+              </a>
+            </TableCell>
             <TableCell className="text-xs text-muted-foreground border-r border-zinc-200">
               {row.sourceId || "—"}
             </TableCell>
-            <TableCell className="text-center border-r border-zinc-200">
+            <TableCell className="text-center">
               <Badge variant="outline" className="font-mono">
                 {row.slot}
               </Badge>
             </TableCell>
             <TableCell className="text-muted-foreground text-sm">
-              {formatDate(row.datePublished)}
+              {formatDateET(row.datePublished)}
             </TableCell>
           </TableRow>
         ))}
