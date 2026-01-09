@@ -27,13 +27,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  Check,
-  Code,
+  Image,
+  Hourglass,
   CheckCircle,
   Send,
   Clock,
-  Image,
-  Hourglass,
 } from "lucide-react";
 
 interface StepDataProps {
@@ -623,170 +621,570 @@ function NewsletterStoriesTable({ data, loading, baseId, tableId }: { data: News
   );
 }
 
-// Placeholder tables for other steps (these would also need real data integration)
-const mockSelectedSlotsData = [
-  { issue_date: "Pivot 5 - Dec 23", subject: "OpenAI's $6.6B Raise Signals New AI Arms Race", status: "decorated" },
-  { issue_date: "Pivot 5 - Dec 22", subject: "Google Drops Gemini 3 Flash Preview", status: "sent" },
-  { issue_date: "Pivot 5 - Dec 21", subject: "Meta's AI Ambitions Take Shape with Llama 4", status: "sent" },
-  { issue_date: "Pivot 5 - Dec 20", subject: "NVIDIA Stock Hits New High on AI Demand", status: "sent" },
-];
+// Airtable constants
+const AI_EDITOR_BASE_ID = "appglKSJZxmA9iHpl";
+const SELECTED_SLOTS_TABLE_ID = "tblzt2z7r512Kto3O";
+const DECORATION_TABLE_ID = "tbla16LJCf5Z6cRn3";
 
-const mockDecorationData = [
-  { id: "rec_dec1", headline: "OpenAI's $6.6B Raise Signals New AI Arms Race", slot: 1, image_status: "generated", decorated: true },
-  { id: "rec_dec2", headline: "Google Unveils Gemini 3 Flash Preview", slot: 2, image_status: "generated", decorated: true },
-  { id: "rec_dec3", headline: "Healthcare AI Adoption Hits 70%", slot: 3, image_status: "pending", decorated: false },
-  { id: "rec_dec4", headline: "Startup Raises $50M for AI Tools", slot: 4, image_status: "pending", decorated: false },
-  { id: "rec_dec5", headline: "The Ethics of AI Dating Apps", slot: 5, image_status: "pending", decorated: false },
-];
+// Interfaces for API responses
+interface SelectedSlotsIssue {
+  id: string;
+  issueId: number;
+  issueDate: string;
+  subjectLine: string;
+  status: string;
+  slots: Array<{
+    slot: number;
+    headline: string;
+    storyId: string;
+    pivotId: string;
+    source: string;
+  }>;
+}
+
+interface DecorationEntry {
+  id: string;
+  storyId: string;
+  issueId: string;
+  issueDate: string;
+  slot: number;
+  headline: string;
+  aiDek: string;
+  label: string;
+  b1: string;
+  b2: string;
+  b3: string;
+  imageStatus: string;
+  imageUrl: string;
+  coreUrl: string;
+  pivotId: string;
+}
 
 function SelectedSlotsTable() {
+  const [issues, setIssues] = useState<SelectedSlotsIssue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentIssueIndex, setCurrentIssueIndex] = useState(0);
+  const [editingSubject, setEditingSubject] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  const fetchIssues = async (skipCache = false) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const url = `/api/airtable/selected-slots?limit=20${skipCache ? "&refresh=true" : ""}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setIssues(data.issues || []);
+        if (data.issues?.length > 0) {
+          setEditingSubject(data.issues[0].subjectLine || "");
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching selected slots:", err);
+      setError("Failed to fetch selected slots");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchIssues();
+  }, []);
+
+  // Update editing subject when changing issues
+  useEffect(() => {
+    if (issues[currentIssueIndex]) {
+      setEditingSubject(issues[currentIssueIndex].subjectLine || "");
+    }
+  }, [currentIssueIndex, issues]);
+
+  // Debounced save for subject line
+  const handleSubjectChange = (value: string) => {
+    setEditingSubject(value);
+
+    // Clear existing timeout
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+
+    // Set new timeout for auto-save after 500ms
+    const timeout = setTimeout(() => {
+      saveSubjectLine(value);
+    }, 500);
+    setSaveTimeout(timeout);
+  };
+
+  const saveSubjectLine = async (subjectLine: string) => {
+    const currentIssue = issues[currentIssueIndex];
+    if (!currentIssue) return;
+
+    // Don't save if value hasn't changed
+    if (subjectLine === currentIssue.subjectLine) return;
+
+    try {
+      setIsSaving(true);
+      const response = await fetch("/api/airtable/selected-slots", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recordId: currentIssue.id,
+          subject_line: subjectLine,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save");
+      }
+
+      // Update local state optimistically
+      setIssues((prev) =>
+        prev.map((issue, idx) =>
+          idx === currentIssueIndex
+            ? { ...issue, subjectLine }
+            : issue
+        )
+      );
+    } catch (err) {
+      console.error("Error saving subject line:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const currentIssue = issues[currentIssueIndex];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+        <AlertCircle className="h-10 w-10 mb-2 text-red-500" />
+        <p className="text-red-500">{error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => fetchIssues(true)}
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (issues.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+        <Inbox className="h-10 w-10 mb-2" />
+        <p>No selected slots issues found</p>
+      </div>
+    );
+  }
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-40">Issue Date</TableHead>
-          <TableHead>Subject Line</TableHead>
-          <TableHead className="w-28">Status</TableHead>
-          <TableHead className="w-24">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {mockSelectedSlotsData.map((row, index) => (
-          <TableRow key={index}>
-            <TableCell className="font-medium">{row.issue_date}</TableCell>
-            <TableCell>{row.subject}</TableCell>
-            <TableCell>
-              <StatusBadge status={row.status as "decorated" | "sent" | "pending"} />
-            </TableCell>
-            <TableCell>
-              <Button variant="ghost" size="sm">
-                <Eye className="h-4 w-4" />
-              </Button>
-            </TableCell>
+    <div className="space-y-4">
+      {/* Issue Navigation & Subject Line Editor */}
+      <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentIssueIndex <= 0}
+            onClick={() => setCurrentIssueIndex((i) => Math.max(0, i - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm font-medium min-w-[100px] text-center">
+            {currentIssue?.issueDate || "—"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentIssueIndex >= issues.length - 1}
+            onClick={() => setCurrentIssueIndex((i) => Math.min(issues.length - 1, i + 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <span className="text-xs text-muted-foreground ml-2">
+            Issue {currentIssueIndex + 1} of {issues.length}
+          </span>
+        </div>
+
+        <div className="flex-1 flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Subject:</span>
+          <Input
+            value={editingSubject}
+            onChange={(e) => handleSubjectChange(e.target.value)}
+            onBlur={() => saveSubjectLine(editingSubject)}
+            placeholder="Enter subject line..."
+            className="flex-1"
+          />
+          {isSaving && (
+            <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
+          )}
+        </div>
+      </div>
+
+      {/* Slots Table */}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-20 text-center">Slot</TableHead>
+            <TableHead>Headline</TableHead>
+            <TableHead className="w-32">Source</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {currentIssue?.slots.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                No slots populated for this issue
+              </TableCell>
+            </TableRow>
+          ) : (
+            currentIssue?.slots.map((slot) => (
+              <TableRow key={`${currentIssue.id}-slot-${slot.slot}`}>
+                <TableCell className="text-center">
+                  <Badge variant="outline" className="font-mono">
+                    {slot.slot}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <a
+                    href={`https://airtable.com/${AI_EDITOR_BASE_ID}/${SELECTED_SLOTS_TABLE_ID}/${currentIssue.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-start gap-1"
+                  >
+                    {slot.headline || "—"}
+                    <ExternalLink className="h-3 w-3 flex-shrink-0 mt-1" />
+                  </a>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {slot.source || "—"}
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+
+      {/* Link to Airtable */}
+      <div className="text-center pt-2">
+        <a
+          href={`https://airtable.com/${AI_EDITOR_BASE_ID}/${SELECTED_SLOTS_TABLE_ID}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-zinc-400 hover:text-zinc-600 transition-colors"
+        >
+          View full table in Airtable &rarr;
+        </a>
+      </div>
+    </div>
   );
 }
 
 function DecorationTable() {
+  const [decorations, setDecorations] = useState<DecorationEntry[]>([]);
+  const [uniqueIssueDates, setUniqueIssueDates] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedIssueDate, setSelectedIssueDate] = useState<string>("");
+  const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
+
+  const fetchDecorations = async (skipCache = false) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const url = `/api/airtable/decorations?limit=200${skipCache ? "&refresh=true" : ""}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setDecorations(data.decorations || []);
+        setUniqueIssueDates(data.uniqueIssueDates || []);
+        // Select the first (newest) issue date by default
+        if (data.uniqueIssueDates?.length > 0 && !selectedIssueDate) {
+          setSelectedIssueDate(data.uniqueIssueDates[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching decorations:", err);
+      setError("Failed to fetch decorations");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDecorations();
+  }, []);
+
+  // Filter decorations by selected issue date
+  const filteredDecorations = useMemo(() => {
+    if (!selectedIssueDate) return decorations;
+    return decorations.filter((d) => d.issueDate === selectedIssueDate);
+  }, [decorations, selectedIssueDate]);
+
+  // Get current issue date index for navigation
+  const currentIssueDateIndex = uniqueIssueDates.indexOf(selectedIssueDate);
+
+  const handlePrevIssue = () => {
+    if (currentIssueDateIndex > 0) {
+      setSelectedIssueDate(uniqueIssueDates[currentIssueDateIndex - 1]);
+    }
+  };
+
+  const handleNextIssue = () => {
+    if (currentIssueDateIndex < uniqueIssueDates.length - 1) {
+      setSelectedIssueDate(uniqueIssueDates[currentIssueDateIndex + 1]);
+    }
+  };
+
+  // Get label badge color
+  const getLabelBadgeClass = (label: string) => {
+    const labelColors: Record<string, string> = {
+      WORK: "bg-blue-100 text-blue-700 border-blue-200",
+      ENTERPRISE: "bg-purple-100 text-purple-700 border-purple-200",
+      POLICY: "bg-amber-100 text-amber-700 border-amber-200",
+      HEALTH: "bg-emerald-100 text-emerald-700 border-emerald-200",
+      EDUCATION: "bg-cyan-100 text-cyan-700 border-cyan-200",
+      FUNDING: "bg-green-100 text-green-700 border-green-200",
+      ETHICS: "bg-red-100 text-red-700 border-red-200",
+      CONSUMER: "bg-pink-100 text-pink-700 border-pink-200",
+      CREATIVE: "bg-indigo-100 text-indigo-700 border-indigo-200",
+    };
+    return labelColors[label?.toUpperCase()] || "bg-gray-100 text-gray-700 border-gray-200";
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+        <AlertCircle className="h-10 w-10 mb-2 text-red-500" />
+        <p className="text-red-500">{error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => fetchDecorations(true)}
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (decorations.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+        <Inbox className="h-10 w-10 mb-2" />
+        <p>No decorated stories found</p>
+      </div>
+    );
+  }
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-16 text-center">Slot</TableHead>
-          <TableHead>Headline</TableHead>
-          <TableHead className="w-28">Decorated</TableHead>
-          <TableHead className="w-28">Image</TableHead>
-          <TableHead className="w-24">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {mockDecorationData.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell className="text-center">
-              <Badge variant="outline" className="font-mono">
-                {row.slot}
-              </Badge>
-            </TableCell>
-            <TableCell className="font-medium">{row.headline}</TableCell>
-            <TableCell>
-              {row.decorated ? (
-                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
-                  <Check className="h-3 w-3" />
-                  Complete
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-muted-foreground">
-                  Pending
-                </Badge>
-              )}
-            </TableCell>
-            <TableCell>
-              <ImageStatusBadge status={row.image_status as "generated" | "pending" | "error"} />
-            </TableCell>
-            <TableCell>
-              <Button variant="ghost" size="sm">
-                <Eye className="h-4 w-4" />
-              </Button>
-            </TableCell>
+    <div className="space-y-4">
+      {/* Issue Date Navigation */}
+      <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentIssueDateIndex <= 0}
+            onClick={handlePrevIssue}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm font-medium min-w-[100px] text-center">
+            {selectedIssueDate || "—"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentIssueDateIndex >= uniqueIssueDates.length - 1}
+            onClick={handleNextIssue}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <span className="text-xs text-muted-foreground ml-2">
+            Issue {currentIssueDateIndex + 1} of {uniqueIssueDates.length}
+          </span>
+        </div>
+        <span className="text-sm text-muted-foreground">
+          {filteredDecorations.length} stories
+        </span>
+      </div>
+
+      {/* Decorations Table */}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-20 text-center">Slot</TableHead>
+            <TableHead className="w-[30%]">Headline</TableHead>
+            <TableHead className="w-[25%]">AI Deck</TableHead>
+            <TableHead className="w-24">Label</TableHead>
+            <TableHead className="w-28">Status</TableHead>
+            <TableHead className="w-20 text-center">Preview</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {filteredDecorations.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                No decorated stories for this issue
+              </TableCell>
+            </TableRow>
+          ) : (
+            filteredDecorations.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="text-center">
+                  <Badge variant="outline" className="font-mono">
+                    {row.slot || "—"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <a
+                    href={`https://airtable.com/${AI_EDITOR_BASE_ID}/${DECORATION_TABLE_ID}/${row.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline line-clamp-2 flex items-start gap-1"
+                  >
+                    {row.headline || "—"}
+                    <ExternalLink className="h-3 w-3 flex-shrink-0 mt-1" />
+                  </a>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  <span className="line-clamp-2">{row.aiDek || "—"}</span>
+                </TableCell>
+                <TableCell>
+                  {row.label ? (
+                    <Badge variant="outline" className={cn("text-xs", getLabelBadgeClass(row.label))}>
+                      {row.label}
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <ImageStatusBadge
+                    status={
+                      row.imageStatus === "generated"
+                        ? "generated"
+                        : row.imageStatus === "needs_image"
+                        ? "pending"
+                        : "pending"
+                    }
+                  />
+                </TableCell>
+                <TableCell className="text-center">
+                  {row.imageUrl ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setImageModalUrl(row.imageUrl)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+
+      {/* Link to Airtable */}
+      <div className="text-center pt-2">
+        <a
+          href={`https://airtable.com/${AI_EDITOR_BASE_ID}/${DECORATION_TABLE_ID}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-zinc-400 hover:text-zinc-600 transition-colors"
+        >
+          View full table in Airtable &rarr;
+        </a>
+      </div>
+
+      {/* Image Preview Modal */}
+      {imageModalUrl && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setImageModalUrl(null)}
+        >
+          <div
+            className="bg-white rounded-lg p-2 max-w-4xl max-h-[90vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-end mb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setImageModalUrl(null)}
+              >
+                Close
+              </Button>
+            </div>
+            <img
+              src={imageModalUrl}
+              alt="Generated image preview"
+              className="max-w-full h-auto rounded"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect fill='%23f0f0f0' width='400' height='300'/%3E%3Ctext fill='%23999' font-family='sans-serif' font-size='16' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3EImage failed to load%3C/text%3E%3C/svg%3E";
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 function IssuesTable() {
+  // Placeholder for Step 4 - HTML Compile (not yet implemented)
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-32">Date</TableHead>
-          <TableHead>Subject</TableHead>
-          <TableHead className="w-28">Status</TableHead>
-          <TableHead className="w-32">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {mockSelectedSlotsData.map((row, index) => (
-          <TableRow key={index}>
-            <TableCell className="font-medium">{row.issue_date.replace("Pivot 5 - ", "")}</TableCell>
-            <TableCell>{row.subject}</TableCell>
-            <TableCell>
-              <StatusBadge status={row.status as "decorated" | "sent" | "pending"} />
-            </TableCell>
-            <TableCell>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="sm">
-                  <Eye className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="sm">
-                  <Code className="h-4 w-4" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+      <Inbox className="h-10 w-10 mb-2" />
+      <p>HTML Compile data integration coming soon</p>
+      <p className="text-sm mt-2">Step 4 is not yet implemented</p>
+    </div>
   );
 }
 
 function IssuesArchiveTable() {
+  // Placeholder for Step 5 - Social Sync (not yet implemented)
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-32">Date</TableHead>
-          <TableHead>Subject</TableHead>
-          <TableHead className="w-28">Sent Status</TableHead>
-          <TableHead className="w-24">Recipients</TableHead>
-          <TableHead className="w-24">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {mockSelectedSlotsData.filter(r => r.status === "sent").map((row, index) => (
-          <TableRow key={index}>
-            <TableCell className="font-medium">{row.issue_date.replace("Pivot 5 - ", "")}</TableCell>
-            <TableCell>{row.subject}</TableCell>
-            <TableCell>
-              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
-                <Check className="h-3 w-3" />
-                Sent
-              </Badge>
-            </TableCell>
-            <TableCell className="font-mono text-muted-foreground">12,847</TableCell>
-            <TableCell>
-              <Button variant="ghost" size="sm">
-                <Eye className="h-4 w-4" />
-              </Button>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+      <Inbox className="h-10 w-10 mb-2" />
+      <p>Social Sync data integration coming soon</p>
+      <p className="text-sm mt-2">Step 5 is not yet implemented</p>
+    </div>
   );
 }
 
