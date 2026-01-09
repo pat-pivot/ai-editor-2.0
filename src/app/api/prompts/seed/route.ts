@@ -15,36 +15,35 @@ import { Pool } from "pg";
 
 // All prompt definitions with correct Python variable syntax
 const PROMPTS = {
-  // Step 1: Pre-Filter (Gemini)
+  // Step 1: Pre-Filter (Gemini) - SLOT-SPECIFIC PROMPTS FROM N8N WORKFLOW
   slot_1_prefilter: {
     stepId: 1,
     slotNumber: 1,
     name: "Slot 1 Pre-Filter",
-    description: "Jobs/Economy slot eligibility check",
+    description: "Lead story pre-filter: Jobs, Economy, Stock Market, Broad AI Impact",
     model: "gemini-3-flash-preview",
     temperature: 0.3,
-    content: `Analyze this news article and determine which newsletter slots it's eligible for.
+    content: `You are a pre-filter for an AI newsletter's lead story slot.
 
-ARTICLE:
-Headline: {headline}
-Summary: {content}
-Published: {date_published}
-Hours Old: {hours_ago}
-Source: {source}
-Source Credibility: {credibility}/5
+Review these candidates and identify ONLY stories about:
+1. AI impact on JOBS (layoffs, hiring, workforce changes, labor market)
+2. AI impact on ECONOMY (GDP, productivity, economic shifts, industry-wide effects)
+3. AI STOCK MARKET / VALUATIONS (market moves, IPOs, funding rounds, earnings)
+4. BROAD AI IMPACT (societal, regulatory, not company-specific product launches)
 
-SLOT CRITERIA:
-1. JOBS/ECONOMY: AI impact on employment, workforce, stock market, broad economic impact. Must be <24 hours old.
-2. TIER 1 AI: OpenAI, Google/DeepMind, Meta AI, NVIDIA, Microsoft, Anthropic, xAI, Amazon AWS AI. Research breakthroughs. Can be 24-48 hours old.
-3. INDUSTRY IMPACT: Healthcare, Government, Education, Legal, Accounting, Retail, Cybersecurity, Transportation, Manufacturing, Real Estate, Agriculture, Energy. Can be up to 7 days old.
-4. EMERGING COMPANIES: Startups, product launches, funding rounds, acquisitions, new AI tools. Must be <48 hours old.
-5. CONSUMER AI: Ethics, entertainment, lifestyle, societal impact, fun/quirky uses. Can be up to 7 days old.
+YESTERDAY'S HEADLINES (avoid similar topics):
+{yesterday_headlines}
 
-Return JSON only:
+CANDIDATES:
+{candidates}
+
+Return the story_id value for each matching article.
+Return ONLY valid JSON:
 {{
-  "eligible_slots": [1, 2, ...],
-  "primary_slot": 1,
-  "reasoning": "Brief explanation"
+  "matches": [
+    {{"story_id": "rec123ABC", "headline": "headline text"}},
+    {{"story_id": "rec456DEF", "headline": "other headline"}}
+  ]
 }}`,
   },
 
@@ -52,31 +51,38 @@ Return JSON only:
     stepId: 1,
     slotNumber: 2,
     name: "Slot 2 Pre-Filter",
-    description: "Tier 1 AI slot eligibility check",
+    description: "Tier 1 companies, broad economic themes, AI research/insight pieces",
     model: "gemini-3-flash-preview",
     temperature: 0.3,
-    content: `Analyze this news article and determine which newsletter slots it's eligible for.
+    content: `You are a pre-filter for Slot 2 (Tier 1 / Insight) of an AI newsletter.
 
-ARTICLE:
-Headline: {headline}
-Summary: {content}
-Published: {date_published}
-Hours Old: {hours_ago}
-Source: {source}
-Source Credibility: {credibility}/5
+Review these candidates and identify stories that fit ANY of these criteria:
 
-SLOT CRITERIA:
-1. JOBS/ECONOMY: AI impact on employment, workforce, stock market, broad economic impact. Must be <24 hours old.
-2. TIER 1 AI: OpenAI, Google/DeepMind, Meta AI, NVIDIA, Microsoft, Anthropic, xAI, Amazon AWS AI. Research breakthroughs. Can be 24-48 hours old.
-3. INDUSTRY IMPACT: Healthcare, Government, Education, Legal, Accounting, Retail, Cybersecurity, Transportation, Manufacturing, Real Estate, Agriculture, Energy. Can be up to 7 days old.
-4. EMERGING COMPANIES: Startups, product launches, funding rounds, acquisitions, new AI tools. Must be <48 hours old.
-5. CONSUMER AI: Ethics, entertainment, lifestyle, societal impact, fun/quirky uses. Can be up to 7 days old.
+1. TIER 1 AI COMPANIES: OpenAI, Google, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon
+   - But NOT just a passing mention - the story should be PRIMARILY about the company
+   - The list above is not exhaustive - use judgment for other major AI players
 
-Return JSON only:
+2. BROAD ECONOMIC THEMES related to AI, including but not limited to:
+   - Industry-wide AI adoption
+   - AI's impact on productivity, business operations
+   - Economic shifts driven by AI
+
+3. AI RESEARCH / INSIGHT PIECES, including but not limited to:
+   - Studies, reports, analysis about AI trends
+   - Not breaking news - thoughtful analysis
+   - Adoption patterns, usage statistics, benchmarks
+
+YESTERDAY'S HEADLINES (avoid similar topics):
+{yesterday_headlines}
+
+CANDIDATES:
+{candidates}
+
+Return ONLY valid JSON:
 {{
-  "eligible_slots": [1, 2, ...],
-  "primary_slot": 2,
-  "reasoning": "Brief explanation"
+  "matches": [
+    {{"story_id": "rec123ABC", "headline": "headline text"}}
+  ]
 }}`,
   },
 
@@ -84,31 +90,38 @@ Return JSON only:
     stepId: 1,
     slotNumber: 3,
     name: "Slot 3 Pre-Filter",
-    description: "Industry Verticals slot eligibility check",
+    description: "Industry Impact: AI in non-tech industries (Healthcare, Government, Education, etc.)",
     model: "gemini-3-flash-preview",
     temperature: 0.3,
-    content: `Analyze this news article and determine which newsletter slots it's eligible for.
+    content: `You are a pre-filter for Slot 3 (Industry Impact) of an AI newsletter.
 
-ARTICLE:
-Headline: {headline}
-Summary: {content}
-Published: {date_published}
-Hours Old: {hours_ago}
-Source: {source}
-Source Credibility: {credibility}/5
+Slot 3 focuses on how AI is impacting NON-TECH industries. Review these candidates and identify stories that fit:
 
-SLOT CRITERIA:
-1. JOBS/ECONOMY: AI impact on employment, workforce, stock market, broad economic impact. Must be <24 hours old.
-2. TIER 1 AI: OpenAI, Google/DeepMind, Meta AI, NVIDIA, Microsoft, Anthropic, xAI, Amazon AWS AI. Research breakthroughs. Can be 24-48 hours old.
-3. INDUSTRY IMPACT: Healthcare, Government, Education, Legal, Accounting, Retail, Cybersecurity, Transportation, Manufacturing, Real Estate, Agriculture, Energy. Can be up to 7 days old.
-4. EMERGING COMPANIES: Startups, product launches, funding rounds, acquisitions, new AI tools. Must be <48 hours old.
-5. CONSUMER AI: Ethics, entertainment, lifestyle, societal impact, fun/quirky uses. Can be up to 7 days old.
+**ELIGIBLE INDUSTRIES:** Healthcare, Government, Education, Legal, Accounting, Retail, Security, Transportation, Manufacturing, Real Estate, Agriculture, Energy
 
-Return JSON only:
+**WHAT TO LOOK FOR:**
+- AI adoption in these industries
+- AI impact on industry operations
+- Regulatory changes affecting AI in these sectors
+- Case studies of AI implementation
+
+**Do NOT include:**
+- Stories primarily about tech companies (those go to Slots 1-2)
+- Stories about small/emerging AI startups (those go to Slot 4)
+- Human interest / consumer AI stories (those go to Slot 5)
+- Leadership shuffles
+
+YESTERDAY'S HEADLINES (avoid similar topics):
+{yesterday_headlines}
+
+CANDIDATES:
+{candidates}
+
+Return ONLY valid JSON:
 {{
-  "eligible_slots": [1, 2, ...],
-  "primary_slot": 3,
-  "reasoning": "Brief explanation"
+  "matches": [
+    {{"story_id": "rec123ABC", "headline": "headline text"}}
+  ]
 }}`,
   },
 
@@ -116,31 +129,37 @@ Return JSON only:
     stepId: 1,
     slotNumber: 4,
     name: "Slot 4 Pre-Filter",
-    description: "Emerging Tech slot eligibility check",
+    description: "Emerging Companies: smaller AI companies, product launches, fundraising",
     model: "gemini-3-flash-preview",
     temperature: 0.3,
-    content: `Analyze this news article and determine which newsletter slots it's eligible for.
+    content: `You are a pre-filter for Slot 4 (Emerging Companies) of an AI newsletter.
 
-ARTICLE:
-Headline: {headline}
-Summary: {content}
-Published: {date_published}
-Hours Old: {hours_ago}
-Source: {source}
-Source Credibility: {credibility}/5
+Slot 4 focuses on smaller/emerging AI companies (NOT Tier 1 giants like OpenAI, Google, Meta, NVIDIA, Microsoft, Anthropic, xAI, Amazon).
 
-SLOT CRITERIA:
-1. JOBS/ECONOMY: AI impact on employment, workforce, stock market, broad economic impact. Must be <24 hours old.
-2. TIER 1 AI: OpenAI, Google/DeepMind, Meta AI, NVIDIA, Microsoft, Anthropic, xAI, Amazon AWS AI. Research breakthroughs. Can be 24-48 hours old.
-3. INDUSTRY IMPACT: Healthcare, Government, Education, Legal, Accounting, Retail, Cybersecurity, Transportation, Manufacturing, Real Estate, Agriculture, Energy. Can be up to 7 days old.
-4. EMERGING COMPANIES: Startups, product launches, funding rounds, acquisitions, new AI tools. Must be <48 hours old.
-5. CONSUMER AI: Ethics, entertainment, lifestyle, societal impact, fun/quirky uses. Can be up to 7 days old.
+**WHAT TO LOOK FOR:**
+- Product launches from emerging AI companies
+- Big fundraising rounds (Series A, B, C, etc.)
+- Acquisition news involving smaller players
+- New AI tool/service launches
+- Startup milestones and achievements
 
-Return JSON only:
+**Do NOT include:**
+- Stories primarily about Tier 1 companies
+- Industry-specific AI impact (those go to Slot 3)
+- Human interest / consumer AI stories (those go to Slot 5)
+- Leadership shuffles
+
+YESTERDAY'S HEADLINES (avoid similar topics):
+{yesterday_headlines}
+
+CANDIDATES:
+{candidates}
+
+Return ONLY valid JSON:
 {{
-  "eligible_slots": [1, 2, ...],
-  "primary_slot": 4,
-  "reasoning": "Brief explanation"
+  "matches": [
+    {{"story_id": "rec123ABC", "headline": "headline text"}}
+  ]
 }}`,
   },
 
@@ -148,31 +167,41 @@ Return JSON only:
     stepId: 1,
     slotNumber: 5,
     name: "Slot 5 Pre-Filter",
-    description: "Consumer AI slot eligibility check",
+    description: "Consumer AI / Human Interest: AI impact on everyday life, arts, ethics",
     model: "gemini-3-flash-preview",
     temperature: 0.3,
-    content: `Analyze this news article and determine which newsletter slots it's eligible for.
+    content: `You are a pre-filter for Slot 5 (Consumer AI / Human Interest) of an AI newsletter.
 
-ARTICLE:
-Headline: {headline}
-Summary: {content}
-Published: {date_published}
-Hours Old: {hours_ago}
-Source: {source}
-Source Credibility: {credibility}/5
+Slot 5 focuses on consumer-friendly AI stories - the "nice to know" pieces about AI's impact on everyday life.
 
-SLOT CRITERIA:
-1. JOBS/ECONOMY: AI impact on employment, workforce, stock market, broad economic impact. Must be <24 hours old.
-2. TIER 1 AI: OpenAI, Google/DeepMind, Meta AI, NVIDIA, Microsoft, Anthropic, xAI, Amazon AWS AI. Research breakthroughs. Can be 24-48 hours old.
-3. INDUSTRY IMPACT: Healthcare, Government, Education, Legal, Accounting, Retail, Cybersecurity, Transportation, Manufacturing, Real Estate, Agriculture, Energy. Can be up to 7 days old.
-4. EMERGING COMPANIES: Startups, product launches, funding rounds, acquisitions, new AI tools. Must be <48 hours old.
-5. CONSUMER AI: Ethics, entertainment, lifestyle, societal impact, fun/quirky uses. Can be up to 7 days old.
+**WHAT TO LOOK FOR:**
+- AI's impact on humanity and society
+- Consumer AI products and experiences
+- AI in arts, entertainment, creativity
+- AI ethics and philosophical questions
+- Heartwarming or thought-provoking AI stories
+- Fun, quirky, or surprising AI use cases
 
-Return JSON only:
+**Do NOT include:**
+- Business/enterprise AI news (those go to Slots 1-4)
+- Technical/developer focused stories
+- Fundraising, acquisitions, corporate news
+- Industry-specific B2B applications
+- Leadership changes
+
+**TONE:** "Nice to know" not "need to know"
+
+YESTERDAY'S HEADLINES (avoid similar topics):
+{yesterday_headlines}
+
+CANDIDATES:
+{candidates}
+
+Return ONLY valid JSON:
 {{
-  "eligible_slots": [1, 2, ...],
-  "primary_slot": 5,
-  "reasoning": "Brief explanation"
+  "matches": [
+    {{"story_id": "rec123ABC", "headline": "headline text"}}
+  ]
 }}`,
   },
 
