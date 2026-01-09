@@ -116,6 +116,10 @@ def get_job_function(step_name: str):
         elif step_name == 'browserbase_retry':
             from jobs.browserbase_retry import browserbase_retry
             JOB_FUNCTIONS[step_name] = browserbase_retry
+        # Scheduled send checker (checks for user-scheduled newsletters)
+        elif step_name == 'scheduled_send_checker':
+            from jobs.scheduled_send_checker import check_scheduled_newsletters
+            JOB_FUNCTIONS[step_name] = check_scheduled_newsletters
         # Individual slot prefilter jobs (for testing)
         elif step_name == 'prefilter_slot_1':
             from jobs.prefilter import prefilter_slot_1
@@ -162,6 +166,8 @@ QUEUE_MAPPING = {
     'ingest_direct_feeds': 'default',
     # Browserbase retry for paywalled sites (Step 0.6)
     'browserbase_retry': 'default',
+    # Scheduled send checker (checks for user-scheduled newsletters)
+    'scheduled_send_checker': 'high',
     # Individual slot prefilter jobs (for testing)
     'prefilter_slot_1': 'default',
     'prefilter_slot_2': 'default',

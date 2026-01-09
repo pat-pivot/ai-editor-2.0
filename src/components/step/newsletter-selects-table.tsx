@@ -11,8 +11,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ChevronLeft, ChevronRight, ExternalLink, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
+import { Loader2, RefreshCw, ChevronLeft, ChevronRight, ExternalLink, ArrowUp, ArrowDown } from "lucide-react";
 import { formatDateET } from "@/lib/date-utils";
+
+// Airtable constants for Newsletter Selects table
+const AIRTABLE_BASE_ID = "appglKSJZxmA9iHpl";
+const AIRTABLE_TABLE_ID = "tblKhICCdWnyuqgry";
 
 const ITEMS_PER_PAGE = 25;
 
@@ -165,19 +169,15 @@ export function NewsletterSelectsTable() {
                 paginatedSelects.map((select) => (
                   <TableRow key={select.id}>
                     <TableCell className="max-w-[500px] border-r border-zinc-200">
-                      {select.originalUrl ? (
-                        <a
-                          href={select.originalUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline line-clamp-2 flex items-start gap-1"
-                        >
-                          {select.headline}
-                          <ExternalLink className="h-3 w-3 flex-shrink-0 mt-1" />
-                        </a>
-                      ) : (
-                        <span className="line-clamp-2 text-sm">{select.headline}</span>
-                      )}
+                      <a
+                        href={`https://airtable.com/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}/${select.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:text-blue-800 hover:underline line-clamp-2 flex items-start gap-1"
+                      >
+                        {select.headline}
+                        <ExternalLink className="h-3 w-3 flex-shrink-0 mt-1" />
+                      </a>
                     </TableCell>
                     <TableCell className="border-r border-zinc-200">
                       <span className="text-sm font-medium text-zinc-700">

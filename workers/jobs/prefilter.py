@@ -3,12 +3,16 @@ Step 1: Pre-Filter Job
 Workflow ID: VoSZu0MIJAw1IuLL
 Schedule: 9:00 PM EST (0 2 * * 2-6 UTC)
 
-MATCHES n8n WORKFLOW ARCHITECTURE EXACTLY:
+ARCHITECTURE:
 - 5 separate AI calls (one per slot) with slot-specific prompts
-- Each slot gets ALL eligible articles as a BATCH for comparison
+- Each slot gets ALL articles as a BATCH for TOPIC-based filtering
 - Slot 1 Company Filter runs IN PARALLEL with AI Slot 1
-- Freshness pre-calculated BEFORE AI calls
 - Response format: {matches: [{story_id, headline}]}
+
+FIX (1/9/26): Removed freshness-based slot eligibility filtering
+- Step 1 filters by TOPIC only (via AI prompts)
+- Step 2 (Slot Selection) handles FRESHNESS filtering
+- All articles go to all 5 slots for topic evaluation
 
 TEMPORARY (1/6/26): Using Claude Sonnet 4.5 instead of Gemini (quota exhausted)
 TODO(gemini-quota): Set PREFILTER_MODEL=gemini to revert when quota restored
@@ -135,10 +139,14 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
         print(f"[Step 1] Loaded {len(articles_lookup)} article details", flush=True)
 
         # =================================================================
-        # PHASE 2: BUILD ARTICLE BATCHES BY SLOT ELIGIBILITY
+        # PHASE 2: BUILD ARTICLE BATCHES FOR ALL SLOTS
         # =================================================================
+        # FIX (1/9/26): Step 1 evaluates ALL articles for ALL slots by TOPIC.
+        # Freshness filtering is Step 2's responsibility (Slot Selection).
+        # Every article fetched by Step 1 is "new" (within 10h of AI processing).
+        # Old articles were already pre-filtered in previous Step 1 runs.
 
-        # Group articles by which slots they're eligible for (based on freshness)
+        # All articles go to ALL 5 slots - no freshness-based slot filtering
         slot_batches: Dict[int, List[Dict]] = {1: [], 2: [], 3: [], 4: [], 5: []}
         article_lookup: Dict[str, Dict] = {}  # story_id -> full article data
 
@@ -167,16 +175,9 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
                 results["skipped"] += 1
                 continue
 
-            # Calculate freshness hours
+            # Calculate freshness hours (for informational purposes only)
             date_og_published = fields.get('date_og_published', '')
             hours_ago = _calculate_hours_ago(date_og_published)
-
-            # PRE-CALCULATE eligible slots based on freshness
-            freshness_eligible_slots = _calculate_eligible_slots(hours_ago)
-            if not freshness_eligible_slots:
-                results["skipped"] += 1
-                print(f"[Step 1] Skipping {story_id} - too old ({hours_ago}h, published: {date_og_published})", flush=True)
-                continue
 
             # Build headline (prefer ai_headline)
             headline = fields.get('ai_headline', '') or fields.get('headline', '')
@@ -192,14 +193,14 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
             ]
             summary = ' | '.join(p for p in summary_parts if p)
 
-            # Build article data for Gemini batch
+            # Build article data for AI batch
             article_data = {
                 "story_id": story_id,
                 "pivot_id": pivot_id,
                 "headline": headline,
                 "summary": summary or fields.get('ai_dek', ''),
                 "source_score": source_score,
-                "freshness_hours": hours_ago,
+                "freshness_hours": hours_ago,  # Kept for AI context, not for filtering
                 "source_id": source_id,
                 "core_url": core_url,
                 "date_og_published": fields.get('date_og_published', ''),
@@ -209,8 +210,9 @@ def prefilter_stories(lookback_hours: int = 10) -> dict:
             # Store for later lookup
             article_lookup[story_id] = article_data
 
-            # Add to eligible slot batches
-            for slot in freshness_eligible_slots:
+            # FIX (1/9/26): Add to ALL slot batches - no freshness filtering in Step 1
+            # Step 1 filters by TOPIC (via AI prompts), Step 2 filters by FRESHNESS
+            for slot in [1, 2, 3, 4, 5]:
                 slot_batches[slot].append(article_data)
 
         print(f"[Step 1] ========== SLOT BATCH SUMMARY ==========", flush=True)
@@ -496,30 +498,6 @@ def _calculate_hours_ago(date_str: str) -> int:
         return 999
 
 
-def _calculate_eligible_slots(freshness_hours: int) -> List[int]:
-    """
-    Pre-calculate which slots a story is eligible for based on freshness.
-    This matches n8n workflow's "Prepare Candidates" node logic.
-
-    Freshness Rules:
-    - 0-24h: All slots (1, 2, 3, 4, 5)
-    - 24-48h: Slots 2, 3, 4, 5
-    - 48-72h: Slots 3, 4, 5
-    - 72-168h (1 week): Slots 3, 5 only
-    - >168h: No slots (too old)
-    """
-    if freshness_hours <= 24:
-        return [1, 2, 3, 4, 5]
-    elif freshness_hours <= 48:
-        return [2, 3, 4, 5]
-    elif freshness_hours <= 72:
-        return [3, 4, 5]
-    elif freshness_hours <= 168:
-        return [3, 5]
-    else:
-        return []
-
-
 def _slot1_company_filter_batch(articles: List[Dict]) -> List[str]:
     """
     Slot 1 Company Filter - runs in PARALLEL with Gemini.
@@ -609,6 +587,7 @@ def _gather_prefilter_data(lookback_hours: int = 24) -> dict:
     print(f"[Prefilter] Loaded {len(articles_lookup)} article details", flush=True)
 
     # Build slot batches
+    # FIX (1/9/26): ALL articles go to ALL slots - no freshness filtering in Step 1
     slot_batches: Dict[int, List[Dict]] = {1: [], 2: [], 3: [], 4: [], 5: []}
     article_lookup: Dict[str, Dict] = {}
     processed = 0
@@ -636,11 +615,6 @@ def _gather_prefilter_data(lookback_hours: int = 24) -> dict:
 
         date_og_published = fields.get('date_og_published', '')
         hours_ago = _calculate_hours_ago(date_og_published)
-        freshness_eligible_slots = _calculate_eligible_slots(hours_ago)
-
-        if not freshness_eligible_slots:
-            skipped += 1
-            continue
 
         headline = fields.get('ai_headline', '') or fields.get('headline', '')
         core_url = fields.get('core_url', '') or article_fields.get('core_url', '') or article_fields.get('original_url', '')
@@ -659,7 +633,7 @@ def _gather_prefilter_data(lookback_hours: int = 24) -> dict:
             "headline": headline,
             "summary": summary or fields.get('ai_dek', ''),
             "source_score": source_score,
-            "freshness_hours": hours_ago,
+            "freshness_hours": hours_ago,  # Kept for AI context, not for filtering
             "source_id": source_id,
             "core_url": core_url,
             "date_og_published": fields.get('date_og_published', ''),
@@ -668,7 +642,8 @@ def _gather_prefilter_data(lookback_hours: int = 24) -> dict:
 
         article_lookup[story_id] = article_data
 
-        for slot in freshness_eligible_slots:
+        # FIX (1/9/26): Add to ALL slot batches - Step 1 filters by TOPIC, Step 2 by FRESHNESS
+        for slot in [1, 2, 3, 4, 5]:
             slot_batches[slot].append(article_data)
 
     print(f"[Prefilter] Data gathering complete. Processed: {processed}, Skipped: {skipped}", flush=True)

@@ -18,6 +18,8 @@ Schedule (ET → UTC):
     Step 4b: Mautic Send    - 5:00 AM ET  = 10:00 AM UTC
     Step 5: Social Sync     - 4:30 AM ET  = 9:30 AM UTC
     Step 5b: Social Sync 2  - 5:00 AM ET  = 10:00 AM UTC
+
+    Scheduled Send Checker  - Every 5 minutes (checks for user-scheduled newsletters)
 """
 
 import os
@@ -54,6 +56,7 @@ def setup_scheduled_jobs(scheduler: Scheduler):
     from jobs.html_compile import compile_html
     from jobs.mautic_send import send_via_mautic
     from jobs.social_sync import sync_social_posts
+    from jobs.scheduled_send_checker import check_scheduled_newsletters
 
     # Clear existing scheduled jobs
     for job in scheduler.get_jobs():
@@ -140,6 +143,17 @@ def setup_scheduled_jobs(scheduler: Scheduler):
         description='Step 5b: Second social sync run'
     )
     print("[Scheduler] Step 5b (social_sync_2) scheduled: 10:00 AM UTC Tue-Sat")
+
+    # Scheduled Send Checker - Every 5 minutes (all days)
+    # Checks for newsletters with status='scheduled' and sends when their time arrives
+    scheduler.cron(
+        '*/5 * * * *',  # Every 5 minutes
+        func=check_scheduled_newsletters,
+        queue_name='high',
+        id='scheduled_send_checker',
+        description='Check for scheduled newsletters and trigger sends'
+    )
+    print("[Scheduler] Scheduled Send Checker: Every 5 minutes")
 
     print("[Scheduler] All jobs scheduled successfully")
 

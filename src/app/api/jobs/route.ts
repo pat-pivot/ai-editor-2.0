@@ -28,6 +28,7 @@ const VALID_STEPS = [
   "mautic_send",
   "gmail_send",  // Test email send via Gmail (accepts recipient param)
   "social_sync",
+  "scheduled_send_checker",  // Checks for scheduled newsletters and triggers sends
   // Sandbox jobs (FreshRSS-based pipeline)
   "ingest_sandbox",
   "ai_scoring_sandbox",
