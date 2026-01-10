@@ -54,6 +54,44 @@ def get_next_issue_id() -> str:
     return f"Pivot 5 - {next_issue.strftime('%b %d')}"
 
 
+def _detect_issue_id_from_decorated_stories(airtable: AirtableClient) -> Optional[str]:
+    """
+    Auto-detect issue_id from decorated stories with image_status='generated'.
+
+    This fixes the date mismatch bug where Step 3 uses actual issue_date from
+    Selected Slots, but Step 4 was calculating a future date.
+
+    Args:
+        airtable: AirtableClient instance
+
+    Returns:
+        issue_id string from decorated stories, or None if none found
+    """
+    try:
+        # Query for ANY stories with image_status='generated' (no issue_id filter)
+        # This uses the existing method that doesn't require issue_id
+        records = airtable.get_decorations_for_compile(max_records=5)
+
+        if not records:
+            logger.info("[Step 4a] No decorated stories found for auto-detection")
+            return None
+
+        # Get issue_id from the first story
+        first_story = records[0]
+        issue_id = first_story.get('fields', {}).get('issue_id', '')
+
+        if issue_id:
+            logger.info(f"[Step 4a] Auto-detected issue_id: {issue_id} from {len(records)} decorated stories")
+            return issue_id
+
+        logger.warning("[Step 4a] Decorated stories found but no issue_id field")
+        return None
+
+    except Exception as e:
+        logger.error(f"[Step 4a] Error detecting issue_id: {e}")
+        return None
+
+
 def compile_html(issue_id: Optional[str] = None) -> dict:
     """
     Step 4a: HTML Compile - Main entry point
@@ -69,7 +107,7 @@ def compile_html(issue_id: Optional[str] = None) -> dict:
     - Create a record: Write to Newsletter Issues Final (status='next-send')
 
     Args:
-        issue_id: Optional specific issue ID. Defaults to today's date.
+        issue_id: Optional specific issue ID. Defaults to auto-detect from decorated stories.
 
     Returns:
         {
@@ -85,13 +123,26 @@ def compile_html(issue_id: Optional[str] = None) -> dict:
             "errors": list
         }
     """
-    # Use provided issue_id or generate for next issue
-    target_issue_id = issue_id or get_next_issue_id()
+    # Initialize client early to detect issue_id if needed
+    airtable = AirtableClient()
+
+    # If no issue_id provided, find the most recent issue with decorated stories
+    if issue_id:
+        target_issue_id = issue_id
+        logger.info(f"[Step 4a] Using provided issue_id: {target_issue_id}")
+    else:
+        # Query for any stories with image_status='generated' to find the issue_id
+        target_issue_id = _detect_issue_id_from_decorated_stories(airtable)
+        if not target_issue_id:
+            # Fall back to calculated date if no decorated stories found
+            target_issue_id = get_next_issue_id()
+            logger.warning(f"[Step 4a] No decorated stories found, falling back to calculated date: {target_issue_id}")
+        else:
+            logger.info(f"[Step 4a] Auto-detected issue_id from decorated stories: {target_issue_id}")
 
     logger.info(f"[Step 4a] Starting HTML compilation for: {target_issue_id}")
 
-    # Initialize clients
-    airtable = AirtableClient()
+    # Initialize Claude client (airtable already initialized above)
     claude = ClaudeClient()
 
     # Track results
