@@ -35,10 +35,10 @@ from typing import Dict, List
 EST = ZoneInfo("America/New_York")
 
 # Sites that need Browserbase retry (case-insensitive matching)
+# Note: Bloomberg removed - requires paid subscription for content access
 BROWSERBASE_SOURCES = [
     "WSJ",
     "Wall Street Journal",
-    "Bloomberg",
     "New York Times",
     "NYT",
     "MSN",
