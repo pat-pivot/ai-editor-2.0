@@ -426,7 +426,7 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
     if not issues:
         # Still process decorated_stories even if no issues
         if decorated_stories:
-            for story in decorated_stories[:30]:  # Limit to most recent 30
+            for story in decorated_stories:  # FIX 1/9/26: Use ALL stories, not just 30 (14-day window has ~45 stories)
                 fields = story.get('fields', {})
                 summary = {
                     "headline": fields.get('headline', ''),
@@ -481,7 +481,7 @@ def _extract_recent_issues_data(issues: List[dict], decorated_stories: List[dict
         print(f"[Step 2] Processing {len(decorated_stories)} decorated stories for semantic context")
         skipped_no_headline = 0
         skipped_no_bullets = 0
-        for story in decorated_stories[:30]:  # Limit to most recent 30
+        for story in decorated_stories:  # FIX 1/9/26: Use ALL stories (removed [:30] limit that was excluding older stories in 14-day window)
             fields = story.get('fields', {})
             headline = fields.get('headline', '')
             bullets = [

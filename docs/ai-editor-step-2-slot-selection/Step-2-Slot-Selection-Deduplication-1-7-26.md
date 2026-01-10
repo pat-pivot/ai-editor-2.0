@@ -1,12 +1,15 @@
 # Step 2 Slot Selection - Deduplication Investigation
 
-**Last Updated:** January 8, 2026
-**Investigation Status:** COMPLETE - Root cause confirmed, fix NEVER IMPLEMENTED
+**Last Updated:** January 9, 2026
+**Investigation Status:** BOTH BUGS FIXED - Ready for deployment
 
 ---
 
 ## EXECUTIVE SUMMARY
 
+**TWO SEPARATE BUGS have been identified in the deduplication system:**
+
+### Bug 1: Within-Issue Headline Deduplication (Jan 8, 2026)
 **The within-issue headline deduplication logic WAS NEVER CODED.**
 
 The user's assumption that this was "coded weeks ago" is incorrect. After a thorough investigation of the git history and codebase, I can confirm:
@@ -15,6 +18,16 @@ The user's assumption that this was "coded weeks ago" is incorrect. After a thor
 2. **Claude NEVER receives today's selected headlines** - Only storyIDs are tracked in `cumulative_state`
 3. **The deduplication that WAS implemented** only covers the 14-day historical lookback, NOT within-issue duplicates
 4. **Git history confirms** - No commit has ever added headline tracking for within-issue deduplication
+
+### Bug 2: 14-Day Semantic Deduplication Story Limit (Jan 9, 2026)
+**The 14-day semantic deduplication uses only 30 stories, not all 45 from the 14-day window.**
+
+New investigation on Jan 9, 2026 revealed:
+
+1. **`story_summaries` is limited to 30 stories** - Line 413 in slot_selection.py: `for story in decorated_stories[:30]`
+2. **14-day lookback has ~45 storyIDs** - 9 issues × 5 slots = 45 stories
+3. **Older stories get pushed out** - After 4 days, a story at position 30+ is NOT sent to Claude for semantic comparison
+4. **Evidence:** Utah AI prescription story (Jan 06) reappeared Jan 10 because it was pushed to position 30+ after 4 days of new stories
 
 ---
 
@@ -258,9 +271,9 @@ if headlines_today:
 
 ---
 
-## EVIDENCE: THE BUG IN ACTION
+## EVIDENCE: BUG 1 IN ACTION (Within-Issue Deduplication)
 
-### Jan 09 Newsletter Duplicate
+### Jan 09 Newsletter Duplicate (Same Day, Different Sources)
 
 | Slot | Headline | Source | News Event |
 |------|----------|--------|------------|
@@ -281,25 +294,143 @@ if headlines_today:
 
 ---
 
+## EVIDENCE: BUG 2 IN ACTION (30-Story Limit)
+
+### Jan 10 Newsletter Duplicate (4 Days Apart, Same News Event)
+
+| Date | Headline | storyID |
+|------|----------|---------|
+| Jan 06 | "Utah Becomes First State to Allow AI Systems to Renew Prescriptions Without Human Review" | (original ID) |
+| Jan 10 | "Utah tests AI for routine medication refills through regulatory relief program" | (different ID) |
+
+**Same news event (Utah AI prescription regulation), 4 days apart, reselected because the Jan 06 story was pushed out of the 30-story limit.**
+
+### Render Logs from Jan 10, 2026 00:36:34 UTC (7:36 PM EST Jan 9)
+
+```
+[Step 2] Found 50 decorated stories for semantic context
+[Step 2] Story summaries built: 30 added, 0 skipped (no headline), 0 without bullets
+[Step 2] Summary 1: 'Alphabet Overtakes Apple...' bullets=3
+[Step 2] Summary 2: 'Samsung Reports Record Profit...' bullets=3
+[Step 2] Summary 3: 'JPMorgan Drops Proxy Advisory Firms...' bullets=3
+[Step 2] Recent issues found: 9, total storyIds: 45, story_summaries: 30
+[Step 2] Slot 3: Found 200 candidates
+[Step 2] Slot 3: Filtered out 2 duplicates (by storyID/headline/pivotId)
+[Step 2] Slot 3: 198 available after filtering
+[Step 2] Slot 3 selected: Utah tests AI for routine medication refills throu...
+```
+
+### Why This Happened
+
+1. **50 decorated stories fetched** - `get_recent_decorated_stories()` returns 50 records
+2. **Only 30 used for Claude** - Line 413: `for story in decorated_stories[:30]`
+3. **14-day lookback has 45 storyIDs** - 9 issues × 5 slots = 45 unique stories
+4. **Jan 06 Utah story at position 30+** - After 4 days of new stories (~20 new stories), it was pushed out
+5. **Exact headline match failed** - "Utah Becomes First State..." != "Utah tests AI..."
+6. **Different storyIDs** - Not caught by storyID deduplication
+7. **Not in story_summaries** - Claude never received the Jan 06 Utah story for semantic comparison
+8. **Result:** Claude selected the Jan 10 Utah story, creating a duplicate news event
+
+### The Code That Causes This
+
+**File:** `/workers/jobs/slot_selection.py` (lines 406-419)
+
+```python
+def _extract_recent_issues_data(self, selected_slots: list, decorated_stories: list) -> dict:
+    """Extract data from recent issues for deduplication."""
+    data = {
+        "storyIds": set(),
+        "headlines": [],
+        "pivotIds": set(),
+        "story_summaries": []
+    }
+
+    # ... storyIds extraction (uses ALL selected_slots) ...
+
+    # Build story summaries from decorated stories
+    for story in decorated_stories[:30]:  # <-- THE BUG: Only first 30!
+        fields = story.get('fields', {})
+        summary = {
+            "headline": fields.get('headline', ''),
+            # ... bullets, dek, label, storyId ...
+        }
+        if summary["headline"]:
+            data["story_summaries"].append(summary)
+```
+
+### The Fix for Bug 2
+
+**Option A: Match 14-day storyID count**
+```python
+# Use all decorated stories, not just first 30
+for story in decorated_stories:  # Remove [:30] limit
+```
+
+**Option B: Filter by date instead of count**
+```python
+# Only include stories from the 14-day window
+cutoff_date = (datetime.now() - timedelta(days=14)).isoformat()
+for story in decorated_stories:
+    if story.get('fields', {}).get('issue_date', '') >= cutoff_date:
+        # ... build summary ...
+```
+
+**Option C: Increase limit to 50**
+```python
+# Match the fetch limit
+for story in decorated_stories[:50]:  # Increased from 30
+```
+
+---
+
 ## RECOMMENDED FIX IMPLEMENTATION
 
-### Priority: HIGH - Should be implemented immediately
+### Priority: HIGH - Both bugs should be fixed immediately
 
-### Files to Modify:
+---
+
+### Bug 1 Fix: Within-Issue Headline Deduplication - ✅ FIXED Jan 8, 2026
+
+**Files Modified:**
 
 1. **`/workers/jobs/slot_selection.py`**
-   - Add `selectedHeadlinesToday` to `cumulative_state` initialization
-   - Add headline tracking after each selection
+   - Added `selectedHeadlinesToday` to `cumulative_state` initialization (line 150)
+   - Added headline tracking after each selection (line 343)
 
 2. **`/workers/utils/claude.py`**
-   - Add "HEADLINES ALREADY SELECTED FOR TODAY'S ISSUE" section to prompt
-   - Include in both database-prompt path and fallback path
+   - Added "CRITICAL: Headlines Already Selected for TODAY'S Issue" section (lines 209-217, 288-295)
+   - Included in both database-prompt path AND fallback path
 
-### Testing:
+**Commit:** `3449a16` - "Add within-issue headline deduplication to slot selection"
+
+**Testing:**
 
 1. Run Step 2 manually and verify logs show headline tracking
 2. Check that Slot 3+ prompts include previous slot headlines
 3. Test with known duplicate news events (same story, different sources)
+
+---
+
+### Bug 2 Fix: 30-Story Limit for Semantic Deduplication - ✅ FIXED Jan 9, 2026
+
+**File Modified:** `/workers/jobs/slot_selection.py`
+
+**Fix Applied (Option A):**
+
+```python
+# Lines 429 and 484: Removed the [:30] limit
+for story in decorated_stories:  # FIX 1/9/26: Use ALL stories (removed [:30] limit)
+```
+
+Both occurrences were fixed:
+- Line 429: In the `if not issues` branch
+- Line 484: In the main processing branch
+
+**Testing:**
+
+1. Check logs show "Story summaries built: ~45-50 added" instead of 30
+2. Verify Utah-style stories from 4+ days ago are in story_summaries
+3. Confirm Claude rejects semantically similar stories from older issues
 
 ---
 
