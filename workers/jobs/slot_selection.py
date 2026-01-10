@@ -29,8 +29,12 @@ BASE_SLOT_FRESHNESS = {
     5: 7,   # 0-7 days
 }
 
-# 14-day lookback for duplicate checking (matches n8n workflow)
+# 14-day lookback for storyID/headline exact match checking (matches n8n workflow)
 DUPLICATE_LOOKBACK_DAYS = 14
+
+# 7-day lookback for semantic deduplication (story summaries sent to Claude)
+# Shorter window = fewer tokens in prompt, still catches recent duplicates
+SEMANTIC_LOOKBACK_DAYS = 7
 
 
 def get_next_issue_date() -> tuple[str, str]:
@@ -136,8 +140,9 @@ def select_slots() -> dict:
         recent_issues = airtable.get_recent_sent_issues(DUPLICATE_LOOKBACK_DAYS)
 
         # 1b. Get decorated stories for semantic deduplication (added 1/7/26)
-        print(f"[Step 2] Fetching decorated stories for semantic deduplication...")
-        decorated_stories = airtable.get_recent_decorated_stories(DUPLICATE_LOOKBACK_DAYS)
+        # Updated 1/9/26: Use 7-day window instead of 14-day (fewer tokens, still effective)
+        print(f"[Step 2] Fetching decorated stories for semantic deduplication (last {SEMANTIC_LOOKBACK_DAYS} days)...")
+        decorated_stories = airtable.get_recent_decorated_stories(SEMANTIC_LOOKBACK_DAYS)
         print(f"[Step 2] Found {len(decorated_stories)} decorated stories for semantic context")
 
         # Pass decorated_stories to extraction function for semantic context
