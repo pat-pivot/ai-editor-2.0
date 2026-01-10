@@ -716,7 +716,22 @@ If no stories match, return: {{"matches": []}}"""
             print(f"[Gemini {slot_name}] Response preview: {response_text[:200]}...", flush=True)
 
             result = json.loads(response_text)
-            matches = result.get('matches', [])
+
+            # Handle both response formats:
+            # 1. {"matches": [...]} - dict with matches key (expected)
+            # 2. [...] - direct list of matches (Gemini inconsistency)
+            if isinstance(result, list):
+                # Gemini returned a direct list instead of {"matches": [...]}
+                matches = result
+                print(f"[Gemini {slot_name}] ⚠️ Gemini returned direct list (not {{matches: [...]}}), handling gracefully", flush=True)
+                logger.warning(f"[Gemini {slot_name}] Gemini returned direct list instead of dict with 'matches' key")
+            elif isinstance(result, dict):
+                matches = result.get('matches', [])
+            else:
+                # Unexpected format - treat as empty
+                matches = []
+                print(f"[Gemini {slot_name}] ✗ Unexpected response type: {type(result).__name__}", flush=True)
+                logger.error(f"[Gemini {slot_name}] Unexpected response type: {type(result).__name__}")
 
             if is_truncated:
                 print(f"[Gemini {slot_name}] ✓ Recovered {len(matches)} matches despite truncation warning", flush=True)
