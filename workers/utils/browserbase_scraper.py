@@ -24,6 +24,7 @@ Optional (for authenticated scraping):
 
 import os
 import json
+import random
 from typing import Optional, Dict
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -67,9 +68,12 @@ class BrowserbaseNewsScraper:
             "password_selector": 'input[name="password"]',
             "submit_selector": 'button[type="submit"]',
             "article_selectors": [
+                # Primary NYT selectors (based on current site structure)
+                'article#story div.StoryBodyCompanionColumn',
+                'section[name="articleBody"]',
                 '[data-testid="article-body"]',
+                "article#story",
                 "article",
-                '[class*="StoryBodyCompanionColumn"]',
             ],
             "env_user": "NYT_EMAIL",
             "env_pass": "NYT_PASSWORD"
@@ -143,13 +147,23 @@ class BrowserbaseNewsScraper:
         return None
 
     def _create_session(self, site_key: Optional[str] = None) -> object:
-        """Create a Browserbase session with stealth settings."""
+        """Create a Browserbase session with proper settings per documentation."""
         session_settings = {
             "project_id": self.project_id,  # Required by SDK v1.4+
             "browser_settings": {
-                # Note: advanced_stealth requires Enterprise plan, disabled for now
+                "solve_captchas": True,  # Auto-solve CAPTCHAs
+                "block_ads": True,  # Faster page loads
+                "viewport": {"width": 1920, "height": 1080},
             },
-            "proxies": True,  # Enable proxy rotation
+            # Proxies with US geolocation (correct format per docs)
+            "proxies": [{
+                "type": "browserbase",
+                "geolocation": {
+                    "country": "US",
+                    "state": "NY",
+                    "city": "New York"
+                }
+            }],
         }
 
         # Use authenticated context if available for this site
@@ -186,9 +200,14 @@ class BrowserbaseNewsScraper:
             "project_id": self.project_id,  # Required by SDK v1.4+
             "browser_settings": {
                 "context": {"id": context.id, "persist": True},
-                # Note: advanced_stealth requires Enterprise plan, disabled for now
+                "solve_captchas": True,
+                "block_ads": True,
+                "viewport": {"width": 1920, "height": 1080},
             },
-            "proxies": True
+            "proxies": [{
+                "type": "browserbase",
+                "geolocation": {"country": "US"}
+            }]
         }
 
         session = self.bb.sessions.create(**session_settings)
@@ -265,9 +284,16 @@ class BrowserbaseNewsScraper:
                 page = ctx.pages[0]
 
                 try:
-                    # Navigate to article
-                    page.goto(url, wait_until="networkidle", timeout=30000)
-                    page.wait_for_timeout(2000)  # Wait for dynamic content
+                    # Navigate to article (use domcontentloaded, not networkidle - more reliable)
+                    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+                    # Wait for page to stabilize and content to load
+                    page.wait_for_timeout(5000)
+
+                    # Human-like delay and scroll (helps avoid detection, loads content before paywall)
+                    page.wait_for_timeout(random.randint(2000, 4000))
+                    page.evaluate("window.scrollBy(0, window.innerHeight / 2)")
+                    page.wait_for_timeout(random.randint(1000, 2000))
 
                     # Get title
                     title = "Unknown Title"
