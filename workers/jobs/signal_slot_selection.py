@@ -24,6 +24,7 @@ from typing import List, Dict, Optional, Any
 
 from utils.airtable import AirtableClient
 from utils.claude import ClaudeClient
+from utils.prompts import get_prompt
 
 # EST timezone (UTC-5) for newsletter scheduling
 # Signal is for US East Coast readers, so all date calculations must use EST
@@ -457,7 +458,7 @@ def _select_single_slot(
 
     # Get prompt from database and fill placeholders
     try:
-        prompt_template = claude.get_prompt_content(prompt_key)
+        prompt_template = get_prompt(prompt_key)
         if not prompt_template:
             # Fallback: Use a basic selection prompt
             print(f"[Signal Selection] Warning: No prompt found for {prompt_key}, using fallback")
@@ -471,11 +472,17 @@ def _select_single_slot(
             selected_companies=selected_companies_text
         )
 
-        # Call Claude
-        response = claude.call_claude_raw(prompt)
+        # Call Claude using the Anthropic client directly
+        response = claude.client.messages.create(
+            model=claude.default_model,
+            max_tokens=2000,
+            temperature=0.3,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        response_text = response.content[0].text
 
         # Parse JSON response
-        selection = _parse_json_response(response)
+        selection = _parse_json_response(response_text)
         if not selection:
             return {"error": "Failed to parse Claude response as JSON"}
 
@@ -516,7 +523,7 @@ def _select_signals(
         Dict with "signals" key containing list of 5 selections
     """
     try:
-        prompt_template = claude.get_prompt_content("signal_signals_agent")
+        prompt_template = get_prompt("signal_signals_agent")
         if not prompt_template:
             print("[Signal Selection] Warning: No prompt found for signal_signals_agent, using fallback")
             prompt_template = _get_fallback_signals_prompt()
@@ -529,11 +536,17 @@ def _select_signals(
             selected_companies=selected_companies_text
         )
 
-        # Call Claude
-        response = claude.call_claude_raw(prompt)
+        # Call Claude using the Anthropic client directly
+        response = claude.client.messages.create(
+            model=claude.default_model,
+            max_tokens=3000,
+            temperature=0.3,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        response_text = response.content[0].text
 
         # Parse JSON response
-        selection = _parse_json_response(response)
+        selection = _parse_json_response(response_text)
         if not selection:
             return {"error": "Failed to parse Claude response as JSON"}
 
@@ -573,7 +586,7 @@ def _generate_signal_subject_line(
         Subject line string
     """
     try:
-        prompt_template = claude.get_prompt_content("signal_subject_line")
+        prompt_template = get_prompt("signal_subject_line")
         if not prompt_template:
             # Fallback: Use a simple template
             return section_headlines.get('top_story', 'AI News Today')[:90]
@@ -586,11 +599,17 @@ def _generate_signal_subject_line(
             beyond_business_headline=section_headlines.get('beyond', '')
         )
 
-        # Call Claude
-        response = claude.call_claude_raw(prompt)
+        # Call Claude using the Anthropic client directly
+        response = claude.client.messages.create(
+            model=claude.default_model,
+            max_tokens=100,
+            temperature=0.7,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        response_text = response.content[0].text
 
         # Subject line should be plain text
-        return response.strip().strip('"')[:90]
+        return response_text.strip().strip('"')[:90]
 
     except Exception as e:
         print(f"[Signal Selection] Error generating subject line: {e}")

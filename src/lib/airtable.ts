@@ -728,47 +728,12 @@ export async function getSignalPendingIssue(skipCache: boolean = false): Promise
     throw new Error("Signal base ID or selected slots table not configured");
   }
 
+  // Don't specify fields - let Airtable return all available fields
+  // This avoids 422 errors if the table schema doesn't match expected field names
   const records = await fetchAirtable(SIGNAL_BASE_ID, TABLES.signalSelectedSlots, {
     maxRecords: 1,
     filterByFormula: "{status} = 'pending'",
     sort: [{ field: "issue_date", direction: "desc" }],
-    fields: [
-      "issue_id",
-      "issue_date",
-      "status",
-      // Top Story (Slot 1)
-      "top_story_story_id",
-      "top_story_pivot_id",
-      "top_story_headline",
-      // AI At Work (Slot 3)
-      "ai_at_work_story_id",
-      "ai_at_work_pivot_id",
-      "ai_at_work_headline",
-      // Emerging (Slot 4)
-      "emerging_story_id",
-      "emerging_pivot_id",
-      "emerging_headline",
-      // Beyond (Slot 5)
-      "beyond_story_id",
-      "beyond_pivot_id",
-      "beyond_headline",
-      // Signals 1-5 (all from Slot 2)
-      "signal_1_story_id",
-      "signal_1_pivot_id",
-      "signal_1_headline",
-      "signal_2_story_id",
-      "signal_2_pivot_id",
-      "signal_2_headline",
-      "signal_3_story_id",
-      "signal_3_pivot_id",
-      "signal_3_headline",
-      "signal_4_story_id",
-      "signal_4_pivot_id",
-      "signal_4_headline",
-      "signal_5_story_id",
-      "signal_5_pivot_id",
-      "signal_5_headline",
-    ],
     skipCache,
   });
 
@@ -917,46 +882,11 @@ export async function getSignalLatestIssue(skipCache: boolean = false): Promise<
     throw new Error("Signal base ID or selected slots table not configured");
   }
 
+  // Don't specify fields - let Airtable return all available fields
+  // This avoids 422 errors if the table schema doesn't match expected field names
   const records = await fetchAirtable(SIGNAL_BASE_ID, TABLES.signalSelectedSlots, {
     maxRecords: 1,
     sort: [{ field: "issue_date", direction: "desc" }],
-    fields: [
-      "issue_id",
-      "issue_date",
-      "status",
-      // Top Story (Slot 1)
-      "top_story_story_id",
-      "top_story_pivot_id",
-      "top_story_headline",
-      // AI At Work (Slot 3)
-      "ai_at_work_story_id",
-      "ai_at_work_pivot_id",
-      "ai_at_work_headline",
-      // Emerging (Slot 4)
-      "emerging_story_id",
-      "emerging_pivot_id",
-      "emerging_headline",
-      // Beyond (Slot 5)
-      "beyond_story_id",
-      "beyond_pivot_id",
-      "beyond_headline",
-      // Signals 1-5 (all from Slot 2)
-      "signal_1_story_id",
-      "signal_1_pivot_id",
-      "signal_1_headline",
-      "signal_2_story_id",
-      "signal_2_pivot_id",
-      "signal_2_headline",
-      "signal_3_story_id",
-      "signal_3_pivot_id",
-      "signal_3_headline",
-      "signal_4_story_id",
-      "signal_4_pivot_id",
-      "signal_4_headline",
-      "signal_5_story_id",
-      "signal_5_pivot_id",
-      "signal_5_headline",
-    ],
     skipCache,
   });
 
