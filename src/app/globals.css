@@ -153,6 +153,19 @@
   code, pre, .font-mono {
     @apply font-mono;
   }
+  /* Pointer cursor on all clickable elements */
+  button,
+  a,
+  [role="button"],
+  select,
+  summary,
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  label[for],
+  .cursor-pointer {
+    cursor: pointer;
+  }
 }
 
 /* Indeterminate progress bar animation */
