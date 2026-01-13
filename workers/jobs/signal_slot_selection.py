@@ -19,6 +19,7 @@ But shares the Pre-Filter Log table with Pivot 5 (in AI Editor 2.0 base)
 
 import os
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Any
 
@@ -303,7 +304,37 @@ def select_signal_slots() -> dict:
                     })
                     continue
 
-                print(f"[Signal Selection] {section_name}: {len(available_candidates)} available after filtering")
+                print(f"[Signal Selection] {section_name}: {len(available_candidates)} available after pivot_id filtering")
+
+                # Semantic deduplication: filter out stories covering same topics as already-selected
+                selected_headlines = []
+                for prev_slot, prev_selections in current_run_selections.items():
+                    if isinstance(prev_selections, list):
+                        # SIGNALS section returns list of selections
+                        for sel in prev_selections:
+                            if sel.get("selected_headline"):
+                                selected_headlines.append(sel["selected_headline"])
+                    elif isinstance(prev_selections, dict) and prev_selections.get("selected_headline"):
+                        selected_headlines.append(prev_selections["selected_headline"])
+
+                if selected_headlines:
+                    before_semantic = len(available_candidates)
+                    available_candidates = _filter_semantic_duplicates(
+                        available_candidates, selected_headlines, threshold=0.4
+                    )
+                    semantic_filtered = before_semantic - len(available_candidates)
+                    if semantic_filtered > 0:
+                        print(f"[Signal Selection] {section_name}: Filtered out {semantic_filtered} semantic duplicates")
+
+                if not available_candidates:
+                    results["errors"].append({
+                        "section": section_name,
+                        "slot": slot,
+                        "error": "All candidates filtered (pivot_id + semantic dedup)"
+                    })
+                    continue
+
+                print(f"[Signal Selection] {section_name}: {len(available_candidates)} available after all filtering")
 
                 # Build prompt context
                 candidates_text = format_candidates_for_prompt(available_candidates)
@@ -666,9 +697,169 @@ def _parse_json_response(response: str) -> Optional[dict]:
         return None
 
 
+def _extract_key_entities(headline: str) -> set:
+    """
+    Extract key entities (company names, product names, key terms) from a headline.
+    Used for semantic deduplication to catch same-topic stories from different sources.
+
+    Args:
+        headline: The headline text to extract entities from
+
+    Returns:
+        Set of lowercase entity tokens
+    """
+    if not headline:
+        return set()
+
+    # Common words to exclude (stop words + newsletter-specific terms)
+    stop_words = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been',
+        'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+        'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need',
+        'into', 'through', 'during', 'before', 'after', 'above', 'below',
+        'between', 'under', 'over', 'out', 'off', 'up', 'down', 'its', 'it',
+        'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom',
+        'how', 'why', 'when', 'where', 'new', 'says', 'said', 'report',
+        'reports', 'according', 'about', 'more', 'most', 'other', 'some',
+        'such', 'only', 'than', 'then', 'now', 'also', 'just', 'even',
+        'first', 'last', 'next', 'back', 'still', 'well', 'way', 'use',
+        'make', 'made', 'take', 'get', 'got', 'see', 'look', 'come', 'go',
+        'ai', 'deal', 'deals', 'plans', 'plan', 'launch', 'launches'
+    }
+
+    # Clean headline: remove punctuation, lowercase, split into words
+    cleaned = re.sub(r'[^\w\s]', ' ', headline.lower())
+    words = cleaned.split()
+
+    # Filter: keep words 3+ chars that aren't stop words
+    entities = {word for word in words if len(word) >= 3 and word not in stop_words}
+
+    return entities
+
+
+def _is_semantic_duplicate(headline1: str, headline2: str, threshold: float = 0.4) -> bool:
+    """
+    Check if two headlines are semantically similar using Jaccard similarity.
+
+    Args:
+        headline1: First headline to compare
+        headline2: Second headline to compare
+        threshold: Similarity threshold (0.0-1.0). Default 0.4 catches obvious duplicates
+                   while allowing related-but-different stories through.
+
+    Returns:
+        True if headlines are semantic duplicates (similarity >= threshold)
+    """
+    entities1 = _extract_key_entities(headline1)
+    entities2 = _extract_key_entities(headline2)
+
+    if not entities1 or not entities2:
+        return False
+
+    # Jaccard similarity: intersection / union
+    intersection = len(entities1 & entities2)
+    union = len(entities1 | entities2)
+
+    if union == 0:
+        return False
+
+    similarity = intersection / union
+    return similarity >= threshold
+
+
+def _filter_semantic_duplicates(
+    candidates: List[dict],
+    selected_headlines: List[str],
+    threshold: float = 0.4
+) -> List[dict]:
+    """
+    Filter out candidates that are semantic duplicates of already-selected stories.
+
+    Args:
+        candidates: List of candidate stories
+        selected_headlines: Headlines of stories already selected in this run
+        threshold: Jaccard similarity threshold for duplicate detection
+
+    Returns:
+        Filtered list of candidates with semantic duplicates removed
+    """
+    if not selected_headlines:
+        return candidates
+
+    filtered = []
+    for candidate in candidates:
+        candidate_headline = candidate.get('fields', {}).get('headline', '')
+
+        # Check against all selected headlines
+        is_duplicate = False
+        for selected_headline in selected_headlines:
+            if _is_semantic_duplicate(candidate_headline, selected_headline, threshold):
+                print(f"[Signal Selection] Semantic duplicate filtered: '{candidate_headline[:60]}...' matches '{selected_headline[:60]}...'")
+                is_duplicate = True
+                break
+
+        if not is_duplicate:
+            filtered.append(candidate)
+
+    return filtered
+
+
 def _get_fallback_prompt(section_name: str) -> str:
     """Fallback prompt if database prompt is not found."""
+
+    # Section-specific guidance
+    section_guidance = ""
+    if section_name == "BEYOND BUSINESS":
+        section_guidance = """
+## BEYOND BUSINESS SECTION GUIDANCE
+This section showcases AI's positive impact OUTSIDE traditional business/tech contexts.
+Look for: healthcare breakthroughs, scientific discoveries, education innovation,
+environmental solutions, accessibility improvements, creative arts, community benefits.
+AVOID: Business deals, corporate announcements, funding rounds, product launches.
+"""
+    elif section_name == "TOP STORY":
+        section_guidance = """
+## TOP STORY SECTION GUIDANCE
+Select the most newsworthy, high-impact AI story. Prioritize: major breakthroughs,
+significant industry shifts, widely-discussed developments, stories with broad implications.
+"""
+    elif section_name == "AI AT WORK":
+        section_guidance = """
+## AI AT WORK SECTION GUIDANCE
+Focus on practical enterprise AI adoption: productivity tools, workflow automation,
+business process improvements, real-world implementation case studies.
+"""
+    elif section_name == "EMERGING MOVES":
+        section_guidance = """
+## EMERGING MOVES SECTION GUIDANCE
+Highlight strategic moves by companies positioning for AI advantage: partnerships,
+acquisitions, new product directions, competitive positioning, market expansion.
+"""
+
     return f"""You are selecting ONE story for **{section_name}** in the Signal newsletter.
+{section_guidance}
+## CONTENT GUARDRAILS - MANDATORY EXCLUSIONS
+DO NOT select stories primarily about:
+- Death, casualties, fatalities, or loss of life
+- War crimes, atrocities, genocide, or human rights abuses
+- Graphic violence, torture, or physical harm
+- Mass layoffs, widespread job losses, or economic devastation
+- Disasters, tragedies, or catastrophic events
+- Controversial political figures or divisive partisan content
+- Explicit content, adult material, or inappropriate imagery
+- Deepfakes used for harassment, fraud, or misinformation
+
+The Signal newsletter is for busy professionals who want actionable AI insights.
+Stories should be informative, forward-looking, and professionally appropriate.
+
+## SEMANTIC DEDUPLICATION
+Before selecting, check that your choice covers a DIFFERENT topic than recent headlines.
+Even if sources differ, avoid selecting stories about the same:
+- Company announcement or deal
+- Product launch or feature
+- Research finding or study
+- Event or conference news
 
 ## CANDIDATES ({{candidate_count}} stories)
 {{candidates}}
@@ -695,6 +886,34 @@ Return ONLY valid JSON:
 def _get_fallback_signals_prompt() -> str:
     """Fallback prompt for SIGNALS section if database prompt is not found."""
     return """You are selecting FIVE stories for the **SIGNALS** section.
+
+## SIGNALS SECTION GUIDANCE
+SIGNALS provides a diverse roundup of notable AI developments. Select stories that:
+- Cover DIFFERENT topics/companies (no two stories about same company or deal)
+- Span various AI domains (enterprise, consumer, research, policy, etc.)
+- Offer quick, scannable insights for busy professionals
+
+## CONTENT GUARDRAILS - MANDATORY EXCLUSIONS
+DO NOT select stories primarily about:
+- Death, casualties, fatalities, or loss of life
+- War crimes, atrocities, genocide, or human rights abuses
+- Graphic violence, torture, or physical harm
+- Mass layoffs, widespread job losses, or economic devastation
+- Disasters, tragedies, or catastrophic events
+- Controversial political figures or divisive partisan content
+- Explicit content, adult material, or inappropriate imagery
+- Deepfakes used for harassment, fraud, or misinformation
+
+The Signal newsletter is for busy professionals who want actionable AI insights.
+Stories should be informative, forward-looking, and professionally appropriate.
+
+## SEMANTIC DEDUPLICATION - CRITICAL
+Your 5 selections must cover 5 DIFFERENT topics. Check that each selection is about
+a distinct subject matter. Even if sources differ, do not select multiple stories about:
+- The same company announcement or deal
+- The same product launch or feature
+- The same research finding or study
+- The same event or conference news
 
 ## CANDIDATES ({candidate_count} stories)
 {candidates}
