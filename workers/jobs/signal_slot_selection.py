@@ -50,6 +50,15 @@ SIGNAL_SELECTION_ORDER = [
     (2, "signal", "SIGNALS"),  # Selects 5 stories
 ]
 
+# Mapping from section_key to Airtable field prefix
+# The actual Airtable table uses camelCase and different naming
+AIRTABLE_FIELD_PREFIX = {
+    "top_story": "top_story",
+    "ai_at_work": "ai_at_work",
+    "emerging": "emerging_moves",
+    "beyond": "beyond_business",
+}
+
 # Lookback window for pivot_id deduplication
 DUPLICATE_LOOKBACK_DAYS = 14
 
@@ -320,13 +329,16 @@ def select_signal_slots() -> dict:
                         continue
 
                     # Process 5 signal selections
+                    # Use camelCase field names to match Airtable table
                     signals = selection.get("signals", [])
                     for i, sig in enumerate(signals, 1):
                         pivot_id = sig.get("selected_pivotId")
+                        headline = sig.get("selected_headline", "")
                         if pivot_id:
                             excluded_pivot_ids.add(pivot_id)
-                            issue_data[f"signal_{i}_story_id"] = sig.get("selected_id", "")
-                            issue_data[f"signal_{i}_pivot_id"] = pivot_id
+                            issue_data[f"signal_{i}_storyId"] = sig.get("selected_id", "")
+                            issue_data[f"signal_{i}_pivotId"] = pivot_id
+                            issue_data[f"signal_{i}_headline"] = headline
                             results["signals_filled"] += 1
 
                     current_run_selections[slot] = signals
@@ -356,8 +368,11 @@ def select_signal_slots() -> dict:
                         excluded_pivot_ids.add(pivot_id)
 
                     # Update issue data with section-specific field names
-                    issue_data[f"{section_key}_story_id"] = selection.get("selected_id", "")
-                    issue_data[f"{section_key}_pivot_id"] = pivot_id or ""
+                    # Use AIRTABLE_FIELD_PREFIX mapping and camelCase suffix
+                    field_prefix = AIRTABLE_FIELD_PREFIX.get(section_key, section_key)
+                    issue_data[f"{field_prefix}_storyId"] = selection.get("selected_id", "")
+                    issue_data[f"{field_prefix}_pivotId"] = pivot_id or ""
+                    issue_data[f"{field_prefix}_headline"] = headline
 
                     current_run_selections[slot] = selection
                     section_headlines[section_key] = headline

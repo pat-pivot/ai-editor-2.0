@@ -676,9 +676,9 @@ export async function getNewsletterSelectsList(
 // Fields: issue_id, issue_date, status,
 //         top_story_storyId, top_story_pivotId, top_story_headline,
 //         ai_at_work_storyId, ai_at_work_pivotId, ai_at_work_headline,
-//         emerging_storyId, emerging_pivotId, emerging_headline,
-//         beyond_storyId, beyond_pivotId, beyond_headline,
-//         signal_1_* through signal_5_*
+//         emerging_moves_storyId, emerging_moves_pivotId, emerging_moves_headline,
+//         beyond_business_storyId, beyond_business_pivotId, beyond_business_headline,
+//         signal_1_storyId, signal_1_pivotId, signal_1_headline (through signal_5_*)
 export interface SignalSelectedSlots {
   id: string;
   issueId: string;
@@ -748,49 +748,49 @@ export async function getSignalPendingIssue(skipCache: boolean = false): Promise
     issueDate: (fields.issue_date as string) || "",
     status: (fields.status as string) || "pending",
     topStory: {
-      storyId: (fields.top_story_story_id as string) || "",
-      pivotId: (fields.top_story_pivot_id as string) || "",
+      storyId: (fields.top_story_storyId as string) || "",
+      pivotId: (fields.top_story_pivotId as string) || "",
       headline: (fields.top_story_headline as string) || "",
     },
     aiAtWork: {
-      storyId: (fields.ai_at_work_story_id as string) || "",
-      pivotId: (fields.ai_at_work_pivot_id as string) || "",
+      storyId: (fields.ai_at_work_storyId as string) || "",
+      pivotId: (fields.ai_at_work_pivotId as string) || "",
       headline: (fields.ai_at_work_headline as string) || "",
     },
     emerging: {
-      storyId: (fields.emerging_story_id as string) || "",
-      pivotId: (fields.emerging_pivot_id as string) || "",
-      headline: (fields.emerging_headline as string) || "",
+      storyId: (fields.emerging_moves_storyId as string) || "",
+      pivotId: (fields.emerging_moves_pivotId as string) || "",
+      headline: (fields.emerging_moves_headline as string) || "",
     },
     beyond: {
-      storyId: (fields.beyond_story_id as string) || "",
-      pivotId: (fields.beyond_pivot_id as string) || "",
-      headline: (fields.beyond_headline as string) || "",
+      storyId: (fields.beyond_business_storyId as string) || "",
+      pivotId: (fields.beyond_business_pivotId as string) || "",
+      headline: (fields.beyond_business_headline as string) || "",
     },
     signals: [
       {
-        storyId: (fields.signal_1_story_id as string) || "",
-        pivotId: (fields.signal_1_pivot_id as string) || "",
+        storyId: (fields.signal_1_storyId as string) || "",
+        pivotId: (fields.signal_1_pivotId as string) || "",
         headline: (fields.signal_1_headline as string) || "",
       },
       {
-        storyId: (fields.signal_2_story_id as string) || "",
-        pivotId: (fields.signal_2_pivot_id as string) || "",
+        storyId: (fields.signal_2_storyId as string) || "",
+        pivotId: (fields.signal_2_pivotId as string) || "",
         headline: (fields.signal_2_headline as string) || "",
       },
       {
-        storyId: (fields.signal_3_story_id as string) || "",
-        pivotId: (fields.signal_3_pivot_id as string) || "",
+        storyId: (fields.signal_3_storyId as string) || "",
+        pivotId: (fields.signal_3_pivotId as string) || "",
         headline: (fields.signal_3_headline as string) || "",
       },
       {
-        storyId: (fields.signal_4_story_id as string) || "",
-        pivotId: (fields.signal_4_pivot_id as string) || "",
+        storyId: (fields.signal_4_storyId as string) || "",
+        pivotId: (fields.signal_4_pivotId as string) || "",
         headline: (fields.signal_4_headline as string) || "",
       },
       {
-        storyId: (fields.signal_5_story_id as string) || "",
-        pivotId: (fields.signal_5_pivot_id as string) || "",
+        storyId: (fields.signal_5_storyId as string) || "",
+        pivotId: (fields.signal_5_pivotId as string) || "",
         headline: (fields.signal_5_headline as string) || "",
       },
     ],
@@ -863,7 +863,7 @@ export async function updateSignalIssue(
   recordId: string,
   fields: Partial<{
     status: string;
-    // Section updates use format: top_story_story_id, top_story_pivot_id, etc.
+    // Section updates use format: top_story_storyId, top_story_pivotId, emerging_moves_storyId, etc.
     [key: string]: string | number | undefined;
   }>
 ): Promise<void> {
@@ -901,49 +901,49 @@ export async function getSignalLatestIssue(skipCache: boolean = false): Promise<
     issueDate: (fields.issue_date as string) || "",
     status: (fields.status as string) || "pending",
     topStory: {
-      storyId: (fields.top_story_story_id as string) || "",
-      pivotId: (fields.top_story_pivot_id as string) || "",
+      storyId: (fields.top_story_storyId as string) || "",
+      pivotId: (fields.top_story_pivotId as string) || "",
       headline: (fields.top_story_headline as string) || "",
     },
     aiAtWork: {
-      storyId: (fields.ai_at_work_story_id as string) || "",
-      pivotId: (fields.ai_at_work_pivot_id as string) || "",
+      storyId: (fields.ai_at_work_storyId as string) || "",
+      pivotId: (fields.ai_at_work_pivotId as string) || "",
       headline: (fields.ai_at_work_headline as string) || "",
     },
     emerging: {
-      storyId: (fields.emerging_story_id as string) || "",
-      pivotId: (fields.emerging_pivot_id as string) || "",
-      headline: (fields.emerging_headline as string) || "",
+      storyId: (fields.emerging_moves_storyId as string) || "",
+      pivotId: (fields.emerging_moves_pivotId as string) || "",
+      headline: (fields.emerging_moves_headline as string) || "",
     },
     beyond: {
-      storyId: (fields.beyond_story_id as string) || "",
-      pivotId: (fields.beyond_pivot_id as string) || "",
-      headline: (fields.beyond_headline as string) || "",
+      storyId: (fields.beyond_business_storyId as string) || "",
+      pivotId: (fields.beyond_business_pivotId as string) || "",
+      headline: (fields.beyond_business_headline as string) || "",
     },
     signals: [
       {
-        storyId: (fields.signal_1_story_id as string) || "",
-        pivotId: (fields.signal_1_pivot_id as string) || "",
+        storyId: (fields.signal_1_storyId as string) || "",
+        pivotId: (fields.signal_1_pivotId as string) || "",
         headline: (fields.signal_1_headline as string) || "",
       },
       {
-        storyId: (fields.signal_2_story_id as string) || "",
-        pivotId: (fields.signal_2_pivot_id as string) || "",
+        storyId: (fields.signal_2_storyId as string) || "",
+        pivotId: (fields.signal_2_pivotId as string) || "",
         headline: (fields.signal_2_headline as string) || "",
       },
       {
-        storyId: (fields.signal_3_story_id as string) || "",
-        pivotId: (fields.signal_3_pivot_id as string) || "",
+        storyId: (fields.signal_3_storyId as string) || "",
+        pivotId: (fields.signal_3_pivotId as string) || "",
         headline: (fields.signal_3_headline as string) || "",
       },
       {
-        storyId: (fields.signal_4_story_id as string) || "",
-        pivotId: (fields.signal_4_pivot_id as string) || "",
+        storyId: (fields.signal_4_storyId as string) || "",
+        pivotId: (fields.signal_4_pivotId as string) || "",
         headline: (fields.signal_4_headline as string) || "",
       },
       {
-        storyId: (fields.signal_5_story_id as string) || "",
-        pivotId: (fields.signal_5_pivot_id as string) || "",
+        storyId: (fields.signal_5_storyId as string) || "",
+        pivotId: (fields.signal_5_pivotId as string) || "",
         headline: (fields.signal_5_headline as string) || "",
       },
     ],
