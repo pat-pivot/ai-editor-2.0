@@ -16,6 +16,8 @@ import {
   Newspaper,
   BarChart3,
   Settings,
+  FlaskConical,
+  Zap,
   LucideIcon,
 } from "lucide-react";
 
@@ -56,6 +58,13 @@ const navigation: NavSection[] = [
     title: "ANALYTICS",
     items: [
       { name: "Mautic", href: "/analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    title: "SANDBOX",
+    items: [
+      { name: "Zeroin", href: "/sandbox", icon: FlaskConical },
+      { name: "Signal", href: "/sandbox/signal", icon: Zap },
     ],
   },
 ];
