@@ -63,7 +63,6 @@ const navigation: NavSection[] = [
   {
     title: "SANDBOX",
     items: [
-      { name: "Zeroin", href: "/sandbox", icon: FlaskConical },
       { name: "Signal", href: "/sandbox/signal", icon: Zap },
     ],
   },
