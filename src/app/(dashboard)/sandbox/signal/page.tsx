@@ -27,19 +27,16 @@ const SIGNAL_JOBS = {
     name: "Slot Selection",
     icon: CheckSquare,
     description: "Select stories for Signal newsletter (1 top, 3 features, 5 signals)",
-    color: "purple",
   },
   signal_decoration: {
     name: "Decoration",
     icon: Sparkles,
     description: "Generate headlines, deks, and summaries for Signal stories",
-    color: "blue",
   },
   signal_html_compile: {
     name: "HTML Compile",
     icon: Code,
     description: "Compile Signal newsletter HTML (text-only, no images)",
-    color: "emerald",
   },
 };
 
@@ -457,29 +454,29 @@ export default function SignalSandboxPage() {
     <div className="p-6 space-y-6">
       {/* Page Header */}
       <div className="flex items-center gap-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500 text-white shadow-lg shadow-purple-500/25">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500 text-white shadow-lg shadow-orange-500/25">
           <Zap className="h-6 w-6" />
         </div>
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900">Signal Newsletter</h1>
           <p className="text-sm text-zinc-500">
-            Text-only newsletter: Slot Selection - Decoration - HTML Compile
+            Text-only newsletter: Slot Selection, Decoration, HTML Compile
           </p>
         </div>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="slot_selection" className="flex items-center gap-2">
+        <TabsList className="bg-zinc-100">
+          <TabsTrigger value="slot_selection" className="data-[state=active]:bg-white flex items-center gap-2">
             <CheckSquare className="h-4 w-4" />
             Slot Selection
           </TabsTrigger>
-          <TabsTrigger value="decoration" className="flex items-center gap-2">
+          <TabsTrigger value="decoration" className="data-[state=active]:bg-white flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
             Decoration
           </TabsTrigger>
-          <TabsTrigger value="html_compile" className="flex items-center gap-2">
+          <TabsTrigger value="html_compile" className="data-[state=active]:bg-white flex items-center gap-2">
             <Code className="h-4 w-4" />
             HTML Compile
           </TabsTrigger>
@@ -492,7 +489,7 @@ export default function SignalSandboxPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                    slotSelectionState.isRunning ? "bg-purple-500 text-white" : "bg-purple-100 text-purple-600"
+                    slotSelectionState.isRunning ? "bg-orange-500 text-white" : "bg-orange-100 text-orange-600"
                   }`}>
                     {slotSelectionState.isRunning ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -522,10 +519,10 @@ export default function SignalSandboxPage() {
               {slotSelectionState.isRunning ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-700 hover:bg-purple-100">
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100">
                       {slotSelectionState.jobStatus === "queued" ? "Queued" : "Running"}
                     </Badge>
-                    <div className="flex items-center gap-1.5 text-purple-600">
+                    <div className="flex items-center gap-1.5 text-orange-600">
                       <Timer className="h-3.5 w-3.5" />
                       <span className="font-mono text-sm font-medium">
                         {formatTime(slotSelectionState.elapsedTime)}
@@ -558,7 +555,7 @@ export default function SignalSandboxPage() {
                   <Button
                     onClick={() => runJob("slot_selection")}
                     disabled={anyJobRunning}
-                    className="w-full bg-purple-500 hover:bg-purple-600 text-white"
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
                   >
                     <CheckSquare className="h-4 w-4 mr-2" />
                     Run Slot Selection
@@ -611,7 +608,7 @@ export default function SignalSandboxPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                    decorationState.isRunning ? "bg-blue-500 text-white" : "bg-blue-100 text-blue-600"
+                    decorationState.isRunning ? "bg-orange-500 text-white" : "bg-orange-100 text-orange-600"
                   }`}>
                     {decorationState.isRunning ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -643,10 +640,10 @@ export default function SignalSandboxPage() {
               {decorationState.isRunning ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100">
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100">
                       {decorationState.jobStatus === "queued" ? "Queued" : "Running"}
                     </Badge>
-                    <div className="flex items-center gap-1.5 text-blue-600">
+                    <div className="flex items-center gap-1.5 text-orange-600">
                       <Timer className="h-3.5 w-3.5" />
                       <span className="font-mono text-sm font-medium">
                         {formatTime(decorationState.elapsedTime)}
@@ -679,7 +676,8 @@ export default function SignalSandboxPage() {
                   <Button
                     onClick={() => runJob("decoration")}
                     disabled={anyJobRunning}
-                    className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+                    variant="outline"
+                    className="border-orange-200 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
                   >
                     <Sparkles className="h-4 w-4 mr-2" />
                     Run Decoration
@@ -727,7 +725,7 @@ export default function SignalSandboxPage() {
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                  htmlCompileState.isRunning ? "bg-emerald-500 text-white" : "bg-emerald-100 text-emerald-600"
+                  htmlCompileState.isRunning ? "bg-orange-500 text-white" : "bg-orange-100 text-orange-600"
                 }`}>
                   {htmlCompileState.isRunning ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -747,10 +745,10 @@ export default function SignalSandboxPage() {
               {htmlCompileState.isRunning ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100">
                       {htmlCompileState.jobStatus === "queued" ? "Queued" : "Running"}
                     </Badge>
-                    <div className="flex items-center gap-1.5 text-emerald-600">
+                    <div className="flex items-center gap-1.5 text-orange-600">
                       <Timer className="h-3.5 w-3.5" />
                       <span className="font-mono text-sm font-medium">
                         {formatTime(htmlCompileState.elapsedTime)}
@@ -783,7 +781,8 @@ export default function SignalSandboxPage() {
                   <Button
                     onClick={() => runJob("html_compile")}
                     disabled={anyJobRunning}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+                    variant="outline"
+                    className="border-orange-200 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
                   >
                     <Code className="h-4 w-4 mr-2" />
                     Run HTML Compile
@@ -801,18 +800,18 @@ export default function SignalSandboxPage() {
           <div className="flex items-start gap-3">
             <Info className="h-5 w-5 text-zinc-400 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-zinc-600">
-              <p className="font-medium text-zinc-700 mb-2">Signal Newsletter Pipeline</p>
+              <p className="font-medium text-zinc-700 mb-2">Pipeline Flow</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <div className="flex items-start gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded bg-purple-100 text-purple-600 text-[10px] font-bold flex-shrink-0">1</span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">1</span>
                   <span><strong>Slot Selection</strong> - Select 9 stories: 1 top, 3 features, 5 signals</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded bg-blue-100 text-blue-600 text-[10px] font-bold flex-shrink-0">2</span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">2</span>
                   <span><strong>Decoration</strong> - Generate headlines, deks, and summaries</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded bg-emerald-100 text-emerald-600 text-[10px] font-bold flex-shrink-0">3</span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">3</span>
                   <span><strong>HTML Compile</strong> - Build text-only email HTML</span>
                 </div>
               </div>
