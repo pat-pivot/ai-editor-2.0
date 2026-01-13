@@ -147,7 +147,7 @@ class BrowserbaseNewsScraper:
         session_settings = {
             "project_id": self.project_id,  # Required by SDK v1.4+
             "browser_settings": {
-                "advanced_stealth": True,
+                # Note: advanced_stealth requires Enterprise plan, disabled for now
             },
             "proxies": True,  # Enable proxy rotation
         }
@@ -186,7 +186,7 @@ class BrowserbaseNewsScraper:
             "project_id": self.project_id,  # Required by SDK v1.4+
             "browser_settings": {
                 "context": {"id": context.id, "persist": True},
-                "advanced_stealth": True
+                # Note: advanced_stealth requires Enterprise plan, disabled for now
             },
             "proxies": True
         }
