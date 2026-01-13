@@ -1,23 +1,27 @@
 """
 Signal Newsletter Step 3: Decoration Job
 
-Creates AI-generated headlines, summaries, and bullet points for Signal stories.
+Creates AI-generated headlines and content for Signal stories.
 Uses Gemini for content cleaning and Claude for decoration generation.
 
 Key Differences from Pivot 5:
 - NO images (no image_status field)
+- NO links in email (core_url not needed)
 - Two decoration modes:
   - Full story: TOP STORY, AI AT WORK, EMERGING MOVES, BEYOND BUSINESS
-  - Quick-hit: SIGNALS (5 items) - headline + 2 sentences only
+    Fields: headline, one_liner, lead, why_it_matters, whats_next
+  - Quick-hit: SIGNALS (5 items) - headline + signal_blurb only
+    Fields: headline, signal_blurb
 - Uses Signal Issue Stories table in Signal base
-- Different section mapping and field names
 
-Section Order: top_story -> ai_at_work -> emerging -> beyond -> signal_1..signal_5
+Section Order: top_story -> ai_at_work -> emerging_moves -> beyond_business -> signal_1..signal_5
 
 Created: January 12, 2026
+Updated: January 13, 2026 - New semantic field names
 """
 
 import os
+import re
 import json
 import traceback
 from datetime import datetime
@@ -42,17 +46,18 @@ def _log(msg: str, data: Any = None):
 
 # Signal section configuration
 # Order matches slot selection: 1 -> 3 -> 4 -> 5 -> 2 (5 items)
+# Section names must match Airtable singleSelect options exactly
 SIGNAL_SECTIONS = [
     {"section": "top_story", "source_slot": 1, "full_story": True, "display_name": "TOP STORY"},
     {"section": "ai_at_work", "source_slot": 3, "full_story": True, "display_name": "AI AT WORK"},
-    {"section": "emerging", "source_slot": 4, "full_story": True, "display_name": "EMERGING MOVES"},
-    {"section": "beyond", "source_slot": 5, "full_story": True, "display_name": "BEYOND BUSINESS"},
-    # SIGNALS section - 5 quick-hit items
-    {"section": "signal", "signal_num": 1, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #1"},
-    {"section": "signal", "signal_num": 2, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #2"},
-    {"section": "signal", "signal_num": 3, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #3"},
-    {"section": "signal", "signal_num": 4, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #4"},
-    {"section": "signal", "signal_num": 5, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #5"},
+    {"section": "emerging_moves", "source_slot": 4, "full_story": True, "display_name": "EMERGING MOVES"},
+    {"section": "beyond_business", "source_slot": 5, "full_story": True, "display_name": "BEYOND BUSINESS"},
+    # SIGNALS section - 5 quick-hit items (headline + signal_blurb only)
+    {"section": "signal_1", "signal_num": 1, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #1"},
+    {"section": "signal_2", "signal_num": 2, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #2"},
+    {"section": "signal_3", "signal_num": 3, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #3"},
+    {"section": "signal_4", "signal_num": 4, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #4"},
+    {"section": "signal_5", "signal_num": 5, "source_slot": 2, "full_story": False, "display_name": "SIGNAL #5"},
 ]
 
 
@@ -62,13 +67,13 @@ def decorate_signal_stories() -> dict:
 
     Flow:
     1. Get pending issue from Signal Selected Slots (status='pending')
-    2. For each section (top_story, ai_at_work, emerging, beyond, signal_1..5):
+    2. For each section (top_story, ai_at_work, emerging_moves, beyond_business, signal_1..5):
        a. Lookup article markdown by pivot_id from Newsletter Selects (shared table)
        b. Clean content using Gemini (content_cleaner prompt)
        c. Generate decoration using Claude:
-          - Full stories: headline, dek, 3 bullets
-          - SIGNALS: headline + 2 sentences summary
-       d. Apply HTML <b> bolding to bullets (full stories only)
+          - Full stories: headline, one_liner, lead, why_it_matters, whats_next
+          - SIGNALS: headline + signal_blurb (2 sentences)
+       d. Apply HTML <b> bolding to why_it_matters and whats_next (full stories only)
        e. Write to Signal Issue Stories table
     3. Update issue status to 'decorated'
 
@@ -133,23 +138,22 @@ def decorate_signal_stories() -> dict:
 
             try:
                 # Determine field names based on section type
-                if section == "signal" and signal_num:
-                    pivot_id_field = f'signal_{signal_num}_pivot_id'
-                    story_id_field = f'signal_{signal_num}_story_id'
+                # Note: Signal Selected Slots uses section names for field prefixes
+                if signal_num:
+                    # SIGNALS: signal_1, signal_2, etc.
+                    pivot_id_field = f'signal_{signal_num}_pivotId'
                     headline_field = f'signal_{signal_num}_headline'
                 else:
-                    pivot_id_field = f'{section}_pivot_id'
-                    story_id_field = f'{section}_story_id'
+                    # Main sections: top_story, ai_at_work, emerging_moves, beyond_business
+                    pivot_id_field = f'{section}_pivotId'
                     headline_field = f'{section}_headline'
 
                 # Extract data from issue
                 pivot_id = issue_fields.get(pivot_id_field, '')
-                story_id = issue_fields.get(story_id_field, '')
                 original_headline = issue_fields.get(headline_field, '')
 
                 _log(f"{display_name}: Extracted data:")
                 _log(f"  pivot_id ({pivot_id_field}): {pivot_id or '(empty)'}")
-                _log(f"  story_id ({story_id_field}): {story_id or '(empty)'}")
                 _log(f"  headline: {original_headline[:60] if original_headline else '(empty)'}...")
 
                 if not pivot_id:
@@ -171,13 +175,11 @@ def decorate_signal_stories() -> dict:
                 article_fields = article.get('fields', {})
                 markdown = article_fields.get('markdown', '') or article_fields.get('raw', '')
                 source_id = article_fields.get('source_id', '') or article_fields.get('source_name', '')
-                core_url = article_fields.get('original_url', '') or article_fields.get('core_url', '')
 
                 _log(f"{display_name}: Article found:")
                 _log(f"  Record ID: {article.get('id', 'unknown')}")
                 _log(f"  Markdown length: {len(markdown)} chars")
                 _log(f"  Source: {source_id}")
-                _log(f"  URL: {core_url[:60] if core_url else '(empty)'}...")
 
                 if not markdown:
                     _log(f"{display_name}: No markdown/raw content found")
@@ -229,65 +231,60 @@ def decorate_signal_stories() -> dict:
                 _log(f"{display_name}: Claude decoration complete")
                 _log(f"  headline: {decoration.get('ai_headline', '')[:60]}...")
 
-                # 2d. Apply HTML <b> bolding to bullets (full stories only)
-                if is_full_story and decoration.get('ai_bullet_1'):
+                # 2d. Apply HTML <b> bolding to why_it_matters and whats_next (full stories only)
+                if is_full_story and decoration.get('why_it_matters'):
                     _log(f"{display_name}: Applying HTML <b> bolding...")
                     try:
-                        bolded_decoration = claude.apply_bolding(decoration)
-                        decoration["ai_bullet_1"] = bolded_decoration.get("ai_bullet_1", decoration.get("ai_bullet_1", ""))
-                        decoration["ai_bullet_2"] = bolded_decoration.get("ai_bullet_2", decoration.get("ai_bullet_2", ""))
-                        decoration["ai_bullet_3"] = bolded_decoration.get("ai_bullet_3", decoration.get("ai_bullet_3", ""))
+                        bolded_decoration = _apply_signal_bolding(claude, decoration)
+                        decoration["why_it_matters"] = bolded_decoration.get("why_it_matters", decoration.get("why_it_matters", ""))
+                        decoration["whats_next"] = bolded_decoration.get("whats_next", decoration.get("whats_next", ""))
                         _log(f"{display_name}: Bolding complete")
                     except Exception as e:
                         _log(f"{display_name}: Bolding failed: {e}")
-                        _log(f"  Using unbolded bullets")
+                        _log(f"  Using unbolded text")
 
                 # 2e. Write to Signal Issue Stories table
                 _log(f"{display_name}: Writing to Signal Issue Stories...")
 
                 # Build story data based on section type
+                # Field names match Airtable schema (verified 1/13/26)
                 if is_full_story:
+                    # Main sections: headline, one_liner, lead, why_it_matters, whats_next
                     story_data = {
-                        "story_id": story_id,
                         "issue_id": issue_id_text,
                         "section": section,
                         "slot_order": 1,  # Single story per main section
-                        "source_slot": source_slot,
-                        "headline": decoration.get("ai_headline", original_headline),
-                        "summary": decoration.get("ai_dek", ""),
-                        "paragraph": "",  # Signal doesn't use paragraph
-                        "b1": decoration.get("ai_bullet_1", ""),
-                        "b2": decoration.get("ai_bullet_2", ""),
-                        "b3": decoration.get("ai_bullet_3", ""),
-                        "source_attribution": f"via {source_id}" if source_id else "",
                         "pivot_id": pivot_id,
-                        "core_url": core_url,
+                        "headline": decoration.get("ai_headline", original_headline),
+                        "one_liner": decoration.get("one_liner", ""),
+                        "lead": decoration.get("lead", ""),
+                        "signal_blurb": "",  # Not used for full stories
+                        "why_it_matters": decoration.get("why_it_matters", ""),
+                        "whats_next": decoration.get("whats_next", ""),
+                        "source_attribution": f"via {source_id}" if source_id else "",
+                        "raw": cleaned_content[:5000],  # Store for reference
                         "decoration_status": "decorated",
-                        "label": decoration.get("label", "ENTERPRISE"),
                     }
                 else:
-                    # SIGNALS items - headline + summary only, no bullets
+                    # SIGNALS items - headline + signal_blurb only
                     story_data = {
-                        "story_id": story_id,
                         "issue_id": issue_id_text,
-                        "section": "signal",
+                        "section": section,  # signal_1, signal_2, etc.
                         "slot_order": signal_num,
-                        "source_slot": source_slot,
-                        "headline": decoration.get("ai_headline", original_headline),
-                        "summary": decoration.get("signal_summary", ""),
-                        "paragraph": "",
-                        "b1": "",  # No bullets for SIGNALS
-                        "b2": "",
-                        "b3": "",
-                        "source_attribution": f"via {decoration.get('source', source_id)}" if decoration.get('source') or source_id else "",
                         "pivot_id": pivot_id,
-                        "core_url": core_url,
+                        "headline": decoration.get("ai_headline", original_headline),
+                        "one_liner": "",  # Not used for signals
+                        "lead": "",  # Not used for signals
+                        "signal_blurb": decoration.get("signal_blurb", ""),
+                        "why_it_matters": "",  # Not used for signals
+                        "whats_next": "",  # Not used for signals
+                        "source_attribution": f"via {decoration.get('source', source_id)}" if decoration.get('source') or source_id else "",
+                        "raw": cleaned_content[:3000],
                         "decoration_status": "decorated",
-                        "label": "",  # No label for SIGNALS
                     }
 
                 _log(f"{display_name}: Story data to write:")
-                _log(f"  story_id: {story_data['story_id']}")
+                _log(f"  pivot_id: {story_data['pivot_id']}")
                 _log(f"  section: {story_data['section']}")
                 _log(f"  slot_order: {story_data['slot_order']}")
                 _log(f"  headline: {story_data['headline'][:50]}...")
@@ -353,7 +350,7 @@ def _decorate_full_story(
     """
     Generate full story decoration for main sections.
 
-    Output: headline, dek, 3 bullets, label, source
+    Output: ai_headline, one_liner, lead, why_it_matters, whats_next, source
 
     Uses signal_story_decorator prompt from database.
     """
@@ -395,31 +392,41 @@ def _decorate_full_story(
 Return ONLY valid JSON:
 
 {{
-  "label": "CATEGORY from list below",
-  "ai_headline": "Title Case headline, one sentence, NO colons or semi-colons",
-  "ai_dek": "One compelling sentence summarizing the story",
-  "ai_bullet_1": "EXACTLY 2 sentences - the main announcement or news",
-  "ai_bullet_2": "EXACTLY 2 sentences - additional context or details",
-  "ai_bullet_3": "EXACTLY 2 sentences - key insight, implication, or what happens next",
+  "ai_headline": "Title Case headline, max 80 chars, NO colons or semi-colons",
+  "one_liner": "Single compelling sentence for At-a-Glance section (15-25 words)",
+  "lead": "2-3 sentences introducing the story. What happened and why it matters.",
+  "why_it_matters": "EXACTLY 2 sentences explaining relevance to reader.",
+  "whats_next": "EXACTLY 2 sentences on implications or what to watch.",
   "source": "Publication name"
 }}
 
-## LABEL OPTIONS
-WORK, EDUCATION, INFRASTRUCTURE, POLICY, TALENT, HEALTH, RETAIL, ENTERPRISE, COMPETITION, FUNDING, SECURITY, TOOLS, SEARCH, INVESTORS, CHINA, REGULATION, ETHICS, LAWSUITS
-
 ## CRITICAL RULES
 
-### For Bullets:
-1. Each bullet MUST be EXACTLY 2 sentences. Not 1. Not 3. Exactly 2.
-2. Bullet 1: Lead with the news - what happened, who did it
-3. Bullet 2: Context - why this matters, relevant background
-4. Bullet 3: Forward-looking - implications, what to watch
-
-### For Headline:
+### Headline:
 - Title Case (capitalize major words)
-- One complete sentence
+- Maximum 80 characters
 - NO colons, semi-colons, or em-dashes
-- Make it scannable and specific
+- One complete, scannable sentence
+
+### One-Liner (At-a-Glance):
+- Single sentence, 15-25 words
+- Hook that makes reader want to learn more
+- Must stand alone without context
+
+### Lead:
+- 2-3 sentences, ~50-75 words
+- Expand on the one-liner with key details
+- Who, what, when, where
+
+### Why It Matters:
+- EXACTLY 2 sentences. Not 1. Not 3. Exactly 2.
+- Explain relevance to reader
+- Focus on business consequences
+
+### What's Next:
+- EXACTLY 2 sentences. Not 1. Not 3. Exactly 2.
+- Forward-looking implications
+- What to watch, competitive dynamics
 
 === ARTICLE METADATA ===
 Headline: {headline}
@@ -447,27 +454,28 @@ Return ONLY the JSON object. No commentary, no code fences."""
             messages=[{"role": "user", "content": prompt}]
         )
 
-        result = json.loads(response.content[0].text)
-        _log(f"  Full story decoration parsed successfully")
-        return result
-    except json.JSONDecodeError:
-        _log(f"  Failed to parse JSON response, attempting extraction...")
-        import re
-        json_match = re.search(r'\{.*\}', response.content[0].text, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
-        return {
-            "error": "Failed to parse decoration response",
-            "ai_headline": headline,
-            "ai_dek": "",
-            "ai_bullet_1": "",
-            "ai_bullet_2": "",
-            "ai_bullet_3": "",
-            "label": "ENTERPRISE"
-        }
+        response_text = response.content[0].text
+        try:
+            result = json.loads(response_text)
+            _log(f"  Full story decoration parsed successfully")
+            return result
+        except json.JSONDecodeError:
+            _log(f"  Failed to parse JSON response, attempting extraction...")
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    pass
+            return {
+                "error": "Failed to parse decoration response",
+                "ai_headline": headline,
+                "one_liner": "",
+                "lead": "",
+                "why_it_matters": "",
+                "whats_next": "",
+                "source": source_id
+            }
     except Exception as e:
         _log(f"  Decoration API error: {e}")
         return {"error": str(e)}
@@ -482,7 +490,7 @@ def _decorate_signal_item(
     """
     Generate quick-hit decoration for SIGNALS section.
 
-    Output: headline + 2 sentences (signal_summary)
+    Output: ai_headline, signal_blurb (2 sentences), source
 
     Uses signal_signals_decorator prompt from database.
     """
@@ -509,7 +517,7 @@ def _decorate_signal_item(
 
 ## SIGNALS Format
 Each SIGNALS item is a quick scan:
-- One headline
+- One headline (max 60 chars)
 - Two sentences of context
 - No bullets, no expanded treatment
 
@@ -522,17 +530,17 @@ Each SIGNALS item is a quick scan:
 Return ONLY valid JSON:
 
 {{
-  "ai_headline": "Title Case headline, one sentence, NO colons",
-  "signal_summary": "EXACTLY 2 sentences providing context and why this matters.",
+  "ai_headline": "Title Case headline, max 60 chars, NO colons",
+  "signal_blurb": "EXACTLY 2 sentences providing context and why this matters.",
   "source": "Publication name"
 }}
 
 ## RULES
-1. Headline: Title Case, one sentence, max 12 words
-2. Summary: EXACTLY 2 sentences - not 1, not 3
+1. Headline: Title Case, max 60 characters, max 10 words
+2. Signal Blurb: EXACTLY 2 sentences - not 1, not 3
 3. First sentence: What happened
 4. Second sentence: Why it matters or what it means
-5. Keep total summary under 40 words
+5. Keep total blurb under 40 words
 
 === ARTICLE METADATA ===
 Headline: {headline}
@@ -559,11 +567,85 @@ Return ONLY the JSON object. No commentary."""
             messages=[{"role": "user", "content": prompt}]
         )
 
+        response_text = response.content[0].text
+        try:
+            result = json.loads(response_text)
+            _log(f"  SIGNALS decoration parsed successfully")
+            return result
+        except json.JSONDecodeError:
+            _log(f"  Failed to parse JSON response, attempting extraction...")
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    pass
+            return {
+                "error": "Failed to parse decoration response",
+                "ai_headline": headline,
+                "signal_blurb": "",
+                "source": source_id
+            }
+    except Exception as e:
+        _log(f"  Decoration API error: {e}")
+        return {"error": str(e)}
+
+
+def _apply_signal_bolding(claude: ClaudeClient, decoration: dict) -> dict:
+    """
+    Apply HTML <b> tags to key phrases in why_it_matters and whats_next.
+
+    Takes the decoration dict and applies HTML bold formatting.
+    Uses a simple prompt to identify the most important phrase in each field.
+
+    Args:
+        claude: ClaudeClient instance
+        decoration: Dict with why_it_matters and whats_next fields
+
+    Returns:
+        Dict with same fields but containing <b>phrase</b> HTML tags
+    """
+    _log(f"  Applying bolding to why_it_matters and whats_next...")
+
+    prompt = f"""You are a formatting assistant. Add HTML bold tags to highlight the most important phrase in each field.
+
+## INSTRUCTIONS
+For each field (why_it_matters, whats_next):
+1. Identify the SINGLE most important phrase (5-15 words) that captures the key information
+2. Wrap that phrase in HTML bold tags: <b>phrase here</b>
+3. Only bold ONE phrase per field
+4. Do NOT bold entire sentences
+5. Do NOT change any wording, punctuation, or content
+
+## INPUT
+why_it_matters: {decoration.get('why_it_matters', '')}
+whats_next: {decoration.get('whats_next', '')}
+
+## OUTPUT FORMAT
+Return ONLY valid JSON with the bolded versions:
+
+{{
+  "why_it_matters": "Text with <b>key phrase</b> bolded.",
+  "whats_next": "Text with <b>key phrase</b> bolded."
+}}
+
+Return ONLY the JSON object. No commentary."""
+
+    try:
+        from anthropic import Anthropic
+        client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+
+        response = client.messages.create(
+            model='claude-sonnet-4-5-20250929',
+            max_tokens=500,
+            temperature=0.3,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
         result = json.loads(response.content[0].text)
-        _log(f"  SIGNALS decoration parsed successfully")
+        _log(f"  Bolding applied successfully")
         return result
     except json.JSONDecodeError:
-        _log(f"  Failed to parse JSON response, attempting extraction...")
         import re
         json_match = re.search(r'\{.*\}', response.content[0].text, re.DOTALL)
         if json_match:
@@ -571,15 +653,11 @@ Return ONLY the JSON object. No commentary."""
                 return json.loads(json_match.group())
             except json.JSONDecodeError:
                 pass
-        return {
-            "error": "Failed to parse decoration response",
-            "ai_headline": headline,
-            "signal_summary": "",
-            "source": source_id
-        }
+        _log(f"  Failed to parse bolding response, using original")
+        return decoration
     except Exception as e:
-        _log(f"  Decoration API error: {e}")
-        return {"error": str(e)}
+        _log(f"  Bolding API error: {e}")
+        return decoration
 
 
 # Job configuration for RQ
