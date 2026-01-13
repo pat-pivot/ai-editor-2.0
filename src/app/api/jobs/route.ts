@@ -41,6 +41,12 @@ const VALID_STEPS = [
   "prefilter_slot_3",
   "prefilter_slot_4",
   "prefilter_slot_5",
+  // Signal Newsletter Pipeline (SEPARATE Airtable base)
+  // Signal is a text-only newsletter with no images/links
+  "signal_slot_selection",  // Select stories for Signal (different slot order: 1->3->4->5->2x5)
+  "signal_decoration",      // Decorate Signal stories (full + quick-hit formats)
+  "signal_html_compile",    // Compile Signal HTML (text-only, no images)
+  "signal_send",            // Send Signal newsletter via Mautic
 ] as const;
 
 type StepName = (typeof VALID_STEPS)[number];

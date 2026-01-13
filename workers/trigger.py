@@ -136,6 +136,22 @@ def get_job_function(step_name: str):
         elif step_name == 'prefilter_slot_5':
             from jobs.prefilter import prefilter_slot_5
             JOB_FUNCTIONS[step_name] = prefilter_slot_5
+        # Signal Newsletter Pipeline (SEPARATE Airtable base)
+        # Signal is a text-only newsletter with no images/links
+        elif step_name == 'signal_slot_selection':
+            from jobs.signal_slot_selection import select_signal_slots
+            JOB_FUNCTIONS[step_name] = select_signal_slots
+        elif step_name == 'signal_decoration':
+            from jobs.signal_decoration import decorate_signal_stories
+            JOB_FUNCTIONS[step_name] = decorate_signal_stories
+        elif step_name == 'signal_html_compile':
+            # TODO: Implement signal_html_compile.py
+            logger.warning("signal_html_compile not yet implemented")
+            return None
+        elif step_name == 'signal_send':
+            # TODO: Implement signal_send.py (reuse mautic_send with different template)
+            logger.warning("signal_send not yet implemented")
+            return None
         else:
             return None
 
@@ -174,6 +190,11 @@ QUEUE_MAPPING = {
     'prefilter_slot_3': 'default',
     'prefilter_slot_4': 'default',
     'prefilter_slot_5': 'default',
+    # Signal Newsletter Pipeline (SEPARATE Airtable base)
+    'signal_slot_selection': 'high',
+    'signal_decoration': 'default',
+    'signal_html_compile': 'default',
+    'signal_send': 'high',
 }
 
 # Timeout mapping for manual job triggers

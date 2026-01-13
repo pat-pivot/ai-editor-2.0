@@ -48,6 +48,14 @@ class AirtableClient:
         # Table IDs - P5 Social Posts
         self.p5_social_posts_table_id = os.environ.get('P5_SOCIAL_POSTS_TABLE', 'tbllJMN2QBPJoG3jA')
 
+        # Signal Newsletter Base (SEPARATE from AI Editor 2.0)
+        # Signal uses its own Airtable base for slots and stories
+        self.signal_base_id = os.environ.get('SIGNAL_BASE_ID', 'appWGkUBuyrzmFnFM')
+
+        # Table IDs - Signal Newsletter
+        self.signal_selected_slots_table_id = os.environ.get('SIGNAL_SELECTED_SLOTS_TABLE', 'tblNxfdFYRxXtBBO2')
+        self.signal_issue_stories_table_id = os.environ.get('SIGNAL_ISSUE_STORIES_TABLE', 'tbltUl5QYSBoWbnbD')
+
     def _get_table(self, base_id: str, table_id: str) -> Table:
         """Get a table instance"""
         return self.api.table(base_id, table_id)
@@ -840,3 +848,326 @@ class AirtableClient:
         record = table.update(record_id, fields)
         logger.info(f"[Airtable] Updated Newsletter Select record: {record_id}")
         return record
+
+    # =========================================================================
+    # SIGNAL NEWSLETTER (Signal Newsletter base - appWGkUBuyrzmFnFM)
+    # Added 1/12/26 for Signal Newsletter pipeline
+    #
+    # IMPORTANT: Signal uses a SEPARATE Airtable base from AI Editor 2.0
+    # - Pre-Filter Log table is SHARED (in AI Editor 2.0 base)
+    # - Signal Selected Slots and Issue Stories are in Signal base
+    # =========================================================================
+
+    def create_signal_issue(self, issue_data: dict) -> str:
+        """
+        Create a new Signal newsletter issue in Signal Selected Slots.
+
+        Expected issue_data fields:
+            - issue_id: str (e.g., "Signal - Jan 12")
+            - issue_date: str (date, e.g., "2026-01-12")
+            - status: str ("pending")
+            - top_story_story_id, top_story_pivot_id
+            - ai_at_work_story_id, ai_at_work_pivot_id
+            - emerging_story_id, emerging_pivot_id
+            - beyond_story_id, beyond_pivot_id
+            - signal_1_story_id through signal_5_story_id
+            - signal_1_pivot_id through signal_5_pivot_id
+
+        Returns:
+            Record ID of created issue
+        """
+        table = self._get_table(self.signal_base_id, self.signal_selected_slots_table_id)
+        record = table.create(issue_data)
+        logger.info(f"[Signal] Created Signal issue: {issue_data.get('issue_id')} -> {record['id']}")
+        return record['id']
+
+    def get_signal_pending_issue(self) -> Optional[dict]:
+        """
+        Get Signal issue with status='pending' for decoration.
+
+        Returns:
+            Most recent pending Signal issue record, or None
+        """
+        table = self._get_table(self.signal_base_id, self.signal_selected_slots_table_id)
+
+        records = table.all(
+            formula="{status}='pending'",
+            sort=['-issue_date'],
+            max_records=1
+        )
+
+        if records:
+            logger.info(f"[Signal] Found pending issue: {records[0].get('fields', {}).get('issue_id')}")
+        else:
+            logger.info("[Signal] No pending issues found")
+
+        return records[0] if records else None
+
+    def get_signal_issue_by_id(self, issue_id: str) -> Optional[dict]:
+        """
+        Get Signal issue by issue_id.
+
+        Args:
+            issue_id: Issue identifier (e.g., "Signal - Jan 12")
+
+        Returns:
+            Signal issue record or None
+        """
+        table = self._get_table(self.signal_base_id, self.signal_selected_slots_table_id)
+
+        records = table.all(
+            formula=f"{{issue_id}}='{issue_id}'",
+            max_records=1
+        )
+
+        return records[0] if records else None
+
+    def get_signal_recent_issues(self, lookback_days: int = 14) -> List[dict]:
+        """
+        Get Signal issues from the last N days for duplicate checking.
+
+        Similar to get_recent_sent_issues() for Pivot 5, but queries Signal base.
+        Used for headline/company deduplication across recent issues.
+
+        Args:
+            lookback_days: Number of days to look back (default 14)
+
+        Returns:
+            List of Signal issue records from the last N days
+        """
+        table = self._get_table(self.signal_base_id, self.signal_selected_slots_table_id)
+
+        filter_formula = f"IS_AFTER({{issue_date}}, DATEADD(TODAY(), -{lookback_days}, 'days'))"
+
+        records = table.all(
+            formula=filter_formula,
+            sort=['-issue_date']
+        )
+
+        logger.info(f"[Signal] Found {len(records)} issues in last {lookback_days} days")
+        return records
+
+    def update_signal_issue(self, record_id: str, fields: dict) -> dict:
+        """
+        Update a Signal issue record.
+
+        Common updates:
+            - status: 'pending' -> 'decorated' -> 'compiled' -> 'sent'
+            - subject_line: After decoration completes
+            - sent_at: After send completes
+
+        Args:
+            record_id: Airtable record ID
+            fields: Fields to update
+
+        Returns:
+            Updated record
+        """
+        table = self._get_table(self.signal_base_id, self.signal_selected_slots_table_id)
+        record = table.update(record_id, fields)
+        logger.info(f"[Signal] Updated Signal issue: {record_id}")
+        return record
+
+    def write_signal_story(self, story_data: dict) -> str:
+        """
+        Write decorated story to Signal Issue Stories table.
+
+        Expected story_data fields:
+            - story_id: str (unique identifier)
+            - issue_id: str (links to Signal Selected Slots)
+            - section: str ('top_story', 'ai_at_work', 'emerging', 'beyond', 'signal')
+            - slot_order: int (1-5 for signals, 1 for main sections)
+            - source_slot: int (original Pivot 5 slot 1-5)
+            - headline: str (max 80 chars)
+            - summary: str (1 sentence)
+            - paragraph: str (2-3 sentences, main stories only)
+            - b1, b2, b3: str (bullets, main stories only)
+            - source_attribution: str (e.g., "via TechCrunch")
+            - pivot_id: str (original article reference)
+            - core_url: str (original article URL)
+            - decoration_status: str ('pending', 'decorated', 'error')
+
+        Returns:
+            Record ID of created story
+        """
+        table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
+        record = table.create(story_data)
+        logger.info(f"[Signal] Created Signal story: {story_data.get('section')}/{story_data.get('slot_order')} -> {record['id']}")
+        return record['id']
+
+    def get_signal_stories_for_issue(self, issue_id: str) -> List[dict]:
+        """
+        Get all decorated stories for a Signal issue.
+
+        Args:
+            issue_id: Issue identifier (e.g., "Signal - Jan 12")
+
+        Returns:
+            List of story records sorted by slot_order
+        """
+        table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
+
+        records = table.all(
+            formula=f"{{issue_id}}='{issue_id}'",
+            sort=['slot_order'],
+            fields=[
+                'story_id', 'issue_id', 'section', 'slot_order', 'source_slot',
+                'headline', 'summary', 'paragraph', 'b1', 'b2', 'b3',
+                'source_attribution', 'pivot_id', 'core_url', 'decoration_status'
+            ]
+        )
+
+        logger.info(f"[Signal] Found {len(records)} stories for issue: {issue_id}")
+        return records
+
+    def update_signal_story(self, record_id: str, fields: dict) -> dict:
+        """
+        Update a Signal story record.
+
+        Common updates:
+            - decoration_status: 'pending' -> 'decorated' or 'error'
+            - headline, summary, paragraph, b1, b2, b3: After decoration
+
+        Args:
+            record_id: Airtable record ID
+            fields: Fields to update
+
+        Returns:
+            Updated record
+        """
+        table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
+        record = table.update(record_id, fields)
+        logger.info(f"[Signal] Updated Signal story: {record_id}")
+        return record
+
+    def get_signal_stories_for_compile(self, issue_id: str) -> List[dict]:
+        """
+        Get decorated stories ready for HTML compilation.
+
+        Filter: decoration_status='decorated' AND issue_id='{issue_id}'
+        Sort: slot_order ASC
+
+        Args:
+            issue_id: Issue identifier (e.g., "Signal - Jan 12")
+
+        Returns:
+            List of decorated story records ready for HTML compilation
+        """
+        table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
+
+        filter_formula = f"AND({{decoration_status}}='decorated', {{issue_id}}='{issue_id}')"
+
+        records = table.all(
+            formula=filter_formula,
+            sort=['slot_order'],
+            fields=[
+                'story_id', 'issue_id', 'section', 'slot_order',
+                'headline', 'summary', 'paragraph', 'b1', 'b2', 'b3',
+                'source_attribution'
+            ]
+        )
+
+        logger.info(f"[Signal] Found {len(records)} decorated stories for compile: {issue_id}")
+        return records
+
+    def get_signal_candidates(self, slot: int, freshness_hours: int = 72) -> List[dict]:
+        """
+        Get pre-filter candidates for Signal slot selection.
+
+        IMPORTANT: Uses SHARED Pre-Filter Log table in AI Editor 2.0 base.
+        Signal uses different freshness rules than Pivot 5:
+            - Slot 1 (TOP STORY): 24 hours (no weekend extension)
+            - All other slots: 72 hours
+
+        Args:
+            slot: Slot number (1-5)
+            freshness_hours: Hours of freshness (24 for slot 1, 72 for others)
+
+        Returns:
+            List of candidate records from Pre-Filter Log
+        """
+        table = self._get_table(self.ai_editor_base_id, self.prefilter_log_table_id)
+
+        # Signal freshness: 24h for slot 1, 72h for all others
+        # No weekend extension for Signal (simpler rules)
+        filter_formula = f'AND({{slot}}="{slot}", IS_AFTER({{date_og_published}}, DATEADD(NOW(), -{freshness_hours}, \'hours\')))'
+
+        logger.info(f"[Signal Slot {slot}] Filter formula: {filter_formula}")
+
+        records = table.all(
+            formula=filter_formula,
+            sort=['-date_og_published'],  # Freshest first
+            max_records=200,  # Safety cap for Claude context
+            fields=['storyID', 'pivotId', 'headline', 'core_url', 'source_id', 'date_og_published', 'slot']
+        )
+
+        logger.info(f"[Signal Slot {slot}] Found {len(records)} candidates")
+        return records
+
+    def get_signal_used_pivot_ids(self, lookback_days: int = 14) -> List[str]:
+        """
+        Get all pivot_ids already used in recent Signal issues.
+
+        Used for deduplication - ensures same story isn't selected twice.
+
+        Args:
+            lookback_days: Number of days to look back (default 14)
+
+        Returns:
+            List of pivot_id strings that have been used
+        """
+        recent_issues = self.get_signal_recent_issues(lookback_days)
+
+        used_ids = []
+        for issue in recent_issues:
+            fields = issue.get('fields', {})
+
+            # Main stories
+            for section in ['top_story', 'ai_at_work', 'emerging', 'beyond']:
+                pivot_id = fields.get(f'{section}_pivot_id')
+                if pivot_id:
+                    used_ids.append(pivot_id)
+
+            # Signals (5 items)
+            for i in range(1, 6):
+                pivot_id = fields.get(f'signal_{i}_pivot_id')
+                if pivot_id:
+                    used_ids.append(pivot_id)
+
+        logger.info(f"[Signal] Found {len(used_ids)} used pivot_ids in last {lookback_days} days")
+        return used_ids
+
+    def get_signal_recent_headlines(self, lookback_days: int = 14) -> List[str]:
+        """
+        Get headlines from recent Signal issues for semantic deduplication.
+
+        Used to avoid selecting stories with similar headlines.
+
+        Args:
+            lookback_days: Number of days to look back (default 14)
+
+        Returns:
+            List of headline strings from recent issues
+        """
+        # Get all recent Signal issue IDs
+        recent_issues = self.get_signal_recent_issues(lookback_days)
+        issue_ids = [i.get('fields', {}).get('issue_id') for i in recent_issues if i.get('fields', {}).get('issue_id')]
+
+        if not issue_ids:
+            return []
+
+        # Query Signal Issue Stories for headlines
+        table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
+
+        # Build OR formula for all issue IDs
+        conditions = [f"{{issue_id}}='{iid}'" for iid in issue_ids]
+        filter_formula = f"OR({','.join(conditions)})"
+
+        records = table.all(
+            formula=filter_formula,
+            fields=['headline', 'issue_id']
+        )
+
+        headlines = [r.get('fields', {}).get('headline') for r in records if r.get('fields', {}).get('headline')]
+        logger.info(f"[Signal] Found {len(headlines)} headlines from {len(issue_ids)} recent issues")
+        return headlines

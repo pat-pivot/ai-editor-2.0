@@ -4,6 +4,8 @@
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const PIVOT_MEDIA_BASE_ID = process.env.AIRTABLE_BASE_ID; // appwSozYTkrsQWUXB
 const AI_EDITOR_BASE_ID = process.env.AI_EDITOR_BASE_ID; // appglKSJZxmA9iHpl
+// Signal Newsletter Base (SEPARATE from AI Editor 2.0)
+const SIGNAL_BASE_ID = process.env.SIGNAL_BASE_ID || "appWGkUBuyrzmFnFM";
 
 // Table IDs
 const TABLES = {
@@ -20,6 +22,9 @@ const TABLES = {
   sourceScores: process.env.AI_EDITOR_SOURCE_SCORES_TABLE || "tbl3Zkdl1No2edDLK",
   articlesAllIngested: "tblMfRgSNSyoRIhx1",
   newsletterSelects: "tblKhICCdWnyuqgry",
+  // Signal Newsletter Tables (in Signal Base - appWGkUBuyrzmFnFM)
+  signalSelectedSlots: process.env.SIGNAL_SELECTED_SLOTS_TABLE || "tblNxfdFYRxXtBBO2",
+  signalIssueStories: process.env.SIGNAL_ISSUE_STORIES_TABLE || "tbltUl5QYSBoWbnbD",
 };
 
 interface AirtableRecord {
@@ -658,4 +663,359 @@ export async function getNewsletterSelectsList(
     pivotId: (record.fields.pivot_id as string) || "",
     originalUrl: (record.fields.core_url as string) || "",
   }));
+}
+
+// =============================================================================
+// SIGNAL NEWSLETTER FUNCTIONS
+// Signal uses a SEPARATE Airtable base (appWGkUBuyrzmFnFM)
+// Pre-Filter Log is SHARED with AI Editor 2.0 base
+// =============================================================================
+
+// Signal Selected Slots (Signal Issue Table)
+// Documentation: Table tblNxfdFYRxXtBBO2 in Signal Base
+// Fields: issue_id, issue_date, status,
+//         top_story_storyId, top_story_pivotId, top_story_headline,
+//         ai_at_work_storyId, ai_at_work_pivotId, ai_at_work_headline,
+//         emerging_storyId, emerging_pivotId, emerging_headline,
+//         beyond_storyId, beyond_pivotId, beyond_headline,
+//         signal_1_* through signal_5_*
+export interface SignalSelectedSlots {
+  id: string;
+  issueId: string;
+  issueDate: string;
+  status: string;
+  // Main stories (full treatment)
+  topStory: { storyId: string; pivotId: string; headline: string };
+  aiAtWork: { storyId: string; pivotId: string; headline: string };
+  emerging: { storyId: string; pivotId: string; headline: string };
+  beyond: { storyId: string; pivotId: string; headline: string };
+  // Quick-hit signals (5 items from Slot 2)
+  signals: Array<{ storyId: string; pivotId: string; headline: string }>;
+}
+
+// Signal Issue Stories (Decorated content)
+// Documentation: Table tbltUl5QYSBoWbnbD in Signal Base
+// Fields: story_id, issue_id, section, signal_num, pivotId, headline,
+//         ai_headline, ai_dek, label, ai_bullet_1, ai_bullet_2, ai_bullet_3,
+//         signal_summary, raw, core_url, source_id, decoration_status
+export interface SignalIssueStory {
+  id: string;
+  storyId: string;
+  issueId: string;
+  section: string;
+  signalNum: number | null;
+  pivotId: string;
+  headline: string;
+  aiHeadline: string;
+  aiDek: string;
+  label: string;
+  aiBullet1: string;
+  aiBullet2: string;
+  aiBullet3: string;
+  signalSummary: string;
+  raw: string;
+  coreUrl: string;
+  sourceId: string;
+  decorationStatus: string;
+}
+
+/**
+ * Get the most recent Signal issue with status "pending" (awaiting processing)
+ * Returns null if no pending issue exists
+ */
+export async function getSignalPendingIssue(skipCache: boolean = false): Promise<SignalSelectedSlots | null> {
+  if (!SIGNAL_BASE_ID || !TABLES.signalSelectedSlots) {
+    throw new Error("Signal base ID or selected slots table not configured");
+  }
+
+  const records = await fetchAirtable(SIGNAL_BASE_ID, TABLES.signalSelectedSlots, {
+    maxRecords: 1,
+    filterByFormula: "{status} = 'pending'",
+    sort: [{ field: "issue_date", direction: "desc" }],
+    fields: [
+      "issue_id",
+      "issue_date",
+      "status",
+      // Top Story (Slot 1)
+      "top_story_story_id",
+      "top_story_pivot_id",
+      "top_story_headline",
+      // AI At Work (Slot 3)
+      "ai_at_work_story_id",
+      "ai_at_work_pivot_id",
+      "ai_at_work_headline",
+      // Emerging (Slot 4)
+      "emerging_story_id",
+      "emerging_pivot_id",
+      "emerging_headline",
+      // Beyond (Slot 5)
+      "beyond_story_id",
+      "beyond_pivot_id",
+      "beyond_headline",
+      // Signals 1-5 (all from Slot 2)
+      "signal_1_story_id",
+      "signal_1_pivot_id",
+      "signal_1_headline",
+      "signal_2_story_id",
+      "signal_2_pivot_id",
+      "signal_2_headline",
+      "signal_3_story_id",
+      "signal_3_pivot_id",
+      "signal_3_headline",
+      "signal_4_story_id",
+      "signal_4_pivot_id",
+      "signal_4_headline",
+      "signal_5_story_id",
+      "signal_5_pivot_id",
+      "signal_5_headline",
+    ],
+    skipCache,
+  });
+
+  if (records.length === 0) return null;
+
+  const record = records[0];
+  const fields = record.fields;
+
+  return {
+    id: record.id,
+    issueId: (fields.issue_id as string) || "",
+    issueDate: (fields.issue_date as string) || "",
+    status: (fields.status as string) || "pending",
+    topStory: {
+      storyId: (fields.top_story_story_id as string) || "",
+      pivotId: (fields.top_story_pivot_id as string) || "",
+      headline: (fields.top_story_headline as string) || "",
+    },
+    aiAtWork: {
+      storyId: (fields.ai_at_work_story_id as string) || "",
+      pivotId: (fields.ai_at_work_pivot_id as string) || "",
+      headline: (fields.ai_at_work_headline as string) || "",
+    },
+    emerging: {
+      storyId: (fields.emerging_story_id as string) || "",
+      pivotId: (fields.emerging_pivot_id as string) || "",
+      headline: (fields.emerging_headline as string) || "",
+    },
+    beyond: {
+      storyId: (fields.beyond_story_id as string) || "",
+      pivotId: (fields.beyond_pivot_id as string) || "",
+      headline: (fields.beyond_headline as string) || "",
+    },
+    signals: [
+      {
+        storyId: (fields.signal_1_story_id as string) || "",
+        pivotId: (fields.signal_1_pivot_id as string) || "",
+        headline: (fields.signal_1_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_2_story_id as string) || "",
+        pivotId: (fields.signal_2_pivot_id as string) || "",
+        headline: (fields.signal_2_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_3_story_id as string) || "",
+        pivotId: (fields.signal_3_pivot_id as string) || "",
+        headline: (fields.signal_3_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_4_story_id as string) || "",
+        pivotId: (fields.signal_4_pivot_id as string) || "",
+        headline: (fields.signal_4_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_5_story_id as string) || "",
+        pivotId: (fields.signal_5_pivot_id as string) || "",
+        headline: (fields.signal_5_headline as string) || "",
+      },
+    ],
+  };
+}
+
+/**
+ * Get Signal issue stories (decorated content) for a specific issue
+ */
+export async function getSignalIssueStories(
+  issueId: string,
+  skipCache: boolean = false
+): Promise<SignalIssueStory[]> {
+  if (!SIGNAL_BASE_ID || !TABLES.signalIssueStories) {
+    throw new Error("Signal base ID or issue stories table not configured");
+  }
+
+  const records = await fetchAirtable(SIGNAL_BASE_ID, TABLES.signalIssueStories, {
+    maxRecords: 20,
+    filterByFormula: `{issue_id} = '${issueId}'`,
+    sort: [{ field: "section", direction: "asc" }],
+    fields: [
+      "story_id",
+      "issue_id",
+      "section",
+      "signal_num",
+      "pivot_id",
+      "headline",
+      "ai_headline",
+      "ai_dek",
+      "label",
+      "ai_bullet_1",
+      "ai_bullet_2",
+      "ai_bullet_3",
+      "signal_summary",
+      "raw",
+      "core_url",
+      "source_id",
+      "decoration_status",
+    ],
+    skipCache,
+  });
+
+  return records.map((record) => ({
+    id: record.id,
+    storyId: (record.fields.story_id as string) || "",
+    issueId: (record.fields.issue_id as string) || "",
+    section: (record.fields.section as string) || "",
+    signalNum: (record.fields.signal_num as number) || null,
+    pivotId: (record.fields.pivot_id as string) || "",
+    headline: (record.fields.headline as string) || "",
+    aiHeadline: (record.fields.ai_headline as string) || "",
+    aiDek: (record.fields.ai_dek as string) || "",
+    label: (record.fields.label as string) || "",
+    aiBullet1: (record.fields.ai_bullet_1 as string) || "",
+    aiBullet2: (record.fields.ai_bullet_2 as string) || "",
+    aiBullet3: (record.fields.ai_bullet_3 as string) || "",
+    signalSummary: (record.fields.signal_summary as string) || "",
+    raw: (record.fields.raw as string) || "",
+    coreUrl: (record.fields.core_url as string) || "",
+    sourceId: (record.fields.source_id as string) || "",
+    decorationStatus: (record.fields.decoration_status as string) || "pending",
+  }));
+}
+
+/**
+ * Update a Signal issue record (status, stories, etc.)
+ */
+export async function updateSignalIssue(
+  recordId: string,
+  fields: Partial<{
+    status: string;
+    // Section updates use format: top_story_story_id, top_story_pivot_id, etc.
+    [key: string]: string | number | undefined;
+  }>
+): Promise<void> {
+  if (!SIGNAL_BASE_ID || !TABLES.signalSelectedSlots) {
+    throw new Error("Signal base ID or selected slots table not configured");
+  }
+
+  await updateAirtable(SIGNAL_BASE_ID, TABLES.signalSelectedSlots, recordId, fields);
+}
+
+/**
+ * Get the most recent Signal issue (regardless of status)
+ */
+export async function getSignalLatestIssue(skipCache: boolean = false): Promise<SignalSelectedSlots | null> {
+  if (!SIGNAL_BASE_ID || !TABLES.signalSelectedSlots) {
+    throw new Error("Signal base ID or selected slots table not configured");
+  }
+
+  const records = await fetchAirtable(SIGNAL_BASE_ID, TABLES.signalSelectedSlots, {
+    maxRecords: 1,
+    sort: [{ field: "issue_date", direction: "desc" }],
+    fields: [
+      "issue_id",
+      "issue_date",
+      "status",
+      // Top Story (Slot 1)
+      "top_story_story_id",
+      "top_story_pivot_id",
+      "top_story_headline",
+      // AI At Work (Slot 3)
+      "ai_at_work_story_id",
+      "ai_at_work_pivot_id",
+      "ai_at_work_headline",
+      // Emerging (Slot 4)
+      "emerging_story_id",
+      "emerging_pivot_id",
+      "emerging_headline",
+      // Beyond (Slot 5)
+      "beyond_story_id",
+      "beyond_pivot_id",
+      "beyond_headline",
+      // Signals 1-5 (all from Slot 2)
+      "signal_1_story_id",
+      "signal_1_pivot_id",
+      "signal_1_headline",
+      "signal_2_story_id",
+      "signal_2_pivot_id",
+      "signal_2_headline",
+      "signal_3_story_id",
+      "signal_3_pivot_id",
+      "signal_3_headline",
+      "signal_4_story_id",
+      "signal_4_pivot_id",
+      "signal_4_headline",
+      "signal_5_story_id",
+      "signal_5_pivot_id",
+      "signal_5_headline",
+    ],
+    skipCache,
+  });
+
+  if (records.length === 0) return null;
+
+  const record = records[0];
+  const fields = record.fields;
+
+  return {
+    id: record.id,
+    issueId: (fields.issue_id as string) || "",
+    issueDate: (fields.issue_date as string) || "",
+    status: (fields.status as string) || "pending",
+    topStory: {
+      storyId: (fields.top_story_story_id as string) || "",
+      pivotId: (fields.top_story_pivot_id as string) || "",
+      headline: (fields.top_story_headline as string) || "",
+    },
+    aiAtWork: {
+      storyId: (fields.ai_at_work_story_id as string) || "",
+      pivotId: (fields.ai_at_work_pivot_id as string) || "",
+      headline: (fields.ai_at_work_headline as string) || "",
+    },
+    emerging: {
+      storyId: (fields.emerging_story_id as string) || "",
+      pivotId: (fields.emerging_pivot_id as string) || "",
+      headline: (fields.emerging_headline as string) || "",
+    },
+    beyond: {
+      storyId: (fields.beyond_story_id as string) || "",
+      pivotId: (fields.beyond_pivot_id as string) || "",
+      headline: (fields.beyond_headline as string) || "",
+    },
+    signals: [
+      {
+        storyId: (fields.signal_1_story_id as string) || "",
+        pivotId: (fields.signal_1_pivot_id as string) || "",
+        headline: (fields.signal_1_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_2_story_id as string) || "",
+        pivotId: (fields.signal_2_pivot_id as string) || "",
+        headline: (fields.signal_2_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_3_story_id as string) || "",
+        pivotId: (fields.signal_3_pivot_id as string) || "",
+        headline: (fields.signal_3_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_4_story_id as string) || "",
+        pivotId: (fields.signal_4_pivot_id as string) || "",
+        headline: (fields.signal_4_headline as string) || "",
+      },
+      {
+        storyId: (fields.signal_5_story_id as string) || "",
+        pivotId: (fields.signal_5_pivot_id as string) || "",
+        headline: (fields.signal_5_headline as string) || "",
+      },
+    ],
+  };
 }
