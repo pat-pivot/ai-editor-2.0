@@ -8,7 +8,7 @@ Key Differences from Pivot 5:
 - NO LINKS (deliverability optimization)
 - NO IMAGES (simplified production)
 - Georgia 16px font (vs Arial 15px)
-- Blue accent #2563eb (vs orange #f97316)
+- Green accent #059669 (vs orange #f97316)
 - 600px max width (vs 640px)
 - 32px spacing (vs 24px)
 - Different CSS classes (.signal-wrap, .sig-block vs .wrapper, .stack)
@@ -140,7 +140,7 @@ def _format_as_bullet_list(text: str) -> str:
         escaped_bullet = _escape_html(bullet, preserve_bold=True)
         bullet_items.append(f'''
                     <tr>
-                      <td valign="top" style="width:20px; font-family:Georgia, serif; font-size:15px; color:#2563eb; padding-right:8px;">&#8226;</td>
+                      <td valign="top" style="width:20px; font-family:Georgia, serif; font-size:15px; color:#059669; padding-right:8px;">&#8226;</td>
                       <td style="font-family:Georgia, serif; font-size:15px; color:#475569; line-height:1.7;">
                         {escaped_bullet}
                       </td>
@@ -399,6 +399,11 @@ def _build_signal_html(
         <td align="center" style="padding:32px 16px;">
           <table role="presentation" class="signal-wrap" cellspacing="0" cellpadding="0" border="0" style="background-color:#ffffff; border:1px solid #e2e8f0; border-radius:8px;">
 
+            <!-- Green Brand Accent Bar -->
+            <tr>
+              <td style="background-color:#143330; height:4px; padding:0; border-radius:8px 8px 0 0;"></td>
+            </tr>
+
             <!-- Header -->
             <tr>
               <td style="padding:32px 32px 24px 32px; border-bottom:1px solid #e2e8f0;">
@@ -501,7 +506,7 @@ def _build_at_a_glance(stories_by_section: Dict[str, dict]) -> str:
         if headline:
             parts.append(f'''
               <div style="margin-bottom:16px;">
-                <div style="font-family:Georgia, serif; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; color:#2563eb; margin-bottom:4px;">
+                <div style="font-family:Georgia, serif; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; color:#059669; margin-bottom:4px;">
                   {_escape_html(display_name)}
                 </div>
                 <div style="font-family:Georgia, serif; font-size:15px; font-weight:600; color:#1e293b; line-height:1.4;">
@@ -522,7 +527,7 @@ def _build_at_a_glance(stories_by_section: Dict[str, dict]) -> str:
         if headline:
             signal_items.append(f'''
                 <div style="font-family:Georgia, serif; font-size:14px; color:#475569; line-height:1.5; margin-bottom:8px; padding-left:20px; text-indent:-20px;">
-                  <span style="color:#2563eb; font-weight:600;">{i}.</span> {_escape_html(headline)}
+                  <span style="color:#059669; font-weight:600;">{i}.</span> {_escape_html(headline)}
                 </div>''')
 
     if signal_items:
@@ -577,7 +582,7 @@ def _build_full_stories(stories_by_section: Dict[str, dict]) -> str:
             <tr>
               <td class="sig-block" style="padding:24px 32px; border-top:1px solid #e2e8f0;">
                 <!-- Section Label -->
-                <div style="font-family:Georgia, serif; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#2563eb; margin-bottom:8px;">
+                <div style="font-family:Georgia, serif; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#059669; margin-bottom:8px;">
                   {_escape_html(display_name)}
                 </div>
 
@@ -651,7 +656,7 @@ def _build_full_stories(stories_by_section: Dict[str, dict]) -> str:
             signal_parts.append(f'''
                 <div style="margin-bottom:16px;">
                   <div style="font-family:Georgia, serif; font-size:15px; font-weight:600; color:#1e293b; line-height:1.4;">
-                    <span style="color:#2563eb;">{i}.</span> {_escape_html(headline)}
+                    <span style="color:#059669;">{i}.</span> {_escape_html(headline)}
                   </div>
                   <div style="font-family:Georgia, serif; font-size:14px; color:#64748b; line-height:1.5; margin-top:4px;">
                     {_escape_html(signal_blurb)}
@@ -663,7 +668,7 @@ def _build_full_stories(stories_by_section: Dict[str, dict]) -> str:
             <tr>
               <td class="sig-block" style="padding:24px 32px; border-top:1px solid #e2e8f0;">
                 <!-- Signals Section Label -->
-                <div style="font-family:Georgia, serif; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#2563eb; margin-bottom:16px;">
+                <div style="font-family:Georgia, serif; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#059669; margin-bottom:16px;">
                   SIGNALS
                 </div>
                 {"".join(signal_parts)}
