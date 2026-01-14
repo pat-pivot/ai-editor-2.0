@@ -187,9 +187,9 @@ async function createOngageEmailMessage(
 
   const data = await response.json();
 
-  if (!response.ok || !data.metadata?.success) {
+  if (!response.ok || data.metadata?.error) {
     console.error("Ongage email creation failed:", data);
-    throw new Error(`Failed to create Ongage email: ${data.metadata?.error || response.status}`);
+    throw new Error(`Failed to create Ongage email: ${JSON.stringify(data.metadata) || response.status}`);
   }
 
   return data.payload.id;
@@ -227,9 +227,9 @@ async function createOngageCampaign(
 
   const data = await response.json();
 
-  if (!response.ok || !data.metadata?.success) {
+  if (!response.ok || data.metadata?.error) {
     console.error("Ongage campaign creation failed:", data);
-    throw new Error(`Failed to create Ongage campaign: ${data.metadata?.error || response.status}`);
+    throw new Error(`Failed to create Ongage campaign: ${JSON.stringify(data.metadata) || response.status}`);
   }
 
   return {
