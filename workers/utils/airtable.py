@@ -975,16 +975,16 @@ class AirtableClient:
         Expected story_data fields:
             - story_id: str (unique identifier)
             - issue_id: str (links to Signal Selected Slots)
-            - section: str ('top_story', 'ai_at_work', 'emerging', 'beyond', 'signal')
-            - slot_order: int (1-5 for signals, 1 for main sections)
-            - source_slot: int (original Pivot 5 slot 1-5)
+            - section: str ('top_story', 'ai_at_work', 'emerging_moves', 'beyond_business', 'signal_1'..'signal_5')
             - headline: str (max 80 chars)
-            - summary: str (1 sentence)
-            - paragraph: str (2-3 sentences, main stories only)
-            - b1, b2, b3: str (bullets, main stories only)
+            - one_liner: str (1 sentence for at-a-glance)
+            - lead: str (2-3 sentences intro)
+            - signal_blurb: str (2 sentences, signals only)
+            - why_it_matters: str (2 sentences)
+            - whats_next: str (2 sentences)
             - source_attribution: str (e.g., "via TechCrunch")
             - pivot_id: str (original article reference)
-            - core_url: str (original article URL)
+            - raw: str (cleaned article content)
             - decoration_status: str ('pending', 'decorated', 'error')
 
         Returns:
@@ -992,7 +992,7 @@ class AirtableClient:
         """
         table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
         record = table.create(story_data)
-        logger.info(f"[Signal] Created Signal story: {story_data.get('section')}/{story_data.get('slot_order')} -> {record['id']}")
+        logger.info(f"[Signal] Created Signal story: {story_data.get('section')} -> {record['id']}")
         return record['id']
 
     def get_signal_stories_for_issue(self, issue_id: str) -> List[dict]:
@@ -1003,17 +1003,19 @@ class AirtableClient:
             issue_id: Issue identifier (e.g., "Signal - Jan 12")
 
         Returns:
-            List of story records sorted by slot_order
+            List of story records sorted by section
+            (section names sort correctly: ai_at_work, beyond_business, emerging_moves, signal_1-5, top_story)
         """
         table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
 
         records = table.all(
             formula=f"{{issue_id}}='{issue_id}'",
-            sort=['slot_order'],
+            sort=['section'],
             fields=[
-                'story_id', 'issue_id', 'section', 'slot_order', 'source_slot',
-                'headline', 'summary', 'paragraph', 'b1', 'b2', 'b3',
-                'source_attribution', 'pivot_id', 'core_url', 'decoration_status'
+                'story_id', 'issue_id', 'section',
+                'headline', 'one_liner', 'lead', 'signal_blurb',
+                'why_it_matters', 'whats_next',
+                'source_attribution', 'pivot_id', 'decoration_status'
             ]
         )
 
@@ -1045,13 +1047,16 @@ class AirtableClient:
         Get decorated stories ready for HTML compilation.
 
         Filter: decoration_status='decorated' AND issue_id='{issue_id}'
-        Sort: slot_order ASC
+        Sort: section ASC (use SIGNAL_SECTION_ORDER for proper display order)
 
         Args:
             issue_id: Issue identifier (e.g., "Signal - Jan 12")
 
         Returns:
             List of decorated story records ready for HTML compilation
+            NOTE: Records are sorted alphabetically by section. The caller should
+            reorder using SIGNAL_SECTION_ORDER for proper display:
+            [top_story, ai_at_work, emerging_moves, beyond_business, signal_1..5]
         """
         table = self._get_table(self.signal_base_id, self.signal_issue_stories_table_id)
 
@@ -1059,10 +1064,11 @@ class AirtableClient:
 
         records = table.all(
             formula=filter_formula,
-            sort=['slot_order'],
+            sort=['section'],
             fields=[
-                'story_id', 'issue_id', 'section', 'slot_order',
-                'headline', 'summary', 'paragraph', 'b1', 'b2', 'b3',
+                'pivot_id', 'issue_id', 'section',
+                'headline', 'one_liner', 'lead', 'signal_blurb',
+                'why_it_matters', 'whats_next',
                 'source_attribution'
             ]
         )

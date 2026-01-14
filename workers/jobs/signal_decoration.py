@@ -72,7 +72,7 @@ def decorate_signal_stories() -> dict:
        b. Clean content using Gemini (content_cleaner prompt)
        c. Generate decoration using Claude:
           - Full stories: headline, one_liner, lead, why_it_matters, whats_next
-          - SIGNALS: headline + signal_blurb (2 sentences)
+          - SIGNALS: headline + signal_blurb (1 sentence)
        d. Apply HTML <b> bolding to why_it_matters and whats_next (full stories only)
        e. Write to Signal Issue Stories table
     3. Update issue status to 'decorated'
@@ -231,17 +231,11 @@ def decorate_signal_stories() -> dict:
                 _log(f"{display_name}: Claude decoration complete")
                 _log(f"  headline: {decoration.get('ai_headline', '')[:60]}...")
 
-                # 2d. Apply HTML <b> bolding to why_it_matters and whats_next (full stories only)
-                if is_full_story and decoration.get('why_it_matters'):
-                    _log(f"{display_name}: Applying HTML <b> bolding...")
-                    try:
-                        bolded_decoration = _apply_signal_bolding(claude, decoration)
-                        decoration["why_it_matters"] = bolded_decoration.get("why_it_matters", decoration.get("why_it_matters", ""))
-                        decoration["whats_next"] = bolded_decoration.get("whats_next", decoration.get("whats_next", ""))
-                        _log(f"{display_name}: Bolding complete")
-                    except Exception as e:
-                        _log(f"{display_name}: Bolding failed: {e}")
-                        _log(f"  Using unbolded text")
+                # 2d. HTML <b> bolding is now included in the decoration prompt directly
+                # The prompt instructs Claude to add <b>key phrase</b> tags inline
+                # No separate bolding step needed anymore
+                if is_full_story:
+                    _log(f"{display_name}: Bolding included in decoration output (inline)")
 
                 # 2e. Write to Signal Issue Stories table
                 _log(f"{display_name}: Writing to Signal Issue Stories...")
@@ -253,7 +247,6 @@ def decorate_signal_stories() -> dict:
                     story_data = {
                         "issue_id": issue_id_text,
                         "section": section,
-                        "slot_order": 1,  # Single story per main section
                         "pivot_id": pivot_id,
                         "headline": decoration.get("ai_headline", original_headline),
                         "one_liner": decoration.get("one_liner", ""),
@@ -270,7 +263,6 @@ def decorate_signal_stories() -> dict:
                     story_data = {
                         "issue_id": issue_id_text,
                         "section": section,  # signal_1, signal_2, etc.
-                        "slot_order": signal_num,
                         "pivot_id": pivot_id,
                         "headline": decoration.get("ai_headline", original_headline),
                         "one_liner": "",  # Not used for signals
@@ -286,7 +278,6 @@ def decorate_signal_stories() -> dict:
                 _log(f"{display_name}: Story data to write:")
                 _log(f"  pivot_id: {story_data['pivot_id']}")
                 _log(f"  section: {story_data['section']}")
-                _log(f"  slot_order: {story_data['slot_order']}")
                 _log(f"  headline: {story_data['headline'][:50]}...")
 
                 record_id = airtable.write_signal_story(story_data)
@@ -394,9 +385,9 @@ Return ONLY valid JSON:
 {{
   "ai_headline": "Title Case headline, max 80 chars, NO colons or semi-colons",
   "one_liner": "Single compelling sentence for At-a-Glance section (15-25 words)",
-  "lead": "2-3 sentences introducing the story. What happened and why it matters.",
-  "why_it_matters": "EXACTLY 2 sentences explaining relevance to reader.",
-  "whats_next": "EXACTLY 2 sentences on implications or what to watch.",
+  "lead": "First sentence here.\\n\\nSecond sentence here.\\n\\nThird sentence here (if needed).",
+  "why_it_matters": "• First bullet point with <b>key phrase</b> bolded.\\n• Second bullet point with <b>key phrase</b> bolded.",
+  "whats_next": "• First bullet point with <b>key phrase</b> bolded.\\n• Second bullet point with <b>key phrase</b> bolded.",
   "source": "Publication name"
 }}
 
@@ -414,17 +405,32 @@ Return ONLY valid JSON:
 - Must stand alone without context
 
 ### Lead:
-- 2-3 sentences, ~50-75 words
+- 2-3 sentences, ~50-75 words total
+- CRITICAL FORMATTING: You MUST separate EVERY sentence with \\n\\n (double newline)
+- Format: "Sentence one.\\n\\nSentence two.\\n\\nSentence three."
+- Each sentence becomes its own visual paragraph
 - Expand on the one-liner with key details
 - Who, what, when, where
 
 ### Why It Matters:
-- EXACTLY 2 sentences. Not 1. Not 3. Exactly 2.
+- YOU MUST PROVIDE EXACTLY 2 BULLET POINTS - NOT 1, NOT 3, EXACTLY 2
+- Format EXACTLY like this (two separate lines):
+  • First bullet point with <b>key phrase</b> bolded.
+  • Second bullet point with <b>key phrase</b> bolded.
+- Each bullet starts with "• " (bullet character followed by space)
+- Bullets separated by single line break (\\n)
+- Use HTML <b>key phrase</b> tags to bold the most important phrase (5-15 words) in each bullet
 - Explain relevance to reader
 - Focus on business consequences
 
 ### What's Next:
-- EXACTLY 2 sentences. Not 1. Not 3. Exactly 2.
+- YOU MUST PROVIDE EXACTLY 2 BULLET POINTS - NOT 1, NOT 3, EXACTLY 2
+- Format EXACTLY like this (two separate lines):
+  • First bullet point with <b>key phrase</b> bolded.
+  • Second bullet point with <b>key phrase</b> bolded.
+- Each bullet starts with "• " (bullet character followed by space)
+- Bullets separated by single line break (\\n)
+- Use HTML <b>key phrase</b> tags to bold the most important phrase (5-15 words) in each bullet
 - Forward-looking implications
 - What to watch, competitive dynamics
 
@@ -490,9 +496,10 @@ def _decorate_signal_item(
     """
     Generate quick-hit decoration for SIGNALS section.
 
-    Output: ai_headline, signal_blurb (2 sentences), source
+    Output: ai_headline, signal_blurb (EXACTLY 1 sentence - not 2, not 3), source
 
     Uses signal_signals_decorator prompt from database.
+    CRITICAL: signal_blurb must be exactly ONE sentence only.
     """
     _log(f"  Generating SIGNALS quick-hit decoration...")
 
@@ -518,7 +525,7 @@ def _decorate_signal_item(
 ## SIGNALS Format
 Each SIGNALS item is a quick scan:
 - One headline (max 60 chars)
-- Two sentences of context
+- ONE SENTENCE ONLY of context (this is critical!)
 - No bullets, no expanded treatment
 
 ## AUDIENCE
@@ -531,16 +538,21 @@ Return ONLY valid JSON:
 
 {{
   "ai_headline": "Title Case headline, max 60 chars, NO colons",
-  "signal_blurb": "EXACTLY 2 sentences providing context and why this matters.",
+  "signal_blurb": "EXACTLY ONE SENTENCE. Not two. Not three. ONE.",
   "source": "Publication name"
 }}
 
-## RULES
+## CRITICAL RULE FOR signal_blurb
+⚠️ signal_blurb MUST be EXACTLY ONE SENTENCE.
+- NOT two sentences. NOT three sentences. ONE SENTENCE ONLY.
+- Count the periods. There should be exactly ONE period at the end.
+- If you write more than one sentence, you have failed the task.
+- Combine your key insight into a single, powerful sentence.
+- Maximum 25 words in that ONE sentence.
+
+## OTHER RULES
 1. Headline: Title Case, max 60 characters, max 10 words
-2. Signal Blurb: EXACTLY 2 sentences - not 1, not 3
-3. First sentence: What happened
-4. Second sentence: Why it matters or what it means
-5. Keep total blurb under 40 words
+2. The single sentence should capture what happened and why it matters
 
 === ARTICLE METADATA ===
 Headline: {headline}

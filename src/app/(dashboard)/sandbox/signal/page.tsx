@@ -19,7 +19,9 @@ import {
   Timer,
   RefreshCw,
   AlertCircle,
+  Send,
 } from "lucide-react";
+import { ScheduleTab } from "@/components/signal/schedule-tab";
 
 // Signal job definitions
 const SIGNAL_JOBS = {
@@ -480,6 +482,10 @@ export default function SignalSandboxPage() {
             <Code className="h-4 w-4" />
             HTML Compile
           </TabsTrigger>
+          <TabsTrigger value="send_schedule" className="data-[state=active]:bg-white flex items-center gap-2">
+            <Send className="h-4 w-4" />
+            Send & Schedule
+          </TabsTrigger>
         </TabsList>
 
         {/* Slot Selection Tab */}
@@ -792,6 +798,11 @@ export default function SignalSandboxPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Send & Schedule Tab */}
+        <TabsContent value="send_schedule" className="space-y-4">
+          <ScheduleTab />
+        </TabsContent>
       </Tabs>
 
       {/* Info Card */}
@@ -801,7 +812,7 @@ export default function SignalSandboxPage() {
             <Info className="h-5 w-5 text-zinc-400 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-zinc-600">
               <p className="font-medium text-zinc-700 mb-2">Pipeline Flow</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
                 <div className="flex items-start gap-2">
                   <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">1</span>
                   <span><strong>Slot Selection</strong> - Select 9 stories: 1 top, 3 features, 5 signals</span>
@@ -813,6 +824,10 @@ export default function SignalSandboxPage() {
                 <div className="flex items-start gap-2">
                   <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">3</span>
                   <span><strong>HTML Compile</strong> - Build text-only email HTML</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-100 text-orange-600 text-[10px] font-bold flex-shrink-0">4</span>
+                  <span><strong>Send & Schedule</strong> - Schedule via Ongage for delivery</span>
                 </div>
               </div>
             </div>
