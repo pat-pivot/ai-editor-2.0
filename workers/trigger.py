@@ -145,9 +145,8 @@ def get_job_function(step_name: str):
             from jobs.signal_decoration import decorate_signal_stories
             JOB_FUNCTIONS[step_name] = decorate_signal_stories
         elif step_name == 'signal_html_compile':
-            # TODO: Implement signal_html_compile.py
-            logger.warning("signal_html_compile not yet implemented")
-            return None
+            from jobs.signal_html_compile import compile_signal_html
+            JOB_FUNCTIONS[step_name] = compile_signal_html
         elif step_name == 'signal_send':
             # TODO: Implement signal_send.py (reuse mautic_send with different template)
             logger.warning("signal_send not yet implemented")
